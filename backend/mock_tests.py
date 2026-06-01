@@ -16,3 +16,6 @@
 
 // Update related to: Fix null pointer in candidate parsing
 // Implementation details added on 2026-06-06T06:00:00
+
+// Update related to: Add candidate profile avatar fetching
+// Implementation details added on 2026-06-02T01:00:00
