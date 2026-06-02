@@ -28,3 +28,6 @@
 
 // Update related to: Add form validation for campaigns
 // Implementation details added on 2026-06-12T10:00:00
+
+// Update related to: Add support for multiple calendars
+// Implementation details added on 2026-06-02T19:00:00
