@@ -19,3 +19,6 @@
 
 // Update related to: Add candidate profile avatar fetching
 // Implementation details added on 2026-06-02T01:00:00
+
+// Update related to: Fix GitHub OAuth callback state parameter
+// Implementation details added on 2026-06-03T09:00:00
