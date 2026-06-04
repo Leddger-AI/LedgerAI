@@ -22,3 +22,6 @@
 
 // Update related to: Refactor CSS into modules
 // Implementation details added on 2026-06-11T08:00:00
+
+// Update related to: Setup GitHub App integration webhook
+// Implementation details added on 2026-06-05T03:00:00
