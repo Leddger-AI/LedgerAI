@@ -10,3 +10,6 @@
 
 // Update related to: Add Dockerfile for backend deployment
 // Implementation details added on 2026-06-02T08:00:00
+
+// Update related to: Implement drag and drop file upload
+// Implementation details added on 2026-06-05T07:00:00
