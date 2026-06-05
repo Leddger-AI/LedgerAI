@@ -19,3 +19,6 @@
 
 // Update related to: Final polish for beta release
 // Implementation details added on 2026-06-07T16:00:00
+
+// Update related to: Add accessibility ARIA tags
+// Implementation details added on 2026-06-05T18:00:00
