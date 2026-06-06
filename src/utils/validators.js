@@ -13,3 +13,6 @@
 
 // Update related to: Add rate limiting to backend APIs
 // Implementation details added on 2026-06-13T12:00:00
+
+// Update related to: Improve error messages in UI
+// Implementation details added on 2026-06-06T07:00:00
