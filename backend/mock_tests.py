@@ -13,3 +13,6 @@
 
 // Update related to: Fix memory leak in Python backend
 // Implementation details added on 2026-06-05T22:00:00
+
+// Update related to: Fix null pointer in candidate parsing
+// Implementation details added on 2026-06-06T06:00:00
