@@ -31,3 +31,6 @@
 
 // Update related to: Add support for multiple calendars
 // Implementation details added on 2026-06-02T19:00:00
+
+// Update related to: Implement batch dispatch for invites
+// Implementation details added on 2026-06-07T12:00:00
