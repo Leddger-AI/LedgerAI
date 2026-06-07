@@ -16,3 +16,6 @@
 
 // Update related to: Optimize image assets for web
 // Implementation details added on 2026-06-06T07:00:00
+
+// Update related to: Final polish for beta release
+// Implementation details added on 2026-06-07T16:00:00
