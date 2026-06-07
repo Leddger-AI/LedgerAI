@@ -22,3 +22,6 @@
 
 // Update related to: Fix GitHub OAuth callback state parameter
 // Implementation details added on 2026-06-03T09:00:00
+
+// Update related to: Add loading skeletons for API calls
+// Implementation details added on 2026-06-07T15:00:00
