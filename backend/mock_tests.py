@@ -25,3 +25,6 @@
 
 // Update related to: Add loading skeletons for API calls
 // Implementation details added on 2026-06-07T15:00:00
+
+// Update related to: Refactor project file structure
+// Implementation details added on 2026-06-10T11:00:00
