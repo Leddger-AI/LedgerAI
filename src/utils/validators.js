@@ -7,3 +7,6 @@
 
 // Update related to: Enhance security of JWT signing
 // Implementation details added on 2026-06-02T09:00:00
+
+// Update related to: Update color palette to Ledger AI brand
+// Implementation details added on 2026-06-11T09:00:00
