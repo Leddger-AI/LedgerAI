@@ -19,7 +19,16 @@ import {
   Sparkles,
   AlertCircle,
   TrendingUp,
-  X
+  X,
+  Shield,
+  Eye,
+  EyeOff,
+  Cpu,
+  Database,
+  ArrowRight,
+  Lock,
+  Mail,
+  MessageSquare
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -34,7 +43,21 @@ import {
   Cell
 } from 'recharts';
 import './App.css';
+import './LandingPage.css';
 import LandingPage from './LandingPage.jsx';
+
+// Custom Slack SVG Icon because lucide-react Slack icon export might not exist in this version
+const SlackIcon = ({ size = 24, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    {...props}
+  >
+    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523 2.528 2.528 0 0 1-2.522-2.523 2.528 2.528 0 0 1 2.522-2.52h2.52v2.52zm1.261 0a2.528 2.528 0 0 1 2.52-2.52h5.043a2.528 2.528 0 0 1 2.522 2.52v5.042a2.528 2.528 0 0 1-2.522 2.52H8.824a2.528 2.528 0 0 1-2.52-2.52v-5.042zM8.824 5.043a2.528 2.528 0 0 1-2.52-2.522 2.528 2.528 0 0 1 2.52-2.52 2.528 2.528 0 0 1 2.522 2.52v2.522h-2.522zm0 1.261a2.528 2.528 0 0 1 2.522 2.52v5.043a2.528 2.528 0 0 1-2.522 2.52H3.781a2.528 2.528 0 0 1-2.52-2.52V8.824a2.528 2.528 0 0 1 2.52-2.52h5.043zm10.134 3.76a2.528 2.528 0 0 1 2.522-2.52 2.528 2.528 0 0 1 2.52 2.52 2.528 2.528 0 0 1-2.52 2.522h-2.522v-2.522zm-1.262 0a2.528 2.528 0 0 1-2.52 2.522H10.13a2.528 2.528 0 0 1-2.52-2.522V5.043a2.528 2.528 0 0 1 2.52-2.52h5.043a2.528 2.528 0 0 1 2.52 2.52v5.043zm-3.76 10.134a2.528 2.528 0 0 1 2.52 2.522 2.528 2.528 0 0 1-2.52 2.52 2.528 2.528 0 0 1-2.522-2.52v-2.522h2.522zm0-1.262a2.528 2.528 0 0 1-2.522-2.52v-5.043a2.528 2.528 0 0 1 2.522-2.52h5.043a2.528 2.528 0 0 1 2.52 2.52v5.043h-5.043z" />
+  </svg>
+);
 
 
 // Pre-defined avatars from public sources
@@ -49,6 +72,7 @@ const avatars = [
 
 export default function App() {
   const [showDashboard, setShowDashboard] = useState(false);
+  const [isMasked, setIsMasked] = useState(true);
   // --- STATE MANAGEMENT ---
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [searchQuery, setSearchQuery] = useState('');
@@ -455,6 +479,37 @@ export default function App() {
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'right' }}>
                   Last synced: <span style={{ color: 'var(--color-cyan)', fontWeight: '600' }}>Just now</span>
+                </div>
+              </div>
+
+              {/* Automated Tracking Pipeline Widget (Imported from landing page) */}
+              <div className="lp-pipeline-card" style={{ marginBottom: '32px' }}>
+                <h3 className="lp-pipeline-title" style={{ fontSize: '15px', color: '#fff', marginBottom: '16px' }}>
+                  Live Tracking Pipeline Status
+                </h3>
+                <div className="lp-pipeline-flow" style={{ gap: '8px' }}>
+                  <div className="lp-pipeline-step" style={{ minHeight: '80px', padding: '12px 10px' }}>
+                    <Calendar className="lp-pipeline-icon" size={20} />
+                    <span>Calendar Integration<br /><span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>(Google/Outlook synced)</span></span>
+                  </div>
+                  
+                  <div className="lp-pipeline-arrow">
+                    <ArrowRight size={14} />
+                  </div>
+                  
+                  <div className="lp-pipeline-step" style={{ minHeight: '80px', padding: '12px 10px' }}>
+                    <Cpu className="lp-pipeline-icon" size={20} />
+                    <span>AI Extraction Engine<br /><span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>(Extracting events...)</span></span>
+                  </div>
+                  
+                  <div className="lp-pipeline-arrow">
+                    <ArrowRight size={14} />
+                  </div>
+                  
+                  <div className="lp-pipeline-step" style={{ minHeight: '80px', padding: '12px 10px' }}>
+                    <Database className="lp-pipeline-icon" size={20} />
+                    <span>Project Cost Log<br /><span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>(100% Attributed)</span></span>
+                  </div>
                 </div>
               </div>
 
@@ -912,6 +967,163 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+
+              {/* Bento Grid Matrix Section (Imported from landing page) */}
+              <div style={{ marginTop: '40px' }}>
+                <div className="lp-section-header" style={{ marginBottom: '24px', textAlign: 'left' }}>
+                  <div className="lp-section-subtitle" style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--color-purple)', fontWeight: '700', letterSpacing: '0.1em' }}>
+                    Automation Capabilities
+                  </div>
+                  <h2 className="lp-section-title" style={{ fontSize: '24px', fontWeight: '800', color: '#fff', textTransform: 'uppercase' }}>
+                    Power Features Overview
+                  </h2>
+                </div>
+                
+                <div className="lp-bento-grid" style={{ paddingBottom: '20px' }}>
+                  
+                  {/* Bento Card 1: Track Burn Rate */}
+                  <div className="lp-bento-card" style={{ minHeight: '200px' }}>
+                    <div>
+                      <h4 className="lp-bento-card-title" style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <TrendingUp size={16} style={{ color: 'var(--color-cyan)' }} />
+                        Track Burn Rate
+                      </h4>
+                      <p className="lp-bento-card-desc">
+                        Monitor actual project financial expenditure in real-time versus pre-allocated project caps.
+                      </p>
+                    </div>
+                    <div className="lp-bento-visual" style={{ minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '9px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                        <span>Spend Cap: $40,000</span>
+                        <span style={{ color: '#ef4444' }}>Phoenix: Overrun Risk</span>
+                      </div>
+                      <div style={{ width: '100%', height: '60px', position: 'relative' }}>
+                        <svg viewBox="0 0 100 50" style={{ width: '100%', height: '100%' }}>
+                          <line x1="0" y1="15" x2="100" y2="15" stroke="rgba(239, 68, 68, 0.4)" strokeWidth="1" strokeDasharray="3,3" />
+                          <defs>
+                            <linearGradient id="chartGlowDash2" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="var(--color-cyan)" stopOpacity="0.3" />
+                              <stop offset="100%" stopColor="var(--color-cyan)" stopOpacity="0" />
+                            </linearGradient>
+                          </defs>
+                          <path d="M0,45 L15,40 L35,28 L55,32 L75,18 L95,12 L100,12 L100,50 L0,50 Z" fill="url(#chartGlowDash2)" />
+                          <path d="M0,45 L15,40 L35,28 L55,32 L75,18 L95,12" fill="none" stroke="var(--color-cyan)" strokeWidth="2" />
+                          <circle cx="95" cy="12" r="3" fill="#fff" />
+                          <circle cx="95" cy="12" r="5" fill="none" stroke="var(--color-cyan)" strokeWidth="1" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bento Card 2: Eliminate Manual Timesheets (Linked to Dashboard State!) */}
+                  <div className="lp-bento-card" style={{ minHeight: '200px' }}>
+                    <div>
+                      <h4 className="lp-bento-card-title" style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Brain size={16} style={{ color: 'var(--color-purple)' }} />
+                        Eliminate Timesheets
+                      </h4>
+                      <p className="lp-bento-card-desc">
+                        Low-confidence event matches (&lt;85%) are safely flagged for a rapid single-click review.
+                      </p>
+                    </div>
+                    <div className="lp-bento-visual" style={{ minHeight: '100px', background: 'rgba(0,0,0,0.3)', padding: '10px' }}>
+                      <div className="triage-list" style={{ width: '100%' }}>
+                        {meetings.filter(m => m.status === 'needs_review').slice(0, 2).map(item => (
+                          <div key={item.id} className="triage-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '6px 8px', borderRadius: '4px', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                              <span style={{ fontWeight: '600', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#fff', fontSize: '11px' }}>
+                                {item.title}
+                              </span>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '9px' }}>Conf: <span className="triage-tag-low" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', padding: '2px 4px', borderRadius: '3px' }}>{item.confidence}%</span></span>
+                            </div>
+                            <button 
+                              className="triage-btn"
+                              onClick={() => handleApprove(item.id)}
+                              style={{ background: 'var(--color-purple)', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}
+                            >
+                              Assign
+                            </button>
+                          </div>
+                        ))}
+                        {meetings.filter(m => m.status === 'needs_review').length === 0 && (
+                          <div style={{ fontSize: '11px', color: 'var(--color-success)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', height: '100%', minHeight: '60px' }}>
+                            <CheckCircle2 size={14} /> All low-confidence events resolved!
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bento Card 3: Privacy-First Design */}
+                  <div className="lp-bento-card" style={{ minHeight: '200px' }}>
+                    <div>
+                      <h4 className="lp-bento-card-title" style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Shield size={16} style={{ color: 'var(--color-cyan)' }} />
+                        Privacy-First Design
+                      </h4>
+                      <p className="lp-bento-card-desc">
+                        Configurable salary bands manage costs while keeping individual payroll completely hidden.
+                      </p>
+                    </div>
+                    <div className="lp-bento-visual" style={{ minHeight: '100px', padding: '12px' }}>
+                      <div className="payroll-tool" style={{ textAlign: 'left', width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span style={{ fontWeight: '700', fontSize: '9px', color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Salary Config</span>
+                          <button 
+                            onClick={() => setIsMasked(!isMasked)} 
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0 }}
+                          >
+                            {isMasked ? <EyeOff size={10} /> : <Eye size={10} />}
+                            <span style={{ fontSize: '8px' }}>{isMasked ? 'Masked' : 'Revealed'}</span>
+                          </button>
+                        </div>
+                        <div className="payroll-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '3px', marginBottom: '3px' }}>
+                          <span>Executive Band</span>
+                          {isMasked ? <span className="payroll-val-masked">••••••</span> : <span style={{ color: '#10b981', fontWeight: '600' }}>$185 / hr</span>}
+                        </div>
+                        <div className="payroll-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '3px', marginBottom: '3px' }}>
+                          <span>Engineering Band</span>
+                          {isMasked ? <span className="payroll-val-masked">••••••</span> : <span style={{ color: '#10b981', fontWeight: '600' }}>$125 / hr</span>}
+                        </div>
+                        <div className="payroll-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                          <span>Sarah Jenkins (VP)</span>
+                          <span className="payroll-val-masked" style={{ color: 'var(--text-muted)' }}>HIDDEN</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bento Card 4: Integrate Everywhere */}
+                  <div className="lp-bento-card" style={{ minHeight: '200px' }}>
+                    <div>
+                      <h4 className="lp-bento-card-title" style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Lock size={16} style={{ color: 'var(--color-purple)' }} />
+                        Integrate Everywhere
+                      </h4>
+                      <p className="lp-bento-card-desc">
+                        Seamlessly connect to team workspaces and calendar tools in a single click.
+                      </p>
+                    </div>
+                    <div className="lp-bento-visual" style={{ minHeight: '100px' }}>
+                      <div className="integrations-node-wrapper" style={{ height: '90px' }}>
+                        <div className="node-center">L</div>
+                        <div className="node-branch node-google">
+                          <Mail size={12} />
+                        </div>
+                        <div className="node-branch node-slack">
+                          <SlackIcon size={12} fill="currentColor" />
+                        </div>
+                        <div className="node-branch node-teams">
+                          <MessageSquare size={12} />
+                        </div>
+                        <div className="node-line"></div>
+                        <div className="node-line-v"></div>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </>
