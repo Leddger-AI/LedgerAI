@@ -3,3 +3,4 @@ uvicorn>=0.28.0
 firebase-admin>=6.5.0
 google-api-python-client>=2.122.0
 google-auth>=2.29.0
+google-genai>=0.1.1

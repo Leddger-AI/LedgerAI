@@ -3,12 +3,13 @@ import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 
 // Replace these configuration options with your actual Firebase project settings
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
-  projectId: "YOUR_FIREBASE_PROJECT_ID",
-  storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_FIREBASE_APP_ID"
+  apiKey: "AIzaSyCHDNr4EW2_KrUN0emu9-wfWYiBT-g_KTw",
+  authDomain: "leddger-ai.firebaseapp.com",
+  projectId: "leddger-ai",
+  storageBucket: "leddger-ai.firebasestorage.app",
+  messagingSenderId: "613419586133",
+  appId: "1:613419586133:web:e53bca90ef9be98a5ebadc",
+  measurementId: "G-XN6W5NEKJH"
 };
 
 // Initialize Firebase Client

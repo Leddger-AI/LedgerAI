@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from google.oauth2.credentials import Credentials as GoogleCredentials
 from googleapiclient.discovery import build
 from auth import get_current_user
+from ai_engine import attribute_meeting
 
 app = FastAPI(title="HR Cost Intelligence Engine API")
 
@@ -83,14 +84,27 @@ async def get_calendar_events(
                     "response": attendee.get("responseStatus")
                 })
                 
+            # Perform AI cost attribution on the event context
+            description = event.get("description", "")
+            attribution = attribute_meeting(
+                title=event.get("summary", "Untitled Meeting"),
+                description=description,
+                duration_minutes=duration_minutes,
+                attendees_count=len(attendees)
+            )
+                
             formatted_events.append({
                 "eventId": event.get("id"),
                 "title": event.get("summary", "Untitled Meeting"),
+                "description": description,
                 "startTime": start_str,
                 "endTime": end_str,
                 "durationMinutes": duration_minutes,
                 "attendees": attendees,
-                "organizer": event.get("organizer", {}).get("email")
+                "organizer": event.get("organizer", {}).get("email"),
+                "aiProject": attribution.get("project_name"),
+                "aiConfidence": attribution.get("confidence_score"),
+                "aiReasoning": attribution.get("reasoning")
             })
             
         return {
