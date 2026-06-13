@@ -1,11 +1,21 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
+
+# Define output model for Structured Outputs
+class AttributionResponse(BaseModel):
+    project_name: str
+    confidence_score: int
+    reasoning: str
 
 # Configure Gemini API client if key is in env
 api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
+else:
+    client = None
 
 PROMPT_TEMPLATE = """You are an expert HR cost intelligence agent. Your job is to analyze a calendar meeting's context and assign it to the most appropriate project from the provided taxonomy list.
 
@@ -20,13 +30,6 @@ Rules:
 - Provide a confidence score between 0 and 100 based on keyword match strength.
 - If the meeting context is highly ambiguous, set a low confidence score (< 50).
 
-Your response must be a strict JSON object with no markdown wrappers:
-{{
-  "project_name": "Project Name",
-  "confidence_score": 85,
-  "reasoning": "Brief explanation of why this project was chosen."
-}}
-
 Meeting Context to Analyze:
 Title: {title}
 Description: {description}
@@ -36,10 +39,10 @@ Attendees Count: {attendees_count}
 
 def attribute_meeting(title: str, description: str = "", duration_minutes: int = 0, attendees_count: int = 0) -> dict:
     """
-    Classifies a calendar event using the Gemini API.
+    Classifies a calendar event using the Gemini API (google-genai SDK).
     Falls back to a keyword-matching heuristic if GEMINI_API_KEY is not set.
     """
-    if not api_key:
+    if not api_key or client is None:
         import re
         title_lower = title.lower()
         desc_lower = description.lower() if description else ""
@@ -85,8 +88,6 @@ def attribute_meeting(title: str, description: str = "", duration_minutes: int =
             }
 
     try:
-        # Load the Gemini flash model
-        model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = PROMPT_TEMPLATE.format(
             title=title,
             description=description,
@@ -94,15 +95,18 @@ def attribute_meeting(title: str, description: str = "", duration_minutes: int =
             attendees_count=attendees_count
         )
         
-        response = model.generate_content(prompt)
+        # Call Gemini using the new SDK with structured outputs response_schema
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=AttributionResponse,
+                system_instruction="You are an expert HR cost intelligence agent. Your job is to analyze a calendar meeting's context and assign it to the most appropriate project from the provided taxonomy list. Set temperature to 0.1 for deterministic results.",
+                temperature=0.1
+            )
+        )
         text = response.text.strip()
-        
-        # Clean markdown wrappers if returned by the LLM
-        if text.startswith("```json"):
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif text.startswith("```"):
-            text = text.split("```")[1].split("```")[0].strip()
-            
         return json.loads(text)
     except Exception as e:
         print(f"Error during Gemini API call: {e}")

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Calendar,
   Cpu,
@@ -10,14 +10,7 @@ import {
   EyeOff,
   MessageSquare,
   Mail,
-  CheckCircle,
-  HelpCircle,
-  Clock,
-  DollarSign,
-  AlertTriangle,
-  Lock,
-  RefreshCw,
-  Plus
+  Lock
 } from 'lucide-react';
 import './LandingPage.css';
 
@@ -34,7 +27,7 @@ const SlackIcon = ({ size = 24, ...props }) => (
   </svg>
 );
 
-export default function LandingPage({ onStartDashboard }) {
+export default function LandingPage({ onStartDashboard, loading, apiError, onClearError }) {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [scrollY, setScrollY] = useState(0);
   const [isMasked, setIsMasked] = useState(true);
@@ -69,7 +62,7 @@ export default function LandingPage({ onStartDashboard }) {
   }, []);
 
   // Quick triage assign action
-  const handleAssignItem = (id, budgetAmount) => {
+  const handleAssignItem = (id) => {
     setTriageItems(prev => prev.map(item => item.id === id ? { ...item, assigned: true } : item));
     
     // Animate statistics in organization overview when an event is assigned
@@ -115,14 +108,48 @@ export default function LandingPage({ onStartDashboard }) {
             <li><a href="#home" className="lp-nav-link">Home</a></li>
             <li><a href="#product" className="lp-nav-link">Product</a></li>
             <li><a href="#pricing" className="lp-nav-link">Pricing</a></li>
-            <li><a href="#innovation" className="lp-nav-link">Innovation</a></li>
           </ul>
         </nav>
         <div className="lp-nav-right">
-          <button className="lp-signin-btn" onClick={() => onStartDashboard()}>Sign In</button>
-          <button className="lp-contact-btn" onClick={() => onStartDashboard()}>Get Touch</button>
+          <button className="lp-signin-btn" onClick={onStartDashboard} disabled={loading}>
+            {loading ? '...' : 'Sign In'}
+          </button>
+          <button className="lp-contact-btn" onClick={onStartDashboard} disabled={loading}>
+            Get Touch
+          </button>
         </div>
       </header>
+
+      {/* Floating API Authentication Error Banner */}
+      {apiError && (
+        <div style={{
+          backgroundColor: 'rgba(244, 63, 94, 0.12)',
+          border: '1px solid rgba(244, 63, 94, 0.25)',
+          color: '#f43f5e',
+          padding: '10px 20px',
+          fontSize: '12px',
+          fontWeight: '600',
+          position: 'fixed',
+          top: '90px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          borderRadius: '20px',
+          zIndex: 1000,
+          display: 'flex',
+          gap: '10px',
+          alignItems: 'center',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 4px 15px rgba(0,0,0,0.6)'
+        }}>
+          <span>{apiError}</span>
+          <button 
+            onClick={onClearError} 
+            style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', fontWeight: '700', fontSize: '12px' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Split Hero & Feature Grid */}
       <main className="lp-grid">
@@ -143,8 +170,12 @@ export default function LandingPage({ onStartDashboard }) {
               configurable salary bands to gain a true picture of human capital utilization.
             </p>
             <div className="lp-hero-ctas">
-              <button className="lp-btn-primary" onClick={() => onStartDashboard()}>Get Started</button>
-              <button className="lp-btn-secondary" onClick={() => onStartDashboard()}>Book a Demo</button>
+              <button className="lp-btn-primary" onClick={onStartDashboard} disabled={loading}>
+                {loading ? 'Connecting...' : 'Get Started'}
+              </button>
+              <button className="lp-btn-secondary" onClick={onStartDashboard} disabled={loading}>
+                Book a Demo
+              </button>
             </div>
           </div>
 
@@ -475,7 +506,9 @@ export default function LandingPage({ onStartDashboard }) {
         <div className="lp-footer-container">
           <h2 className="lp-footer-title">Ready to dive in? Start your journey today.</h2>
           <p className="lp-footer-subtitle">Gain absolute cost intelligence over 100% of calendar event resources.</p>
-          <button className="lp-footer-btn" onClick={() => onStartDashboard()}>Get Started Now</button>
+          <button className="lp-footer-btn" onClick={onStartDashboard} disabled={loading}>
+            {loading ? 'Connecting...' : 'Get Started Now'}
+          </button>
           
           <div className="lp-footer-credits">
             © 2026 LedgerAI Inc. Built for HR Cost Intelligence. All rights reserved.
