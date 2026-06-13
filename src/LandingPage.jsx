@@ -107,7 +107,7 @@ export default function LandingPage({ onStartDashboard }) {
       {/* Navigation Navbar */}
       <header className="lp-navbar">
         <div className="lp-logo" onClick={() => onStartDashboard()}>
-          <div className="lp-logo-icon">L</div>
+          <img src="/ledgerai.png" alt="LedgerAI Logo" style={{ height: '32px', width: '32px', borderRadius: '8px', objectFit: 'contain' }} />
           <span>LedgerAI</span>
         </div>
         <nav>
@@ -260,7 +260,7 @@ export default function LandingPage({ onStartDashboard }) {
         <section className="lp-features-col">
           
           {/* Automated Tracking Pipeline Widget */}
-          <div className="lp-pipeline-card" style={{ transform: `translateY(${scrollY * 0.08}px)`, transition: 'transform 0.1s ease-out' }}>
+          <div className="lp-pipeline-card">
             <h3 className="lp-pipeline-title">It takes less than a minute to setup automated tracking.</h3>
             
             <div className="lp-pipeline-flow">
@@ -290,13 +290,13 @@ export default function LandingPage({ onStartDashboard }) {
           </div>
 
           {/* Section Heading */}
-          <div className="lp-section-header" style={{ transform: `translateY(${scrollY * 0.12}px)`, transition: 'transform 0.1s ease-out' }}>
+          <div className="lp-section-header">
             <div className="lp-section-subtitle">Core Architecture</div>
             <h2 className="lp-section-title">Power Features To Maximize Team ROI</h2>
           </div>
 
           {/* Bento Grid Matrix */}
-          <div className="lp-bento-grid" style={{ transform: `translateY(${scrollY * 0.16}px)`, transition: 'transform 0.1s ease-out' }}>
+          <div className="lp-bento-grid">
             
             {/* Bento Card 1: Track Burn Rate */}
             <div className="lp-bento-card">
