@@ -52,3 +52,12 @@ This document summarizes the changes, creations, and configuration modifications
   - Connected calendar events list endpoint to the AI engine to tag each ingested meeting before return.
 - **Created:** [backend/test_ai_attribution.py](file:///c:/PROJECTS/EXPERIMENT/reactHackathorn/backend/test_ai_attribution.py)
   - Wrote a local unit-test file verifying project taxonomy mappings for typical calendar titles.
+
+---
+
+## 🚀 6. Premium Landing Page & Auth Flow Merger
+- **Added:** [src/LandingPage.jsx](file:///c:/PROJECTS/EXPERIMENT/reactHackathorn/src/LandingPage.jsx) & [src/LandingPage.css](file:///c:/PROJECTS/EXPERIMENT/reactHackathorn/src/LandingPage.css)
+  - Pulled premium landing page design from remote and resolved merge conflicts to retain local enhancements.
+  - Linked landing page buttons ("Sign In", "Get Started", and "Get Started Now") directly to the Firebase Google Calendar sign-in flow.
+  - Configured automated redirection: once a user signs in, their calendar events are fetched in the background from the FastAPI backend and they are transitioned straight into the active cost dashboard.
+  - Integrated loading indicators and floating error banners on the landing page UI for smooth user feedback.
