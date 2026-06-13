@@ -66,6 +66,7 @@ export default function App() {
   const [tokens, setTokens] = useState(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [authErrorModal, setAuthErrorModal] = useState(null);
   
   // Custom interactive data stats
   const [meetings, setMeetings] = useState([
@@ -165,6 +166,7 @@ export default function App() {
   const handleLogin = async () => {
     setLoading(true);
     setApiError(null);
+    setAuthErrorModal(null);
     try {
       const data = await loginWithGoogleAndCalendar();
       setUser(data.user);
@@ -175,11 +177,104 @@ export default function App() {
       await fetchEvents(data.firebaseIdToken, data.googleAccessToken);
       return true;
     } catch (err) {
-      console.error(err);
-      setApiError("Authentication failed: " + err.message);
+      console.error("Login Error:", err);
+      if (err.code === 'auth/operation-not-allowed' || err.message?.includes('operation-not-allowed')) {
+        setAuthErrorModal({
+          type: 'operation-not-allowed',
+          message: 'Google Sign-In is not enabled as a sign-in provider in your Firebase project.',
+          detail: err.message
+        });
+      } else {
+        setApiError("Authentication failed: " + err.message);
+      }
       return false;
     } finally {
       setLoading(false);
+    }
+  };
+
+  const enterDemoMode = () => {
+    setUser({
+      displayName: "Sarah Jenkins (Demo Mode)",
+      photoURL: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80",
+      email: "demo@ledgerai.co"
+    });
+    setTokens({
+      firebaseIdToken: "demo-firebase-id-token",
+      googleAccessToken: "demo-google-access-token"
+    });
+    // Reset to mock data
+    setMeetings([
+      {
+        id: 1,
+        title: 'Q3 Product Planning & Roadmap',
+        duration: '2h 30m',
+        attendeeCount: 5,
+        cost: 2850,
+        project: 'Project Phoenix',
+        confidence: 94,
+        status: 'needs_review',
+        time: '10:30 AM'
+      },
+      {
+        id: 2,
+        title: 'Client ABC Sync & Deliverables',
+        duration: '1h 15m',
+        attendeeCount: 3,
+        cost: 1200,
+        project: 'Client ABC Onboarding',
+        confidence: 87,
+        status: 'approved',
+        time: 'Yesterday'
+      },
+      {
+        id: 3,
+        title: 'Weekly Alignment & HR Catchup',
+        duration: '45m',
+        attendeeCount: 6,
+        cost: 950,
+        project: 'Unassigned',
+        confidence: 42,
+        status: 'needs_review',
+        time: 'Yesterday'
+      },
+      {
+        id: 4,
+        title: 'Marketing Campaign Kickoff',
+        duration: '1h 30m',
+        attendeeCount: 4,
+        cost: 1650,
+        project: 'Q4 Marketing Strategy',
+        confidence: 78,
+        status: 'approved',
+        time: '2 days ago'
+      },
+      {
+        id: 5,
+        title: 'Phoenix Tech Architecture Review',
+        duration: '2h 00m',
+        attendeeCount: 3,
+        cost: 3100,
+        project: 'Project Phoenix',
+        confidence: 96,
+        status: 'approved',
+        time: '3 days ago'
+      },
+      {
+        id: 6,
+        title: 'Internal Budget Sync & Forecast',
+        duration: '1h 00m',
+        attendeeCount: 4,
+        cost: 1100,
+        project: 'Q4 Marketing Strategy',
+        confidence: 61,
+        status: 'needs_review',
+        time: '4 days ago'
+      }
+    ]);
+    setAuthErrorModal(null);
+    if (typeof setShowDashboard === 'function') {
+      setShowDashboard(true);
     }
   };
 
@@ -595,6 +690,22 @@ export default function App() {
 
             {/* Sync / Authentication controls */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {!tokens && (
+                <button 
+                  className="table-action-btn"
+                  onClick={enterDemoMode}
+                  style={{ 
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)', 
+                    borderColor: 'rgba(255, 255, 255, 0.08)', 
+                    color: 'var(--text-secondary)',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Demo Mode
+                </button>
+              )}
               <button 
                 className="table-action-btn"
                 onClick={handleSyncClick}
@@ -608,7 +719,9 @@ export default function App() {
                   gap: '6px',
                   padding: '8px 14px',
                   borderRadius: '8px',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  boxShadow: tokens ? 'none' : '0 0 10px rgba(0, 240, 255, 0.15)'
                 }}
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -1214,6 +1327,68 @@ export default function App() {
                 style={{ padding: '8px 16px', fontSize: '13px' }}
               >
                 Save Attribution
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- AUTH ERROR / CONFIGURATION MODAL --- */}
+      {authErrorModal && (
+        <div className="modal-overlay">
+          <div className="glass-panel modal-content" style={{ maxWidth: '500px', border: '1px solid rgba(244, 63, 94, 0.3)' }}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-pink)' }}>
+                <AlertCircle size={20} />
+                Auth Provider Disabled
+              </h3>
+              <X className="modal-close-btn" size={18} onClick={() => setAuthErrorModal(null)} />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px', lineHeight: '1.5' }}>
+              <p style={{ color: 'var(--text-primary)', fontWeight: '600' }}>
+                Firebase returned an <code>auth/operation-not-allowed</code> error.
+              </p>
+              <p style={{ color: 'var(--text-secondary)' }}>
+                This means Google Sign-In is not enabled as a sign-in provider in your Firebase project.
+              </p>
+
+              <div style={{ backgroundColor: 'rgba(244, 63, 94, 0.05)', padding: '12px 16px', borderRadius: '8px', border: '1px solid rgba(244, 63, 94, 0.15)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>How to resolve this in Firebase:</span>
+                <ol style={{ margin: '0', paddingLeft: '20px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <li>Go to your <strong>Firebase Console</strong>.</li>
+                  <li>Click on <strong>Authentication</strong> (in the Build section).</li>
+                  <li>Navigate to the <strong>Sign-in method</strong> tab.</li>
+                  <li>Click <strong>Add new provider</strong>, select <strong>Google</strong>, and toggle it to <strong>Enable</strong>.</li>
+                </ol>
+              </div>
+
+              <p style={{ color: 'var(--text-muted)' }}>
+                To proceed without configuring Firebase right now, you can enter **Sandbox Demo Mode** to explore the complete dashboard and Recharts integrations.
+              </p>
+            </div>
+
+            <div className="modal-footer" style={{ marginTop: '10px' }}>
+              <button 
+                className="alert-btn secondary"
+                onClick={() => setAuthErrorModal(null)}
+                style={{ padding: '10px 18px', fontSize: '13px' }}
+              >
+                Close
+              </button>
+              <button 
+                className="alert-btn primary"
+                onClick={enterDemoMode}
+                style={{ 
+                  padding: '10px 18px', 
+                  fontSize: '13px', 
+                  backgroundColor: 'var(--color-cyan)', 
+                  color: '#060a1a', 
+                  fontWeight: '600',
+                  boxShadow: '0 0 10px var(--color-cyan-glow)' 
+                }}
+              >
+                Explore Sandbox Mode
               </button>
             </div>
           </div>

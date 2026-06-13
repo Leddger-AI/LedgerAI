@@ -105,7 +105,6 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
             <li><a href="#home" className="lp-nav-link">Home</a></li>
             <li><a href="#product" className="lp-nav-link">Product</a></li>
             <li><a href="#pricing" className="lp-nav-link">Pricing</a></li>
-            <li><a href="#innovation" className="lp-nav-link">Innovation</a></li>
           </ul>
         </nav>
         <div className="lp-nav-right">
