@@ -36,6 +36,7 @@ const SlackIcon = ({ size = 24, ...props }) => (
 
 export default function LandingPage({ onStartDashboard }) {
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
   const [isMasked, setIsMasked] = useState(true);
   
   // Triage simulator state
@@ -52,12 +53,14 @@ export default function LandingPage({ onStartDashboard }) {
     unassigned: 20
   });
 
-  // Track scroll position for 3D tilted preview card transition
+  // Track scroll position for 3D tilted preview card transition and right column parallax
   useEffect(() => {
     const handleScroll = () => {
-      const scrollY = window.scrollY;
+      const currentScrollY = window.scrollY;
+      setScrollY(currentScrollY);
+      
       const threshold = 350; // Distance in pixels to flatten card completely
-      const progress = Math.min(scrollY / threshold, 1);
+      const progress = Math.min(currentScrollY / threshold, 1);
       setScrollProgress(progress);
     };
 
@@ -257,7 +260,7 @@ export default function LandingPage({ onStartDashboard }) {
         <section className="lp-features-col">
           
           {/* Automated Tracking Pipeline Widget */}
-          <div className="lp-pipeline-card">
+          <div className="lp-pipeline-card" style={{ transform: `translateY(${scrollY * 0.08}px)`, transition: 'transform 0.1s ease-out' }}>
             <h3 className="lp-pipeline-title">It takes less than a minute to setup automated tracking.</h3>
             
             <div className="lp-pipeline-flow">
@@ -287,13 +290,13 @@ export default function LandingPage({ onStartDashboard }) {
           </div>
 
           {/* Section Heading */}
-          <div className="lp-section-header">
+          <div className="lp-section-header" style={{ transform: `translateY(${scrollY * 0.12}px)`, transition: 'transform 0.1s ease-out' }}>
             <div className="lp-section-subtitle">Core Architecture</div>
             <h2 className="lp-section-title">Power Features To Maximize Team ROI</h2>
           </div>
 
           {/* Bento Grid Matrix */}
-          <div className="lp-bento-grid">
+          <div className="lp-bento-grid" style={{ transform: `translateY(${scrollY * 0.16}px)`, transition: 'transform 0.1s ease-out' }}>
             
             {/* Bento Card 1: Track Burn Rate */}
             <div className="lp-bento-card">
