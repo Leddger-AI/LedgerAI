@@ -16,3 +16,6 @@
 
 // Update related to: Improve error messages in UI
 // Implementation details added on 2026-06-06T07:00:00
+
+// Update related to: Fix JWT token verification issue in auth
+// Implementation details added on 2026-06-13T06:00:00
