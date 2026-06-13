@@ -22,13 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Google & Firebase Credentials
-credentials.json
-serviceAccountKey.json
-firebase-credentials.json
-.env
-.env.*.local
-*googleusercontent.com
-
-

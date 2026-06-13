@@ -34,6 +34,8 @@ import {
   Cell
 } from 'recharts';
 import './App.css';
+import LandingPage from './LandingPage.jsx';
+
 
 // Pre-defined avatars from public sources
 const avatars = [
@@ -46,6 +48,7 @@ const avatars = [
 ];
 
 export default function App() {
+  const [showDashboard, setShowDashboard] = useState(false);
   // --- STATE MANAGEMENT ---
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [searchQuery, setSearchQuery] = useState('');
@@ -273,6 +276,10 @@ export default function App() {
   const handleNavClick = (tab) => {
     setActiveTab(tab);
   };
+
+  if (!showDashboard) {
+    return <LandingPage onStartDashboard={() => setShowDashboard(true)} />;
+  }
 
   return (
     <div className="app-container">
