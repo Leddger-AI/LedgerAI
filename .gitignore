@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Env & credentials
+.env
+backend/.env
+*.json
+!eslint.config.js
+!package.json
+!package-lock.json
+__pycache__/
+*.pyc
+

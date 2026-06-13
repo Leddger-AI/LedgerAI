@@ -1,5 +1,8 @@
 import os
 import json
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
@@ -12,6 +15,10 @@ from google import genai
 from google.genai import types
 
 app = FastAPI(title="HR Cost Intelligence Engine API")
+
+# Import and mount the Knowledge Base router
+from knowledge_base.routes import router as kb_router
+app.include_router(kb_router)
 
 # Enable CORS for frontend client-side calls
 app.add_middleware(

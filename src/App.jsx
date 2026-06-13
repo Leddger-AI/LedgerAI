@@ -38,6 +38,14 @@ import {
 import './App.css';
 import { loginWithGoogleAndCalendar } from './firebaseAuth';
 import LandingPage from './LandingPage.jsx';
+import KnowledgeBase from './KnowledgeBase.jsx';
+import ProjectsView from './ProjectsView.jsx';
+import TeamsView from './TeamsView.jsx';
+import CalendarView from './CalendarView.jsx';
+import ReportsView from './ReportsView.jsx';
+import AlertsView from './AlertsView.jsx';
+import SettingsView from './SettingsView.jsx';
+
 
 // Pre-defined avatars from public sources
 const avatars = [
@@ -508,6 +516,131 @@ export default function App() {
     }
   };
 
+  const [defaultRate, setDefaultRate] = useState(75);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(60);
+
+  const handleUpdateMeetingProject = (meetingId, project) => {
+    setMeetings(prev =>
+      prev.map(m =>
+        m.id === meetingId
+          ? { ...m, project, status: 'approved', confidence: 100 }
+          : m
+      )
+    );
+  };
+
+  const handleAddMeeting = (newMeeting) => {
+    setMeetings(prev => [newMeeting, ...prev]);
+  };
+
+  const handleUpdateSettings = (settings) => {
+    if (settings.defaultRate !== undefined) setDefaultRate(settings.defaultRate);
+    if (settings.confidenceThreshold !== undefined) setConfidenceThreshold(settings.confidenceThreshold);
+  };
+
+  const handleResetData = () => {
+    setMeetings([
+      {
+        id: 1,
+        title: 'Q3 Product Planning & Roadmap',
+        duration: '2h 30m',
+        attendeeCount: 5,
+        cost: 2850,
+        project: 'Project Phoenix',
+        confidence: 94,
+        status: 'needs_review',
+        time: '10:30 AM'
+      },
+      {
+        id: 2,
+        title: 'Client ABC Sync & Deliverables',
+        duration: '1h 15m',
+        attendeeCount: 3,
+        cost: 1200,
+        project: 'Client ABC Onboarding',
+        confidence: 87,
+        status: 'approved',
+        time: 'Yesterday'
+      },
+      {
+        id: 3,
+        title: 'Weekly Alignment & HR Catchup',
+        duration: '45m',
+        attendeeCount: 6,
+        cost: 950,
+        project: 'Unassigned',
+        confidence: 42,
+        status: 'needs_review',
+        time: 'Yesterday'
+      },
+      {
+        id: 4,
+        title: 'Marketing Campaign Kickoff',
+        duration: '1h 30m',
+        attendeeCount: 4,
+        cost: 1650,
+        project: 'Q4 Marketing Strategy',
+        confidence: 78,
+        status: 'approved',
+        time: '2 days ago'
+      },
+      {
+        id: 5,
+        title: 'Phoenix Tech Architecture Review',
+        duration: '2h 00m',
+        attendeeCount: 3,
+        cost: 3100,
+        project: 'Project Phoenix',
+        confidence: 96,
+        status: 'approved',
+        time: '3 days ago'
+      },
+      {
+        id: 6,
+        title: 'Internal Budget Sync & Forecast',
+        duration: '1h 00m',
+        attendeeCount: 4,
+        cost: 1100,
+        project: 'Q4 Marketing Strategy',
+        confidence: 61,
+        status: 'needs_review',
+        time: '4 days ago'
+      }
+    ]);
+    setAlerts([
+      {
+        id: 1,
+        type: 'danger',
+        title: 'Phoenix Cost Overrun Risk',
+        desc: 'Project Phoenix meeting costs have exceeded Q2 threshold by 14%. Immediate review recommended.',
+        resolved: false
+      },
+      {
+        id: 2,
+        type: 'warning',
+        title: 'Low AI Attribution Confidence',
+        desc: '"Weekly Alignment & HR Catchup" has low AI matching confidence (42%). Needs manual tagging.',
+        resolved: false
+      },
+      {
+        id: 3,
+        type: 'info',
+        title: 'Unassigned Hours Detected',
+        desc: '18.5 hours of calendar activity from last week remain unattributed to any active project code.',
+        resolved: false
+      }
+    ]);
+  };
+
+  const handleToggleDemo = () => {
+    if (user && user.displayName.includes("Demo Mode")) {
+      setUser(null);
+      setTokens(null);
+    } else {
+      enterDemoMode();
+    }
+  };
+
   // Filter meetings by search query
   const filteredMeetings = useMemo(() => {
     return meetings.filter(m =>
@@ -594,6 +727,13 @@ export default function App() {
             <span>Reports</span>
           </div>
           <div
+            className={`menu-item ${activeTab === 'Knowledge Base' ? 'active' : ''}`}
+            onClick={() => handleNavClick('Knowledge Base')}
+          >
+            <Sparkles size={20} />
+            <span>Knowledge Base</span>
+          </div>
+          <div
             className={`menu-item ${activeTab === 'Alerts' ? 'active' : ''}`}
             onClick={() => handleNavClick('Alerts')}
             style={{ position: 'relative' }}
@@ -604,6 +744,7 @@ export default function App() {
               <span className="pulse-danger-dot" style={{ position: 'absolute', right: '16px', top: '18px' }} />
             )}
           </div>
+
           <div
             className={`menu-item ${activeTab === 'Settings' ? 'active' : ''}`}
             onClick={() => handleNavClick('Settings')}
@@ -1260,6 +1401,27 @@ export default function App() {
                 </div>
               </div>
             </>
+          ) : activeTab === 'Knowledge Base' ? (
+            <KnowledgeBase />
+          ) : activeTab === 'Projects' ? (
+            <ProjectsView meetings={meetings} onUpdateMeetingProject={handleUpdateMeetingProject} />
+          ) : activeTab === 'Teams' ? (
+            <TeamsView />
+          ) : activeTab === 'Calendar' ? (
+            <CalendarView meetings={meetings} onAddMeeting={handleAddMeeting} />
+          ) : activeTab === 'Reports' ? (
+            <ReportsView meetings={meetings} />
+          ) : activeTab === 'Alerts' ? (
+            <AlertsView alerts={alerts} onResolveAlert={handleResolveAlert} />
+          ) : activeTab === 'Settings' ? (
+            <SettingsView 
+              defaultRate={defaultRate}
+              confidenceThreshold={confidenceThreshold}
+              onUpdateSettings={handleUpdateSettings}
+              onResetData={handleResetData}
+              onToggleDemo={handleToggleDemo}
+              demoActive={!!(user && user.displayName.includes("Demo Mode"))}
+            />
           ) : (
             // Simple mockup tabs for navigation
             <div style={{ textAlign: 'center', padding: '80px 20px' }} className="glass-panel">
