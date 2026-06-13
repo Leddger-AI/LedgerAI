@@ -19,7 +19,9 @@ import {
   Sparkles,
   AlertCircle,
   TrendingUp,
-  X
+  X,
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -34,6 +36,7 @@ import {
   Cell
 } from 'recharts';
 import './App.css';
+import { loginWithGoogleAndCalendar } from './firebaseAuth';
 
 // Pre-defined avatars from public sources
 const avatars = [
@@ -55,6 +58,12 @@ export default function App() {
   // Interactive Modal State
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [modalProject, setModalProject] = useState('');
+
+  // Authentication & API state
+  const [user, setUser] = useState(null);
+  const [tokens, setTokens] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
   
   // Custom interactive data stats
   const [meetings, setMeetings] = useState([
@@ -150,72 +159,216 @@ export default function App() {
     }
   ]);
 
+  // --- AUTHENTICATION & SYNC HANDLERS ---
+  const handleLogin = async () => {
+    setLoading(true);
+    setApiError(null);
+    try {
+      const data = await loginWithGoogleAndCalendar();
+      setUser(data.user);
+      setTokens({
+        firebaseIdToken: data.firebaseIdToken,
+        googleAccessToken: data.googleAccessToken
+      });
+      await fetchEvents(data.firebaseIdToken, data.googleAccessToken);
+    } catch (err) {
+      console.error(err);
+      setApiError("Authentication failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setTokens(null);
+    setApiError(null);
+    // Reset to mock data
+    setMeetings([
+      {
+        id: 1,
+        title: 'Q3 Product Planning & Roadmap',
+        duration: '2h 30m',
+        attendeeCount: 5,
+        cost: 2850,
+        project: 'Project Phoenix',
+        confidence: 94,
+        status: 'needs_review',
+        time: '10:30 AM'
+      },
+      {
+        id: 2,
+        title: 'Client ABC Sync & Deliverables',
+        duration: '1h 15m',
+        attendeeCount: 3,
+        cost: 1200,
+        project: 'Client ABC Onboarding',
+        confidence: 87,
+        status: 'approved',
+        time: 'Yesterday'
+      },
+      {
+        id: 3,
+        title: 'Weekly Alignment & HR Catchup',
+        duration: '45m',
+        attendeeCount: 6,
+        cost: 950,
+        project: 'Unassigned',
+        confidence: 42,
+        status: 'needs_review',
+        time: 'Yesterday'
+      },
+      {
+        id: 4,
+        title: 'Marketing Campaign Kickoff',
+        duration: '1h 30m',
+        attendeeCount: 4,
+        cost: 1650,
+        project: 'Q4 Marketing Strategy',
+        confidence: 78,
+        status: 'approved',
+        time: '2 days ago'
+      },
+      {
+        id: 5,
+        title: 'Phoenix Tech Architecture Review',
+        duration: '2h 00m',
+        attendeeCount: 3,
+        cost: 3100,
+        project: 'Project Phoenix',
+        confidence: 96,
+        status: 'approved',
+        time: '3 days ago'
+      },
+      {
+        id: 6,
+        title: 'Internal Budget Sync & Forecast',
+        duration: '1h 00m',
+        attendeeCount: 4,
+        cost: 1100,
+        project: 'Q4 Marketing Strategy',
+        confidence: 61,
+        status: 'needs_review',
+        time: '4 days ago'
+      }
+    ]);
+  };
+
+  const fetchEvents = async (firebaseToken, googleToken) => {
+    setLoading(true);
+    setApiError(null);
+    try {
+      const response = await fetch(`http://localhost:8000/api/calendar/events?google_token=${googleToken}`, {
+        headers: {
+          'Authorization': `Bearer ${firebaseToken}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`Server returned status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.status === 'success' && data.events) {
+        const mapped = data.events.map((evt, idx) => {
+          const hours = Math.floor(evt.durationMinutes / 60);
+          const mins = evt.durationMinutes % 60;
+          const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+          
+          return {
+            id: evt.eventId || idx,
+            title: evt.title,
+            duration: durationStr,
+            attendeeCount: evt.attendees.length,
+            cost: evt.cost || 0,
+            project: evt.aiProject || 'Internal Operations',
+            confidence: evt.aiConfidence || 0,
+            status: evt.requiresHumanReview ? 'needs_review' : 'approved',
+            time: evt.startTime ? new Date(evt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All-day'
+          };
+        });
+        setMeetings(mapped);
+      }
+    } catch (err) {
+      console.error(err);
+      setApiError("Failed to sync calendar: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSyncClick = async () => {
+    if (tokens) {
+      await fetchEvents(tokens.firebaseIdToken, tokens.googleAccessToken);
+    } else {
+      await handleLogin();
+    }
+  };
+
   // --- DYNAMIC DATA PRESETS BASED ON DATE ---
   const dynamicData = useMemo(() => {
-    switch (datePreset) {
-      case 'Last 7 Days':
-        return {
-          totalCost: 14240,
-          accuracy: 94,
-          anomalies: 2,
-          unattributedHours: 5.2,
-          costOverTime: [
-            { date: 'Mon', cost: 1800 },
-            { date: 'Tue', cost: 2100 },
-            { date: 'Wed', cost: 2400 },
-            { date: 'Thu', cost: 1950 },
-            { date: 'Fri', cost: 3100 },
-            { date: 'Sat', cost: 1200 },
-            { date: 'Sun', cost: 1690 }
-          ],
-          expenditureByProject: [
-            { name: 'Phoenix', cost: 7800 },
-            { name: 'Client ABC', cost: 4100 },
-            { name: 'Q4 Mktg', cost: 2340 }
-          ]
-        };
-      case 'Last 30 Days':
-        return {
-          totalCost: 52400,
-          accuracy: 91,
-          anomalies: 8,
-          unattributedHours: 24.8,
-          costOverTime: [
-            { date: 'Wk 1', cost: 11400 },
-            { date: 'Wk 2', cost: 13200 },
-            { date: 'Wk 3', cost: 14800 },
-            { date: 'Wk 4', cost: 13000 }
-          ],
-          expenditureByProject: [
-            { name: 'Phoenix', cost: 28400 },
-            { name: 'Client ABC', cost: 14300 },
-            { name: 'Q4 Mktg', cost: 9700 }
-          ]
-        };
-      case 'This Month':
-      default:
-        return {
-          totalCost: 45820,
-          accuracy: 92,
-          anomalies: 7,
-          unattributedHours: 18.5,
-          costOverTime: [
-            { date: 'May 01', cost: 8200 },
-            { date: 'May 08', cost: 9400 },
-            { date: 'May 15', cost: 11100 },
-            { date: 'May 22', cost: 10200 },
-            { date: 'May 29', cost: 12500 },
-            { date: 'Jun 05', cost: 13420 },
-            { date: 'Jun 12', cost: 14820 }
-          ],
-          expenditureByProject: [
-            { name: 'Project Phoenix', cost: 24500 },
-            { name: 'Client ABC Onboarding', cost: 12400 },
-            { name: 'Q4 Marketing Strategy', cost: 8920 }
-          ]
-        };
-    }
-  }, [datePreset]);
+    // Calculate stats directly from our state meetings
+    const totalCost = Math.round(meetings.reduce((acc, m) => acc + m.cost, 0));
+    const accuracy = meetings.length > 0 
+      ? Math.round(meetings.reduce((acc, m) => acc + m.confidence, 0) / meetings.length)
+      : 92;
+    const anomalies = meetings.filter(m => m.status === 'needs_review' || m.confidence < 60).length;
+    
+    // Parse unattributed hours (unassigned or operations with low confidence)
+    const unattributedMinutes = meetings
+      .filter(m => m.project === 'Unassigned' || m.project === 'Internal Operations')
+      .reduce((acc, m) => {
+        // parse duration like "2h 30m" or "45m"
+        const hoursMatch = m.duration.match(/(\d+)h/);
+        const minsMatch = m.duration.match(/(\d+)m/);
+        const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
+        const mins = minsMatch ? parseInt(minsMatch[1]) : 0;
+        return acc + (hours * 60 + mins);
+      }, 0);
+    const unattributedHours = Math.round((unattributedMinutes / 60) * 10) / 10;
+
+    // Group costs by project
+    const projectCostMap = {};
+    meetings.forEach(m => {
+      const proj = m.project || 'Unassigned';
+      projectCostMap[proj] = (projectCostMap[proj] || 0) + m.cost;
+    });
+    const expenditureByProject = Object.keys(projectCostMap).map(name => ({
+      name,
+      cost: Math.round(projectCostMap[name])
+    }));
+
+    // Mock trend line showing cost distribution over time based on the active dataset's total cost
+    const costOverTime = datePreset === 'Last 7 Days' ? [
+      { date: 'Mon', cost: Math.round(totalCost * 0.12) },
+      { date: 'Tue', cost: Math.round(totalCost * 0.15) },
+      { date: 'Wed', cost: Math.round(totalCost * 0.17) },
+      { date: 'Thu', cost: Math.round(totalCost * 0.14) },
+      { date: 'Fri', cost: Math.round(totalCost * 0.22) },
+      { date: 'Sat', cost: Math.round(totalCost * 0.08) },
+      { date: 'Sun', cost: Math.round(totalCost * 0.12) }
+    ] : datePreset === 'Last 30 Days' ? [
+      { date: 'Wk 1', cost: Math.round(totalCost * 0.22) },
+      { date: 'Wk 2', cost: Math.round(totalCost * 0.25) },
+      { date: 'Wk 3', cost: Math.round(totalCost * 0.28) },
+      { date: 'Wk 4', cost: Math.round(totalCost * 0.25) }
+    ] : [
+      { date: 'May 01', cost: Math.round(totalCost * 0.18) },
+      { date: 'May 08', cost: Math.round(totalCost * 0.21) },
+      { date: 'May 15', cost: Math.round(totalCost * 0.24) },
+      { date: 'May 22', cost: Math.round(totalCost * 0.22) },
+      { date: 'May 29', cost: Math.round(totalCost * 0.27) },
+      { date: 'Jun 05', cost: Math.round(totalCost * 0.29) },
+      { date: 'Jun 12', cost: Math.round(totalCost * 0.32) }
+    ];
+
+    return {
+      totalCost,
+      accuracy,
+      anomalies,
+      unattributedHours,
+      costOverTime,
+      expenditureByProject
+    };
+  }, [meetings, datePreset]);
 
   // Total project spend percentages for top project spends side list
   const projectSpendsSum = useMemo(() => {
@@ -416,16 +569,61 @@ export default function App() {
               {activeAlertsCount > 0 && <span className="notification-badge" />}
             </button>
 
+            {/* Sync / Authentication controls */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button 
+                className="table-action-btn"
+                onClick={handleSyncClick}
+                disabled={loading}
+                style={{ 
+                  backgroundColor: 'rgba(0, 240, 255, 0.12)', 
+                  borderColor: 'rgba(0, 240, 255, 0.2)', 
+                  color: 'var(--color-cyan)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
+                }}
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                <span>{tokens ? 'Sync' : 'Connect Calendar'}</span>
+              </button>
+              {tokens && (
+                <button 
+                  className="table-action-btn"
+                  onClick={handleLogout}
+                  style={{ 
+                    backgroundColor: 'rgba(244, 63, 94, 0.1)', 
+                    borderColor: 'rgba(244, 63, 94, 0.2)', 
+                    color: 'var(--color-pink)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '8px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    width: '32px',
+                    height: '32px'
+                  }}
+                  title="Disconnect account"
+                >
+                  <LogOut size={14} />
+                </button>
+              )}
+            </div>
+
             {/* User Profile */}
             <div className="user-profile-widget">
               <img 
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80" 
+                src={user?.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80"} 
                 alt="Profile" 
                 className="avatar"
               />
               <div className="user-info">
-                <span className="user-name">Sarah Jenkins</span>
-                <span className="user-role">HR Operations VP</span>
+                <span className="user-name">{user?.displayName || "Sarah Jenkins"}</span>
+                <span className="user-role">{user ? "Authenticated VP" : "HR Operations VP"}</span>
               </div>
             </div>
           </div>
@@ -433,6 +631,24 @@ export default function App() {
 
         {/* --- VIEWPORT --- */}
         <main className="dashboard-viewport">
+          {apiError && (
+            <div className="glass-panel alert-item danger" style={{ marginBottom: '20px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div className="alert-icon-wrapper danger" style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', backgroundColor: 'rgba(244, 63, 94, 0.1)', color: 'var(--color-pink)' }}>
+                  <AlertCircle size={18} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '14px' }}>Sync Error</h4>
+                  <p style={{ margin: '2px 0 0 0', color: 'var(--text-secondary)', fontSize: '13px' }}>{apiError}</p>
+                </div>
+              </div>
+              <X 
+                size={16} 
+                style={{ cursor: 'pointer', color: 'var(--text-muted)' }} 
+                onClick={() => setApiError(null)} 
+              />
+            </div>
+          )}
           
           {/* Main Dashboard Panel */}
           {activeTab === 'Dashboard' ? (
