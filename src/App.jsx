@@ -37,6 +37,7 @@ import {
 } from 'recharts';
 import './App.css';
 import { loginWithGoogleAndCalendar } from './firebaseAuth';
+import LandingPage from './LandingPage.jsx';
 
 // Pre-defined avatars from public sources
 const avatars = [
@@ -49,6 +50,7 @@ const avatars = [
 ];
 
 export default function App() {
+  const [showDashboard, setShowDashboard] = useState(false);
   // --- STATE MANAGEMENT ---
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [searchQuery, setSearchQuery] = useState('');
@@ -171,9 +173,11 @@ export default function App() {
         googleAccessToken: data.googleAccessToken
       });
       await fetchEvents(data.firebaseIdToken, data.googleAccessToken);
+      return true;
     } catch (err) {
       console.error(err);
       setApiError("Authentication failed: " + err.message);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -426,6 +430,26 @@ export default function App() {
   const handleNavClick = (tab) => {
     setActiveTab(tab);
   };
+
+  if (!showDashboard) {
+    return (
+      <LandingPage 
+        onStartDashboard={async () => {
+          if (user) {
+            setShowDashboard(true);
+          } else {
+            const success = await handleLogin();
+            if (success) {
+              setShowDashboard(true);
+            }
+          }
+        }}
+        loading={loading}
+        apiError={apiError}
+        onClearError={() => setApiError(null)}
+      />
+    );
+  }
 
   return (
     <div className="app-container">

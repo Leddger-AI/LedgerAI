@@ -1,3 +1,5 @@
+import os
+import json
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
@@ -5,6 +7,9 @@ from google.oauth2.credentials import Credentials as GoogleCredentials
 from googleapiclient.discovery import build
 from auth import get_current_user
 from ai_engine import attribute_meeting
+from pydantic import BaseModel
+from google import genai
+from google.genai import types
 
 app = FastAPI(title="HR Cost Intelligence Engine API")
 
@@ -16,6 +21,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize the Gemini GenAI client
+# The Client will look for GEMINI_API_KEY environment variable by default.
+api_key = os.getenv("GEMINI_API_KEY")
+if api_key:
+    client = genai.Client(api_key=api_key)
+else:
+    client = None
+
+# 1. Pydantic Data Models
+class MeetingPayload(BaseModel):
+    title: str
+    description: str
+    duration_minutes: int
+    attendees_count: int
+
+class AttributionResponse(BaseModel):
+    project_name: str
+    confidence_score: int
+    reasoning: str
 
 def parse_iso_datetime(dt_str: str) -> datetime:
     """Helper to convert Google ISO datetime strings into Python datetime objects."""
@@ -92,6 +117,16 @@ async def get_calendar_events(
                 duration_minutes=duration_minutes,
                 attendees_count=len(attendees)
             )
+            
+            # Use utility function to compute cost and review status
+            # Default rate: $75.0/hour per attendee (min 1 for meeting organizer)
+            attendees_count = len(attendees)
+            total_attendee_hourly_rate = max(1, attendees_count) * 75.0
+            cost_info = calculate_meeting_cost_and_status(
+                duration_minutes=duration_minutes,
+                total_attendee_hourly_rate=total_rate if 'total_rate' in locals() else total_attendee_hourly_rate,
+                ai_confidence_score=attribution.get("confidence_score", 0)
+            )
                 
             formatted_events.append({
                 "eventId": event.get("id"),
@@ -104,7 +139,9 @@ async def get_calendar_events(
                 "organizer": event.get("organizer", {}).get("email"),
                 "aiProject": attribution.get("project_name"),
                 "aiConfidence": attribution.get("confidence_score"),
-                "aiReasoning": attribution.get("reasoning")
+                "aiReasoning": attribution.get("reasoning"),
+                "cost": cost_info.get("total_cost", 0.0),
+                "requiresHumanReview": cost_info.get("requires_human_review", False)
             })
             
         return {
@@ -121,3 +158,78 @@ async def get_calendar_events(
             status_code=500,
             detail=f"Error retrieving calendar data: {str(e)}"
         )
+
+# 2. The Gemini AI Endpoint (/ai/attribute-meeting)
+@app.post("/ai/attribute-meeting", response_model=AttributionResponse)
+async def attribute_meeting_endpoint(payload: MeetingPayload):
+    """
+    FastAPI endpoint that classifies a meeting into a project taxonomy.
+    Uses Structured Outputs feature (response_schema) of google-genai SDK.
+    """
+    # Fallback to local heuristic if client/API key is not configured
+    if not api_key or client is None:
+        fallback_res = attribute_meeting(
+            title=payload.title,
+            description=payload.description,
+            duration_minutes=payload.duration_minutes,
+            attendees_count=payload.attendees_count
+        )
+        return AttributionResponse(
+            project_name=fallback_res.get("project_name", "Internal Operations"),
+            confidence_score=fallback_res.get("confidence_score", 75),
+            reasoning=fallback_res.get("reasoning", "Fallback heuristic attribution due to missing API Key.")
+        )
+
+    prompt = f"""
+    Please analyze the following meeting details:
+    Title: {payload.title}
+    Description: {payload.description}
+    Duration: {payload.duration_minutes} minutes
+    Attendees Count: {payload.attendees_count}
+    """
+
+    system_instruction = (
+        "You are an AI assistant tasked with classifying meeting details into one of the following four projects:\n"
+        "1. Project Phoenix (database upgrades, backend architecture, migrations)\n"
+        "2. Client ABC (client onboarding, sync meetings, user feedback)\n"
+        "3. Q4 Marketing (social media campaigns, ad design, growth metrics)\n"
+        "4. Internal Operations (general standups, HR syncs, 1-on-1s, administrative work)\n\n"
+        "Pick the best matching project taxonomy code, assign a confidence score (0-100), and provide reasoning."
+    )
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=AttributionResponse,
+                system_instruction=system_instruction,
+                temperature=0.1
+            )
+        )
+        data = json.loads(response.text)
+        return AttributionResponse(**data)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Gemini API invocation failure: {str(e)}"
+        )
+
+# 3. Cost Calculation & Graceful Degradation Logic
+def calculate_meeting_cost_and_status(
+    duration_minutes: int,
+    total_attendee_hourly_rate: float,
+    ai_confidence_score: int
+) -> dict:
+    """
+    Calculates total meeting cost and flags human review requirement.
+    """
+    duration_hours = duration_minutes / 60.0
+    total_cost = duration_hours * total_attendee_hourly_rate
+    requires_human_review = ai_confidence_score < 60
+    
+    return {
+        "total_cost": total_cost,
+        "requires_human_review": requires_human_review
+    }
