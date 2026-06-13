@@ -29,6 +29,7 @@ const SlackIcon = ({ size = 24, ...props }) => (
 
 export default function LandingPage({ onStartDashboard, loading, apiError, onClearError }) {
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
   const [isMasked, setIsMasked] = useState(true);
   
   // Triage simulator state
@@ -45,12 +46,14 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
     unassigned: 20
   });
 
-  // Track scroll position for 3D tilted preview card transition
+  // Track scroll position for 3D tilted preview card transition and right column parallax
   useEffect(() => {
     const handleScroll = () => {
-      const scrollY = window.scrollY;
+      const currentScrollY = window.scrollY;
+      setScrollY(currentScrollY);
+      
       const threshold = 350; // Distance in pixels to flatten card completely
-      const progress = Math.min(scrollY / threshold, 1);
+      const progress = Math.min(currentScrollY / threshold, 1);
       setScrollProgress(progress);
     };
 
@@ -97,7 +100,7 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
       {/* Navigation Navbar */}
       <header className="lp-navbar">
         <div className="lp-logo" onClick={() => onStartDashboard()}>
-          <div className="lp-logo-icon">L</div>
+          <img src="/ledgerai.png" alt="LedgerAI Logo" style={{ height: '32px', width: '32px', borderRadius: '8px', objectFit: 'contain' }} />
           <span>LedgerAI</span>
         </div>
         <nav>

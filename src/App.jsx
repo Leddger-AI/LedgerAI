@@ -56,7 +56,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [datePreset, setDatePreset] = useState('This Month');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  
+
   // Interactive Modal State
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [modalProject, setModalProject] = useState('');
@@ -556,44 +556,44 @@ export default function App() {
             HR COST INTELLIGENCE
           </h1>
         </div>
-        
+
         <nav className="sidebar-menu">
-          <div 
+          <div
             className={`menu-item ${activeTab === 'Dashboard' ? 'active' : ''}`}
             onClick={() => handleNavClick('Dashboard')}
           >
             <LayoutDashboard />
             <span>Dashboard</span>
           </div>
-          <div 
+          <div
             className={`menu-item ${activeTab === 'Projects' ? 'active' : ''}`}
             onClick={() => handleNavClick('Projects')}
           >
             <Briefcase />
             <span>Projects</span>
           </div>
-          <div 
+          <div
             className={`menu-item ${activeTab === 'Teams' ? 'active' : ''}`}
             onClick={() => handleNavClick('Teams')}
           >
             <Users />
             <span>Teams</span>
           </div>
-          <div 
+          <div
             className={`menu-item ${activeTab === 'Calendar' ? 'active' : ''}`}
             onClick={() => handleNavClick('Calendar')}
           >
             <Calendar />
             <span>Calendar</span>
           </div>
-          <div 
+          <div
             className={`menu-item ${activeTab === 'Reports' ? 'active' : ''}`}
             onClick={() => handleNavClick('Reports')}
           >
             <FileText />
             <span>Reports</span>
           </div>
-          <div 
+          <div
             className={`menu-item ${activeTab === 'Alerts' ? 'active' : ''}`}
             onClick={() => handleNavClick('Alerts')}
             style={{ position: 'relative' }}
@@ -604,7 +604,7 @@ export default function App() {
               <span className="pulse-danger-dot" style={{ position: 'absolute', right: '16px', top: '18px' }} />
             )}
           </div>
-          <div 
+          <div
             className={`menu-item ${activeTab === 'Settings' ? 'active' : ''}`}
             onClick={() => handleNavClick('Settings')}
           >
@@ -621,15 +621,15 @@ export default function App() {
 
       {/* --- MAIN WORKSPACE --- */}
       <div className="main-content">
-        
+
         {/* --- TOPBAR --- */}
         <header className="top-header">
           {/* Search bar filtering table */}
           <div className="search-bar-container">
             <Search className="search-icon-inside" />
-            <input 
-              type="text" 
-              placeholder="Search meetings or projects..." 
+            <input
+              type="text"
+              placeholder="Search meetings or projects..."
               className="search-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -658,8 +658,8 @@ export default function App() {
                   gap: '4px'
                 }}>
                   {['Last 7 Days', 'Last 30 Days', 'This Month'].map(preset => (
-                    <div 
-                      key={preset} 
+                    <div
+                      key={preset}
                       style={{
                         padding: '8px 12px',
                         cursor: 'pointer',
@@ -806,7 +806,7 @@ export default function App() {
 
               {/* --- KPI METRIC CARDS --- */}
               <div className="kpi-grid">
-                
+
                 {/* 1. Total Meeting Cost */}
                 <div className="glass-panel kpi-card">
                   <div className="kpi-header">
@@ -935,13 +935,13 @@ export default function App() {
                     </span>
                   </div>
                   <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', height: '4px', backgroundColor: 'rgba(255,255,255,0.03)' }}>
-                    <div 
-                      style={{ 
-                        height: '100%', 
-                        width: `${Math.min(100, (dynamicData.unattributedHours / 30) * 100)}%`, 
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${Math.min(100, (dynamicData.unattributedHours / 30) * 100)}%`,
                         backgroundColor: 'var(--color-warning)',
                         boxShadow: '0 0 6px var(--color-warning)'
-                      }} 
+                      }}
                     />
                   </div>
                 </div>
@@ -949,7 +949,7 @@ export default function App() {
 
               {/* --- MAIN DATA VISUALIZATION AREA --- */}
               <div className="charts-main-grid">
-                
+
                 {/* Real-time HR Expenditure by Project (Grouped Bar Chart) */}
                 <div className="glass-panel chart-card">
                   <div className="chart-card-header">
@@ -975,17 +975,17 @@ export default function App() {
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                        <XAxis 
-                          dataKey="name" 
-                          stroke="var(--text-muted)" 
-                          fontSize={11} 
-                          tickLine={false} 
-                          axisLine={false} 
+                        <XAxis
+                          dataKey="name"
+                          stroke="var(--text-muted)"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
                         />
-                        <YAxis 
-                          stroke="var(--text-muted)" 
-                          fontSize={11} 
-                          tickLine={false} 
+                        <YAxis
+                          stroke="var(--text-muted)"
+                          fontSize={11}
+                          tickLine={false}
                           axisLine={false}
                           tickFormatter={(value) => `$${value / 1000}k`}
                         />
@@ -1001,9 +1001,9 @@ export default function App() {
                         />
                         <Bar dataKey="cost" radius={[4, 4, 0, 0]} maxBarSize={45}>
                           {dynamicData.expenditureByProject.map((entry, index) => (
-                            <Cell 
-                              key={`cell-${index}`} 
-                              fill={index % 2 === 0 ? 'url(#barGradientCyan)' : 'url(#barGradientPurple)'} 
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={index % 2 === 0 ? 'url(#barGradientCyan)' : 'url(#barGradientPurple)'}
                             />
                           ))}
                         </Bar>
@@ -1028,8 +1028,8 @@ export default function App() {
                           <span className="spend-amount">${project.cost.toLocaleString()}</span>
                         </div>
                         <div className="spend-bar-bg">
-                          <div 
-                            className={`spend-bar-fill ${project.colorClass}`} 
+                          <div
+                            className={`spend-bar-fill ${project.colorClass}`}
                             style={{ width: `${project.percentage}%` }}
                           />
                         </div>
@@ -1071,17 +1071,17 @@ export default function App() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                      <XAxis 
-                        dataKey="date" 
-                        stroke="var(--text-muted)" 
-                        fontSize={11} 
-                        tickLine={false} 
-                        axisLine={false} 
+                      <XAxis
+                        dataKey="date"
+                        stroke="var(--text-muted)"
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
                       />
-                      <YAxis 
-                        stroke="var(--text-muted)" 
-                        fontSize={11} 
-                        tickLine={false} 
+                      <YAxis
+                        stroke="var(--text-muted)"
+                        fontSize={11}
+                        tickLine={false}
                         axisLine={false}
                         tickFormatter={(value) => `$${value}`}
                       />
@@ -1095,12 +1095,12 @@ export default function App() {
                         }}
                         formatter={(value) => [`$${value.toLocaleString()}`, 'Total Cost']}
                       />
-                      <Area 
-                        type="monotone" 
-                        dataKey="cost" 
-                        stroke="var(--color-cyan)" 
+                      <Area
+                        type="monotone"
+                        dataKey="cost"
+                        stroke="var(--color-cyan)"
                         strokeWidth={2}
-                        fillOpacity={1} 
+                        fillOpacity={1}
                         fill="url(#areaColor)"
                         style={{ filter: 'drop-shadow(0 0 4px var(--color-cyan-glow))' }}
                       />
@@ -1111,7 +1111,7 @@ export default function App() {
 
               {/* --- LOWER GRID: Activity & Alerts --- */}
               <div className="lower-sections-grid">
-                
+
                 {/* Recent Calendar Activity & AI Attribution Table */}
                 <div className="glass-panel table-card">
                   <div className="chart-card-header">
@@ -1120,7 +1120,7 @@ export default function App() {
                       <span className="chart-card-subtitle">Recent calendar synced meetings with auto-attribution</span>
                     </div>
                   </div>
-                  
+
                   <div className="table-container">
                     <table className="custom-table">
                       <thead>
@@ -1146,10 +1146,10 @@ export default function App() {
                               <td>
                                 <div className="avatar-group">
                                   {Array.from({ length: Math.min(meeting.attendeeCount, 4) }).map((_, i) => (
-                                    <img 
-                                      key={i} 
-                                      src={avatars[(meeting.id + i) % avatars.length]} 
-                                      alt="Attendee" 
+                                    <img
+                                      key={i}
+                                      src={avatars[(meeting.id + i) % avatars.length]}
+                                      alt="Attendee"
                                       className="avatar-group-item"
                                     />
                                   ))}
@@ -1167,9 +1167,8 @@ export default function App() {
                                 </span>
                               </td>
                               <td>
-                                <span className={`confidence-badge ${
-                                  meeting.confidence >= 85 ? 'high' : meeting.confidence >= 60 ? 'medium' : 'low'
-                                }`}>
+                                <span className={`confidence-badge ${meeting.confidence >= 85 ? 'high' : meeting.confidence >= 60 ? 'medium' : 'low'
+                                  }`}>
                                   {meeting.confidence}%
                                 </span>
                               </td>
@@ -1182,14 +1181,14 @@ export default function App() {
                                     </span>
                                   ) : (
                                     <>
-                                      <button 
+                                      <button
                                         className="table-action-btn"
                                         onClick={() => handleApprove(meeting.id)}
                                         style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--color-success)' }}
                                       >
                                         Approve
                                       </button>
-                                      <button 
+                                      <button
                                         className="table-action-btn"
                                         onClick={() => openEditModal(meeting)}
                                       >
@@ -1240,7 +1239,7 @@ export default function App() {
                             <h4 className="alert-title">{alert.title}</h4>
                             <p className="alert-desc">{alert.desc}</p>
                             <div className="alert-actions">
-                              <button 
+                              <button
                                 className="alert-btn primary"
                                 onClick={() => handleResolveAlert(alert.id)}
                               >
@@ -1269,7 +1268,7 @@ export default function App() {
               <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', margin: '0 auto 24px auto', fontSize: '14px' }}>
                 This dashboard section is mock-configured. Click back to the "Dashboard" in the sidebar to view live analytics.
               </p>
-              <button 
+              <button
                 className="table-action-btn"
                 style={{ padding: '8px 20px', fontSize: '13px' }}
                 onClick={() => setActiveTab('Dashboard')}
@@ -1296,7 +1295,7 @@ export default function App() {
 
             <div className="form-group">
               <label className="form-label">Select Project Code</label>
-              <select 
+              <select
                 className="form-select"
                 value={modalProject}
                 onChange={(e) => setModalProject(e.target.value)}
@@ -1314,14 +1313,14 @@ export default function App() {
             </div>
 
             <div className="modal-footer">
-              <button 
+              <button
                 className="alert-btn secondary"
                 onClick={() => setSelectedMeeting(null)}
                 style={{ padding: '8px 16px', fontSize: '13px' }}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 className="alert-btn primary"
                 onClick={saveEditModal}
                 style={{ padding: '8px 16px', fontSize: '13px' }}
