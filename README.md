@@ -57,7 +57,7 @@ Configure the following variables in your backend `.env` file:
 
 ```ini
 # Redis configuration
-REDIS_URL=redis://default:...@cook-upcycled-capable-10909.db.redis.io:16518
+REDIS_URL=redis://localhost:6379
 
 # Firebase administration
 FIREBASE_SERVICE_ACCOUNT_KEY=serviceAccountKey.json
