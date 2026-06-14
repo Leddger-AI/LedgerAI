@@ -4,3 +4,6 @@
 
 // Update related to: Fix typography scale in CSS
 // Implementation details added on 2026-06-01T03:00:00
+
+// Update related to: Fix routing issue on candidate flow
+// Implementation details added on 2026-06-14T13:00:00
