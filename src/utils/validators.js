@@ -10,3 +10,6 @@
 
 // Update related to: Update color palette to Ledger AI brand
 // Implementation details added on 2026-06-11T09:00:00
+
+// Update related to: Add rate limiting to backend APIs
+// Implementation details added on 2026-06-13T12:00:00

@@ -7,3 +7,9 @@
 
 // Update related to: Implement candidate ranking algorithm
 // Implementation details added on 2026-06-12T09:00:00
+
+// Update related to: Update candidate dashboard UI
+// Implementation details added on 2026-06-14T19:00:00
+
+// Update related to: Improve calendar sync speed by batching
+// Implementation details added on 2026-06-12T04:00:00
