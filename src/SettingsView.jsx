@@ -123,7 +123,7 @@ export default function SettingsView({
                   <button 
                     type="button"
                     className="table-action-btn"
-                    style={{ padding: '8px 14px', backgroundColor: 'rgba(244,63,94,0.1)', borderColor: 'rgba(244,63,94,0.2)', color: 'var(--color-pink)' }}
+                    style={{ padding: '8px 14px', backgroundColor: 'rgba(244, 63, 94, 0.1)', borderColor: 'rgba(244, 63, 94, 0.2)', color: 'var(--color-pink)' }}
                     onClick={handleClearKey}
                   >
                     Clear Key
@@ -208,7 +208,7 @@ export default function SettingsView({
                     setTimeout(() => setSuccessMsg(''), 3000);
                   }
                 }}
-                style={{ width: '100%', padding: '10px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', backgroundColor: 'rgba(244,63,94,0.1)', borderColor: 'rgba(244,63,94,0.2)', color: 'var(--color-pink)' }}
+                style={{ width: '100%', padding: '10px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', backgroundColor: 'rgba(244, 63, 94, 0.1)', borderColor: 'rgba(244, 63, 94, 0.2)', color: 'var(--color-pink)' }}
               >
                 <RefreshCw size={12} />
                 <span>Format Cache Database</span>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Upload, FileText, Send, Trash2, Shield, User, HelpCircle, Layers, CheckCircle2, ChevronRight, Eye } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 export default function KnowledgeBase() {
   const [activeSubTab, setActiveSubTab] = useState('file'); // 'file' | 'slack'
   
@@ -53,7 +55,7 @@ export default function KnowledgeBase() {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/kb/documents');
+      const response = await fetch(`${API_BASE_URL}/api/kb/documents`);
       if (!response.ok) throw new Error('Failed to fetch document registry.');
       const data = await response.json();
       setDocuments(data);
@@ -104,7 +106,7 @@ export default function KnowledgeBase() {
     formData.append('chunk_overlap_tokens', chunkOverlap.toString());
 
     try {
-      const response = await fetch('http://localhost:8000/api/kb/ingest/file', {
+      const response = await fetch(`${API_BASE_URL}/api/kb/ingest/file`, {
         method: 'POST',
         body: formData,
       });
@@ -153,7 +155,7 @@ export default function KnowledgeBase() {
         team_id: teamId
       };
 
-      const response = await fetch('http://localhost:8000/api/kb/ingest/slack', {
+      const response = await fetch(`${API_BASE_URL}/api/kb/ingest/slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -179,7 +181,7 @@ export default function KnowledgeBase() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:8000/api/kb/documents/${docId}`);
+      const response = await fetch(`${API_BASE_URL}/api/kb/documents/${docId}`);
       if (!response.ok) throw new Error('Failed to retrieve document details.');
       const data = await response.json();
       setSelectedDocDetails(data);
@@ -224,7 +226,7 @@ export default function KnowledgeBase() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:8000/api/kb/documents/${docId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/kb/documents/${docId}`, {
         method: 'DELETE'
       });
       if (!response.ok) throw new Error('Failed to delete document.');
@@ -406,8 +408,8 @@ export default function KnowledgeBase() {
                   onChange={(e) => setSlackMessagesJson(e.target.value)}
                   rows={8}
                   style={{
-                    width: '100%', padding: '12px', backgroundColor: '#090d16', border: '1px solid var(--border-color)',
-                    borderRadius: '6px', color: '#00f0ff', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical'
+                    width: '100%', padding: '12px', backgroundColor: '#1c1e20', border: '1px solid var(--border-color)',
+                    borderRadius: '6px', color: 'var(--color-cyan)', fontFamily: 'monospace', fontSize: '12px', resize: 'vertical'
                   }}
                 />
               </div>
@@ -474,7 +476,7 @@ export default function KnowledgeBase() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <span style={{
                         fontSize: '10px', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold',
-                        backgroundColor: doc.source_type === 'file' ? 'rgba(181, 95, 230, 0.15)' : 'rgba(6, 182, 212, 0.15)',
+                        backgroundColor: doc.source_type === 'file' ? 'rgba(181, 95, 230, 0.15)' : 'rgba(0, 240, 255, 0.15)',
                         color: doc.source_type === 'file' ? 'var(--color-purple)' : 'var(--color-cyan)'
                       }}>
                         {doc.source_type}
@@ -553,7 +555,7 @@ export default function KnowledgeBase() {
                   {chunk.metadata && chunk.metadata.tags && (
                     <div style={{ display: 'flex', gap: '4px' }}>
                       {chunk.metadata.tags.map((tag, tIdx) => (
-                        <span key={tIdx} style={{ fontSize: '10px', backgroundColor: 'rgba(6, 182, 212, 0.12)', color: 'var(--color-cyan)', border: '1px solid rgba(6,182,212,0.2)', padding: '1px 6px', borderRadius: '4px', fontWeight: '500' }}>
+                        <span key={tIdx} style={{ fontSize: '10px', backgroundColor: 'rgba(0, 240, 255, 0.12)', color: 'var(--color-cyan)', border: '1px solid rgba(0, 240, 255, 0.2)', padding: '1px 6px', borderRadius: '4px', fontWeight: '500' }}>
                           {tag}
                         </span>
                       ))}
@@ -563,7 +565,7 @@ export default function KnowledgeBase() {
 
                 {/* Chunk Text Content */}
                 <pre style={{
-                  padding: '12px', backgroundColor: '#060810', borderRadius: '4px', fontSize: '12.5px', color: '#d1d5db',
+                  padding: '12px', backgroundColor: '#1c1e20', borderRadius: '4px', fontSize: '12.5px', color: '#FFFFFF',
                   lineHeight: '1.6', overflowX: 'auto', border: '1px solid rgba(255,255,255,0.02)', whiteSpace: 'pre-wrap'
                 }}>
                   {chunk.content}
@@ -575,7 +577,7 @@ export default function KnowledgeBase() {
                     <summary style={{ cursor: 'pointer', color: 'var(--color-purple)', userSelect: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Eye size={12} /> Inspect Metadata Schema JSON
                     </summary>
-                    <pre style={{ marginTop: '6px', padding: '8px', backgroundColor: '#090d16', borderRadius: '4px', color: '#a78bfa', fontSize: '11px' }}>
+                    <pre style={{ marginTop: '6px', padding: '8px', backgroundColor: '#1c1e20', borderRadius: '4px', color: 'var(--color-purple)', fontSize: '11px' }}>
                       {JSON.stringify(chunk.metadata, null, 2)}
                     </pre>
                   </details>

@@ -354,7 +354,7 @@ export default function TeamsView() {
                             type="number"
                             value={editRate}
                             onChange={e => setEditRate(e.target.value)}
-                            style={{ width: '60px', padding: '4px', backgroundColor: '#090d16', border: '1px solid var(--border-color)', borderRadius: '4px', color: '#fff', fontSize: '12px' }}
+                            style={{ width: '60px', padding: '4px', backgroundColor: '#1c1e20', border: '1px solid var(--border-color)', borderRadius: '4px', color: '#fff', fontSize: '12px' }}
                           />
                           <button style={{ background: 'none', border: 'none', color: 'var(--color-success)', cursor: 'pointer' }} onClick={() => handleSaveRate(m.id)}>
                             <Check size={14} />

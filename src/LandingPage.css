@@ -3,21 +3,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=Syne:wght@700;800&display=swap');
 
 :root {
-  --cz-bg-dark: #111214;
-  --cz-bg-card: #1c1d1f;
-  --cz-bg-float: #252629;
+  --cz-bg-dark: #1A1D1D;
+  --cz-bg-card: #2B2E2E;
+  --cz-bg-float: #2B2E2E;
   --cz-orange: #ff5432;
-  --cz-teal: #6bc4c9;
+  --cz-teal: #D7FEFA;
   --cz-text-light: #ffffff;
-  --cz-text-muted: #9aa0a6;
+  --cz-text-muted: rgba(255, 255, 255, 0.7);
   --cz-border: rgba(255, 255, 255, 0.12);
   --cz-font: 'Inter', sans-serif;
 }
 
 /* TOP BANNER */
 .cz-top-banner {
-  background-color: #6bc4c9;
-  color: #111214;
+  background-color: #D7FEFA;
+  color: #1A1D1D;
   padding: 8px 20px;
   display: flex;
   justify-content: space-between;
@@ -39,7 +39,7 @@
 }
 
 .cz-banner-link {
-  color: #111214;
+  color: #1A1D1D;
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
@@ -52,7 +52,7 @@
 .cz-banner-close {
   background: none;
   border: none;
-  color: #111214;
+  color: #1A1D1D;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -73,14 +73,107 @@ html {
   position: relative;
 }
 
-/* NAVBAR */
-.cz-navbar {
+/* PEBBLE NAVBAR CONTAINER */
+.cz-pebble-nav-container {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 20px 40px;
-  max-width: 1400px;
-  margin: 0 auto;
+  justify-content: center;
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: transparent;
+  border-bottom: none;
+  padding: 0;
+}
+
+/* PEBBLE SEGMENTED CONTROL */
+.cz-pebble-nav {
+  display: flex;
+  align-items: center;
+  border-radius: 9999px;
+  transition: background 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+              border 0.4s ease,
+              gap 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+              padding 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.4s ease;
+}
+
+/* Inline State (Widely Spaced, Transparent Background) */
+.cz-pebble-nav.inline {
+  background: rgba(255, 255, 255, 0);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(255, 255, 255, 0);
+  box-shadow: none;
+  gap: 40px;
+  padding: 8px 0;
+}
+
+/* Floating State (Collapsed Frosted Glass) */
+.cz-pebble-nav.floating {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  gap: 4px;
+  padding: 4px;
+}
+
+.cz-pebble-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 20px;
+  cursor: pointer;
+  text-decoration: none;
+  border-radius: 9999px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cz-pebble-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #D7FEFA;
+  border-radius: 9999px;
+  z-index: 0;
+  box-shadow: 0 4px 15px rgba(215, 254, 250, 0.3);
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Hide pebble background in inline state */
+.cz-pebble-nav.inline .cz-pebble-bg {
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+.cz-pebble-nav.floating .cz-pebble-bg {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.cz-pebble-text {
+  position: relative;
+  z-index: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1A1D1D;
+  transition: color 0.3s ease;
+}
+
+.cz-pebble-text.active {
+  color: #1A1D1D;
+}
+
+.cz-pebble-item:hover .cz-pebble-text:not(.active) {
+  color: #000000;
 }
 
 .cz-nav-left {
@@ -117,6 +210,35 @@ html {
   align-items: center;
   gap: 4px;
   cursor: pointer;
+}
+
+.cz-home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 24px 40px;
+  z-index: 1001;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.cz-home-header.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.cz-home-header.hidden {
+  opacity: 0;
+  transform: translateY(-100%);
+  pointer-events: none;
 }
 
 .cz-nav-link:hover {
@@ -178,10 +300,10 @@ html {
 }
 
 .cz-hero-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--cz-font);
   font-size: 68px;
   line-height: 1.05;
-  font-weight: 800;
+  font-weight: 500;
   margin-bottom: 24px;
   letter-spacing: -0.04em;
   color: #ffffff;
@@ -189,7 +311,7 @@ html {
 
 .cz-hero-desc {
   font-size: 16px;
-  color: #a0aab2;
+  color: rgba(255, 255, 255, 0.7);
   line-height: 1.5;
   margin-bottom: 40px;
   max-width: 450px;
@@ -264,6 +386,13 @@ html {
   z-index: 0;
   pointer-events: none;
   opacity: 0.8;
+  animation: czPulseRing 8s ease-in-out infinite;
+}
+
+@keyframes czPulseRing {
+  0% { opacity: 0.5; transform: translateY(-50%) scale(0.95); }
+  50% { opacity: 0.8; transform: translateY(-50%) scale(1.05); }
+  100% { opacity: 0.5; transform: translateY(-50%) scale(0.95); }
 }
 
 .cz-visual-lockup {
@@ -283,22 +412,22 @@ html {
   z-index: 4;
 }
 
-.cz-box-grey { background-color: #55585b; color: #ffffff; }
-.cz-box-teal { background-color: #6bc4c9; color: #ffffff; }
-.cz-box-beige { background-color: #eaddcc; color: #333333; }
+.cz-box-grey { background-color: #2B2E2E; color: #ffffff; }
+.cz-box-teal { background-color: #D7FEFA; color: #ffffff; }
+.cz-box-beige { background-color: #FFFFFF; color: #000000; }
 
 /* Position the structural boxes */
-.cz-pos-top-left { top: 0; left: 0; }
-.cz-pos-bottom-left { top: 280px; left: 0; }
+.cz-pos-top-left { top: 0; left: 0; animation: czFloatFast 4s ease-in-out infinite; }
+.cz-pos-bottom-left { top: 280px; left: 0; animation: czFloatMedium 5s ease-in-out infinite 0.5s; }
 
-.cz-pos-r1 { top: 0; right: 0; }
-.cz-pos-r2 { top: 75px; right: 0; }
-.cz-pos-r3 { top: 150px; right: 0; }
-.cz-pos-r4 { top: 225px; right: 0; }
-.cz-pos-r5 { top: 300px; right: 0; }
-.cz-pos-r6 { top: 375px; right: 0; }
+.cz-pos-r1 { top: 0; right: 0; animation: czFloatFast 4.2s ease-in-out infinite 0.2s; }
+.cz-pos-r2 { top: 75px; right: 0; animation: czFloatMedium 5.5s ease-in-out infinite 0.8s; }
+.cz-pos-r3 { top: 150px; right: 0; animation: czFloatFast 4.5s ease-in-out infinite 0.4s; }
+.cz-pos-r4 { top: 225px; right: 0; animation: czFloatMedium 5.2s ease-in-out infinite 0.6s; }
+.cz-pos-r5 { top: 300px; right: 0; animation: czFloatFast 4.8s ease-in-out infinite 0.1s; }
+.cz-pos-r6 { top: 375px; right: 0; animation: czFloatMedium 5.8s ease-in-out infinite 0.3s; }
 
-.cz-pos-bottom-globe { top: 375px; right: 75px; }
+.cz-pos-bottom-globe { top: 375px; right: 75px; animation: czFloatFast 4.6s ease-in-out infinite 0.9s; }
 
 /* Central Chart Card */
 .cz-chart-card {
@@ -307,12 +436,13 @@ html {
   left: 35px;
   width: 400px;
   height: 280px;
-  background-color: #3b3d40;
+  background-color: #2B2E2E;
   z-index: 3;
   padding: 30px 40px;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  animation: czFloatSlow 6s ease-in-out infinite;
 }
 
 /* Horizontal Grid Lines inside Chart */
@@ -337,9 +467,21 @@ html {
 
 .cz-bar {
   width: 35px;
-  background-color: #6bc4c9;
+  background-color: #D7FEFA;
   z-index: 2;
   position: relative;
+  transform-origin: bottom;
+  animation: czBarLive 1.5s ease-in-out infinite alternate;
+}
+
+.cz-bar:nth-of-type(1) { animation-duration: 1.8s; animation-delay: 0.0s; }
+.cz-bar:nth-of-type(2) { animation-duration: 2.2s; animation-delay: 0.3s; }
+.cz-bar:nth-of-type(3) { animation-duration: 1.5s; animation-delay: 0.6s; }
+.cz-bar:nth-of-type(4) { animation-duration: 2.5s; animation-delay: 0.2s; }
+
+@keyframes czBarLive {
+  0% { transform: scaleY(0.3); }
+  100% { transform: scaleY(1.1); }
 }
 
 /* Alert Tag */
@@ -356,14 +498,32 @@ html {
   align-items: center;
   gap: 6px;
   z-index: 5;
+  animation: czFloatFast 3s ease-in-out infinite 0.7s;
 }
+
+/* Float Keyframes */
+@keyframes czFloatSlow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes czFloatMedium {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-15px); }
+}
+
+@keyframes czFloatFast {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
 
 
 /* PHASE 2: HOW IT WORKS SECTION (LIGHT MODE) */
 .cz-hiw-section {
   background-color: #ffffff;
   padding: 120px 40px;
-  color: #111214;
+  color: #1A1D1D;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -376,9 +536,9 @@ html {
 }
 
 .cz-hiw-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--cz-font);
   font-size: 54px;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.1;
   margin-bottom: 16px;
   letter-spacing: -0.02em;
@@ -386,7 +546,7 @@ html {
 
 .cz-hiw-subtitle {
   font-size: 16px;
-  color: #5f6368;
+  color: #1A1D1D;
   line-height: 1.5;
 }
 
@@ -419,20 +579,20 @@ html {
   font-size: 22px;
   font-weight: 600;
   margin-bottom: 16px;
-  color: #111214;
+  color: #1A1D1D;
   letter-spacing: -0.02em;
 }
 
 .cz-hiw-col-desc {
   font-size: 14px;
-  color: #5f6368;
+  color: #1A1D1D;
   line-height: 1.6;
   max-width: 320px;
 }
 
 /* PHASE 3 FRAMEWORK DARK OVERRIDES */
 .cz-fw-section {
-  background-color: #0d0e10 !important;
+  background-color: #1A1D1D !important;
   color: #ffffff !important;
 }
 .cz-fw-section .cz-hiw-title { color: #ffffff; }
@@ -447,7 +607,7 @@ html {
   letter-spacing: -0.02em;
 }
 .cz-fw-section .cz-hiw-col-title { color: #ffffff; }
-.cz-fw-section .cz-hiw-col-desc { color: #a0aab2; }
+.cz-fw-section .cz-hiw-col-desc { color: rgba(255, 255, 255, 0.7); }
 
 
 /* Col 1: 3x3 Grid */
@@ -465,11 +625,11 @@ html {
   border-radius: 4px;
 }
 
-.cz-grid-box .cz-sq-icon { color: #111214; }
+.cz-grid-box .cz-sq-icon { color: #1A1D1D; }
 .cz-box-teal .cz-sq-icon, .cz-box-orange .cz-sq-icon { color: #ffffff !important; }
-.cz-box-gray { background-color: #e0e2e4; }
-.cz-box-beige { background-color: #e8dfcd; }
-.cz-box-teal { background-color: #7bc0c4; color: #ffffff; }
+.cz-box-gray { background-color: #2B2E2E; }
+.cz-box-beige { background-color: #FFFFFF; }
+.cz-box-teal { background-color: #D7FEFA; color: #ffffff; }
 .cz-box-orange { background-color: #ff5432; color: #ffffff; }
 
 /* Col 2 & 3: UI Wireframes */
@@ -477,7 +637,7 @@ html {
   width: 280px;
   height: 220px;
   background-color: #ffffff;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #2B2E2E;
   box-shadow: 0 10px 30px rgba(0,0,0,0.03);
   display: grid;
   gap: 8px;
@@ -504,10 +664,10 @@ html {
 }
 
 /* Col 2 Specific Wireframe */
-.cz-wf2-r1-left { background-color: #f4f5f6; grid-column: 1; grid-row: 1; }
-.cz-wf2-r1-right { background-color: #ede6d9; grid-column: 2; grid-row: 1; }
-.cz-wf2-r2-left { background-color: #ede6d9; grid-column: 1; grid-row: 2; }
-.cz-wf2-r2-right { background-color: #f4f5f6; grid-column: 2; grid-row: 2; }
+.cz-wf2-r1-left { background-color: #FFFFFF; grid-column: 1; grid-row: 1; }
+.cz-wf2-r1-right { background-color: #FFFFFF; grid-column: 2; grid-row: 1; }
+.cz-wf2-r2-left { background-color: #FFFFFF; grid-column: 1; grid-row: 2; }
+.cz-wf2-r2-right { background-color: #FFFFFF; grid-column: 2; grid-row: 2; }
 .cz-wf2-r3-all { 
   grid-column: 1 / 3; 
   grid-row: 3; 
@@ -515,15 +675,15 @@ html {
   grid-template-columns: 1fr 1fr 1fr; 
   gap: 8px;
 }
-.cz-wf2-r3-1 { background-color: #ede6d9; border-radius: 4px;}
-.cz-wf2-r3-2 { background-color: #f4f5f6; border-radius: 4px;}
-.cz-wf2-r3-3 { background-color: #d6eff0; border-radius: 4px;}
+.cz-wf2-r3-1 { background-color: #FFFFFF; border-radius: 4px;}
+.cz-wf2-r3-2 { background-color: #FFFFFF; border-radius: 4px;}
+.cz-wf2-r3-3 { background-color: #D7FEFA; border-radius: 4px;}
 
 /* Col 3 Specific Wireframe */
-.cz-wf3-r1-left { background-color: #f4f5f6; grid-column: 1; grid-row: 1; }
-.cz-wf3-r1-right { background-color: #ede6d9; grid-column: 2; grid-row: 1; }
-.cz-wf3-r2-left { background-color: #d6eff0; grid-column: 1; grid-row: 2; }
-.cz-wf3-r2-right { background-color: #f4f5f6; grid-column: 2; grid-row: 2; }
+.cz-wf3-r1-left { background-color: #FFFFFF; grid-column: 1; grid-row: 1; }
+.cz-wf3-r1-right { background-color: #FFFFFF; grid-column: 2; grid-row: 1; }
+.cz-wf3-r2-left { background-color: #D7FEFA; grid-column: 1; grid-row: 2; }
+.cz-wf3-r2-right { background-color: #FFFFFF; grid-column: 2; grid-row: 2; }
 .cz-wf3-r3-all { 
   grid-column: 1 / 3; 
   grid-row: 3; 
@@ -531,9 +691,9 @@ html {
   grid-template-columns: 1fr 1fr 1fr; 
   gap: 8px;
 }
-.cz-wf3-r3-1 { background-color: #ede6d9; border-radius: 4px;}
-.cz-wf3-r3-2 { background-color: #d6eff0; border-radius: 4px;}
-.cz-wf3-r3-3 { background-color: #ede6d9; border-radius: 4px;}
+.cz-wf3-r3-1 { background-color: #FFFFFF; border-radius: 4px;}
+.cz-wf3-r3-2 { background-color: #D7FEFA; border-radius: 4px;}
+.cz-wf3-r3-3 { background-color: #FFFFFF; border-radius: 4px;}
 
 /* Badge circles inside wireframe boxes */
 .cz-wf-badge {
@@ -547,7 +707,7 @@ html {
   box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 .cz-wf-badge .lucide {
-  color: #6bc4c9;
+  color: #D7FEFA;
 }
 
 /* PHASE 4: ALTERNATING FEATURES */
@@ -559,10 +719,10 @@ html {
 }
 
 .cz-alt-white { background-color: #ffffff; }
-.cz-alt-gray { background-color: #fafbfc; }
-.cz-alt-dark { background-color: #111214; color: #ffffff; }
+.cz-alt-gray { background-color: #FFFFFF; }
+.cz-alt-dark { background-color: #1A1D1D; color: #ffffff; }
 .cz-alt-dark .cz-alt-title { color: #ffffff; }
-.cz-alt-dark .cz-alt-desc { color: #a0aab2; }
+.cz-alt-dark .cz-alt-desc { color: rgba(255, 255, 255, 0.7); }
 
 .cz-alt-container {
   display: flex;
@@ -577,10 +737,10 @@ html {
 }
 
 .cz-alt-title {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--cz-font);
   font-size: 38px;
-  font-weight: 700;
-  color: #111214;
+  font-weight: 500;
+  color: #1A1D1D;
   margin-bottom: 24px;
   letter-spacing: -0.03em;
   line-height: 1.2;
@@ -588,7 +748,7 @@ html {
 
 .cz-alt-desc {
   font-size: 16px;
-  color: #5f6368;
+  color: #1A1D1D;
   line-height: 1.6;
 }
 
@@ -604,7 +764,7 @@ html {
 
 /* Feature 1 Graphic: Stacked Bars */
 .cz-f1-graphic {
-  background-color: #1c1d1f;
+  background-color: #2B2E2E;
   padding: 30px;
   border-radius: 8px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.2);
@@ -627,9 +787,9 @@ html {
   height: 100%;
 }
 
-.cz-f1-bar-top { background-color: #6bc4c9; border-radius: 2px 2px 0 0; }
-.cz-f1-bar-mid { background-color: #e2e4e5; }
-.cz-f1-bar-bot { background-color: #5f6368; }
+.cz-f1-bar-top { background-color: #D7FEFA; border-radius: 2px 2px 0 0; }
+.cz-f1-bar-mid { background-color: #2B2E2E; }
+.cz-f1-bar-bot { background-color: #1A1D1D; }
 
 .cz-f1-red-line {
   position: absolute;
@@ -653,7 +813,7 @@ html {
 
 /* Feature 2 Graphic: Anomaly Line Chart */
 .cz-f2-graphic {
-  background-color: #111214;
+  background-color: #1A1D1D;
   padding: 30px;
   border-radius: 8px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.2);
@@ -680,25 +840,25 @@ html {
   position: absolute;
   width: 12px;
   height: 12px;
-  background-color: #f43f5e;
+  background-color: #D7FEFA;
   border: 3px solid #ffffff;
   border-radius: 50%;
   top: 60px;
   left: 150px;
-  box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.3);
+  box-shadow: 0 0 0 2px rgba(215, 254, 250, 0.3);
 }
 
 .cz-anomaly-alert {
   position: absolute;
   top: 20px;
   left: 170px;
-  background-color: #252629;
+  background-color: #2B2E2E;
   border: 1px solid rgba(255,255,255,0.1);
   padding: 6px 12px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
-  color: #f43f5e;
+  color: #D7FEFA;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -755,167 +915,7 @@ html {
   }
 }
 
-/* UNIQUE SECURITY WORKFLOW PIPELINE */
-.cz-workflow-section {
-  background-color: #111214;
-  padding: 120px 40px;
-  color: #ffffff;
-  position: relative;
-  overflow: hidden;
-}
 
-.cz-workflow-container {
-  max-width: 1100px;
-  margin: 0 auto;
-  position: relative;
-}
-
-.cz-workflow-line {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background: repeating-linear-gradient(90deg, #32363a 0, #32363a 10px, transparent 10px, transparent 20px);
-  z-index: 1;
-  transform: translateY(-50%);
-}
-
-.cz-workflow-packet {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 12px;
-  height: 12px;
-  background-color: #ff5432;
-  border-radius: 50%;
-  box-shadow: 0 0 15px #ff5432, 0 0 30px #ff5432;
-  transform: translate(-50%, -50%);
-  z-index: 2;
-  animation: movePacket 5s infinite cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes movePacket {
-  0% { left: 0; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { left: 100%; opacity: 0; }
-}
-
-.cz-workflow-steps {
-  display: flex;
-  justify-content: space-between;
-  position: relative;
-  z-index: 3;
-  height: 500px; /* Provides room for zigzag cards */
-}
-
-.cz-workflow-step {
-  position: relative;
-  width: 31%;
-}
-
-.cz-workflow-icon-wrap {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background-color: #1c1d1f;
-  border: 2px solid #6bc4c9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 20px rgba(107, 196, 201, 0.2);
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 4;
-}
-
-.cz-workflow-step:nth-child(even) .cz-workflow-icon-wrap {
-  border-color: #ff5432;
-  box-shadow: 0 0 20px rgba(255, 84, 50, 0.2);
-}
-
-.cz-workflow-card {
-  background: rgba(28, 29, 31, 0.8);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 12px;
-  padding: 30px;
-  width: 100%;
-  box-sizing: border-box;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-  position: absolute;
-  left: 0;
-}
-
-/* Odd steps (1, 3): Card is above the line */
-.cz-workflow-step:nth-child(odd) .cz-workflow-card {
-  bottom: calc(50% + 50px);
-}
-.cz-workflow-step:nth-child(odd) .cz-workflow-card::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -50px;
-  width: 0;
-  height: 50px;
-  border-left: 2px dashed rgba(255,255,255,0.15);
-  transform: translateX(-50%);
-}
-
-/* Even steps (2): Card is below the line */
-.cz-workflow-step:nth-child(even) .cz-workflow-card {
-  top: calc(50% + 50px);
-}
-.cz-workflow-step:nth-child(even) .cz-workflow-card::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: -50px;
-  width: 0;
-  height: 50px;
-  border-left: 2px dashed rgba(255,255,255,0.15);
-  transform: translateX(-50%);
-}
-
-.cz-workflow-card-title {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: #ffffff;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.cz-workflow-card-desc {
-  font-size: 14px;
-  color: #a0aab2;
-  line-height: 1.6;
-  margin-bottom: 20px;
-}
-
-.cz-terminal-box {
-  background-color: #0d0e10;
-  border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 6px;
-  padding: 12px;
-  font-family: monospace;
-  font-size: 11px;
-  color: #6bc4c9;
-  position: relative;
-  overflow: hidden;
-}
-.cz-terminal-box::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(180deg, rgba(107, 196, 201, 0.05) 0%, transparent 100%);
-  pointer-events: none;
-}
 
 .cz-feature-img {
   max-width: 100%;

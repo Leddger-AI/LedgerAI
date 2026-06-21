@@ -9,12 +9,13 @@
 
 /* Sidebar Styling */
 .sidebar {
-  width: 270px;
+  width: 80px;
   height: 100%;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  align-items: center;
   flex-shrink: 0;
   transition: var(--transition-smooth);
 }
@@ -23,45 +24,51 @@
   height: 76px;
   display: flex;
   align-items: center;
-  padding: 0 24px;
+  justify-content: center;
+  padding: 0;
+  width: 100%;
   border-bottom: 1px solid var(--border-color);
 }
 
 .logo-text {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 15px;
+  font-size: 0;
   letter-spacing: 0.08em;
-  background: linear-gradient(135deg, var(--color-cyan) 0%, var(--color-purple) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 0;
 }
 
 .sidebar-menu {
   flex: 1;
-  padding: 24px 16px;
+  padding: 24px 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
   overflow-y: auto;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
   color: var(--text-secondary);
   text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 8px;
+  border-radius: 12px;
   transition: var(--transition-smooth);
   cursor: pointer;
   border: 1px solid transparent;
+  position: relative;
+}
+
+.menu-item span {
+  display: none;
 }
 
 .menu-item:hover {
@@ -70,11 +77,20 @@
 }
 
 .menu-item.active {
-  color: var(--text-primary);
-  background: linear-gradient(90deg, var(--bg-sidebar-active) 0%, rgba(181, 95, 230, 0.02) 100%);
-  border-left: 3px solid var(--color-cyan);
-  border-color: rgba(255, 255, 255, 0.03) rgba(255, 255, 255, 0.03) rgba(255, 255, 255, 0.03) var(--color-cyan);
-  box-shadow: inset 5px 0 15px -5px var(--color-cyan-glow);
+  color: var(--color-cyan);
+  background-color: rgba(215, 254, 250, 0.06);
+  border-color: transparent;
+}
+
+.menu-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  background-color: var(--color-cyan);
+  border-radius: 0 4px 4px 0;
 }
 
 .menu-item svg {
@@ -89,13 +105,7 @@
 }
 
 .sidebar-footer {
-  padding: 20px 24px;
-  border-top: 1px solid var(--border-color);
-  font-size: 11px;
-  color: var(--text-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: none;
 }
 
 /* Main Content Area */
@@ -268,8 +278,8 @@
   flex: 1;
   padding: 32px;
   overflow-y: auto;
-  background: radial-gradient(circle at 80% 10%, rgba(181, 95, 230, 0.03) 0%, rgba(0, 0, 0, 0) 50%),
-              radial-gradient(circle at 10% 80%, rgba(0, 240, 255, 0.02) 0%, rgba(0, 0, 0, 0) 50%);
+  background: radial-gradient(circle at 80% 10%, rgba(215, 254, 250, 0.03) 0%, rgba(0, 0, 0, 0) 50%),
+              radial-gradient(circle at 10% 80%, rgba(215, 254, 250, 0.02) 0%, rgba(0, 0, 0, 0) 50%);
 }
 
 /* Section Title styling */
@@ -599,19 +609,19 @@
 .confidence-badge.high {
   background-color: var(--color-success-glow);
   color: var(--color-success);
-  border-color: rgba(16, 185, 129, 0.2);
+  border-color: rgba(215, 254, 250, 0.2);
 }
 
 .confidence-badge.medium {
   background-color: var(--color-warning-glow);
   color: var(--color-warning);
-  border-color: rgba(245, 158, 11, 0.2);
+  border-color: rgba(215, 254, 250, 0.2);
 }
 
 .confidence-badge.low {
   background-color: var(--color-danger-glow);
   color: var(--color-pink);
-  border-color: rgba(239, 68, 68, 0.2);
+  border-color: rgba(215, 254, 250, 0.2);
 }
 
 /* Table Action Buttons */
@@ -748,7 +758,7 @@
 }
 
 .alert-btn.primary {
-  background-color: rgba(0, 240, 255, 0.1);
+  background-color: rgba(215, 254, 250, 0.1);
   border: 1px solid var(--color-cyan-dim);
   color: var(--color-cyan);
 }
@@ -784,7 +794,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(6, 9, 19, 0.85);
+  background-color: rgba(26, 29, 29, 0.85);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;

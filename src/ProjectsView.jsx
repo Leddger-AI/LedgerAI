@@ -377,7 +377,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
               </div>
 
               {isOverBudget && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', backgroundColor: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', borderRadius: '6px', padding: '8px 12px', fontSize: '11px', color: 'var(--color-pink)', marginTop: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', backgroundColor: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.15)', borderRadius: '6px', padding: '8px 12px', fontSize: '11px', color: 'var(--color-pink)', marginTop: '8px' }}>
                   <AlertTriangle size={14} />
                   <span>Cost overrun alert: Reconsider recurring meetings load.</span>
                 </div>

@@ -248,6 +248,7 @@ export default function ReportsView({ meetings }) {
                     verticalAlign="middle"
                     iconSize={8}
                     wrapperStyle={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+                    formatter={(value) => <span style={{ color: '#ffffff' }}>{value}</span>}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -287,8 +288,7 @@ export default function ReportsView({ meetings }) {
                         fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: '600',
                         backgroundColor: meeting.project === 'Project Phoenix' ? 'rgba(181, 95, 230, 0.15)' : 
                                         meeting.project === 'Client ABC Onboarding' ? 'rgba(6, 182, 212, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                        color: meeting.project === 'Project Phoenix' ? 'var(--color-purple)' : 
-                               meeting.project === 'Client ABC Onboarding' ? 'var(--color-cyan)' : 'var(--color-warning)'
+                        color: '#ffffff'
                       }}>
                         {meeting.project}
                       </span>
@@ -296,14 +296,14 @@ export default function ReportsView({ meetings }) {
                     <td style={{ padding: '14px 16px' }}>
                       <span style={{
                         fontWeight: '700',
-                        color: meeting.confidence > 80 ? 'var(--color-success)' : meeting.confidence > 50 ? 'var(--color-warning)' : 'var(--color-pink)'
+                        color: '#ffffff'
                       }}>
                         {meeting.confidence}%
                       </span>
                     </td>
                     <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{meeting.duration}</td>
                     <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{meeting.attendeeCount}</td>
-                    <td style={{ padding: '14px 16px', fontWeight: 'bold', color: 'var(--color-cyan)' }}>${meeting.cost.toLocaleString()}</td>
+                    <td style={{ padding: '14px 16px', fontWeight: 'bold', color: '#ffffff' }}>${meeting.cost.toLocaleString()}</td>
                   </tr>
                 ))
               )}

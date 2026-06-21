@@ -1,38 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg-main: #060913;
-  --bg-card: #0f1626;
-  --bg-card-hover: #161f38;
-  --bg-sidebar: #090c16;
-  --bg-sidebar-active: rgba(6, 182, 212, 0.08);
-  --border-color: rgba(255, 255, 255, 0.05);
-  --border-hover: rgba(255, 255, 255, 0.1);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --bg-main: #121315;
+  --bg-card: #1C1E20;
+  --bg-card-hover: #212326;
+  --bg-sidebar: #08090A;
+  --bg-sidebar-active: rgba(215, 254, 250, 0.08);
+  --border-color: rgba(255, 255, 255, 0.04);
+  --border-hover: rgba(255, 255, 255, 0.08);
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.4);
   
-  --color-cyan: #00f0ff;
-  --color-cyan-dim: #06b6d4;
-  --color-cyan-glow: rgba(0, 240, 255, 0.15);
-  --color-purple: #b55fe6;
-  --color-purple-dim: #a855f7;
-  --color-purple-glow: rgba(181, 95, 230, 0.15);
-  --color-pink: #f43f5e;
+  --color-cyan: #FFFFFF;
+  --color-cyan-dim: #FFFFFF;
+  --color-cyan-glow: rgba(255, 255, 255, 0.15);
+  --color-purple: #FFFFFF;
+  --color-purple-dim: #FFFFFF;
+  --color-purple-glow: rgba(255, 255, 255, 0.15);
+  --color-pink: #FFFFFF;
   
-  --color-success: #10b981;
-  --color-success-glow: rgba(16, 185, 129, 0.15);
-  --color-warning: #f59e0b;
-  --color-warning-glow: rgba(245, 158, 11, 0.15);
-  --color-danger: #ef4444;
-  --color-danger-glow: rgba(239, 68, 68, 0.2);
+  --color-success: #FFFFFF;
+  --color-success-glow: rgba(255, 255, 255, 0.15);
+  --color-warning: #FFFFFF;
+  --color-warning-glow: rgba(255, 255, 255, 0.15);
+  --color-danger: #FFFFFF;
+  --color-danger-glow: rgba(255, 255, 255, 0.2);
   
   --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --shadow-glow-cyan: 0 0 15px rgba(0, 240, 255, 0.25);
-  --shadow-glow-purple: 0 0 15px rgba(181, 95, 230, 0.25);
+  --shadow-glow-cyan: 0 0 15px rgba(215, 254, 250, 0.25);
+  --shadow-glow-purple: 0 0 15px rgba(215, 254, 250, 0.25);
   --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
 }
 
@@ -71,7 +71,6 @@ body {
   background: var(--text-muted);
 }
 
-/* Animations */
 @keyframes pulse-cyan {
   0%, 100% {
     opacity: 0.6;

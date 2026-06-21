@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
 from google.oauth2.credentials import Credentials as GoogleCredentials
 from googleapiclient.discovery import build
+from google.auth.exceptions import RefreshError
 from auth import get_current_user
 from ai_engine import attribute_meeting
 from pydantic import BaseModel
@@ -160,7 +161,14 @@ async def get_calendar_events(
             "events": formatted_events
         }
         
+    except RefreshError as re:
+        raise HTTPException(
+            status_code=401,
+            detail="Google Access Token is expired or invalid. Please re-authenticate."
+        )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail=f"Error retrieving calendar data: {str(e)}"
@@ -240,3 +248,93 @@ def calculate_meeting_cost_and_status(
         "total_cost": total_cost,
         "requires_human_review": requires_human_review
     }
+
+from fastapi.responses import RedirectResponse
+import urllib.request
+import urllib.parse
+from firebase_admin import firestore
+
+@app.get("/api/github/callback")
+async def github_callback(code: str, state: str = None, installation_id: str = None):
+    """
+    Callback endpoint for GitHub App OAuth.
+    Exchanges the authorization code for a User Access Token.
+    Saves credentials safely in Firestore under the Firebase user's UID.
+    """
+    client_id = os.getenv("GITHUB_CLIENT_ID")
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET")
+    frontend_base = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    
+    if not client_id or not client_secret:
+        return RedirectResponse(url=f"{frontend_base}/candidate-flow?error=missing_credentials")
+        
+    # Extract Firebase UID from state parameter (format: "nonce:firebase_uid")
+    firebase_uid = "unknown"
+    if state:
+        state_parts = state.split(":")
+        if len(state_parts) > 1:
+            firebase_uid = state_parts[1]
+            
+    try:
+        data = urllib.parse.urlencode({
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://github.com/login/oauth/access_token",
+            data=data,
+            headers={"Accept": "application/json"}
+        )
+
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            
+        token = res_data.get("access_token")
+        if not token:
+            return RedirectResponse(url=f"{frontend_base}/candidate-flow?error=no_token")
+            
+        # Fetch user profile to retrieve the username
+        user_req = urllib.request.Request(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "User-Agent": "LedgerAI-App"
+            }
+        )
+        with urllib.request.urlopen(user_req) as user_response:
+            user_info = json.loads(user_response.read().decode("utf-8"))
+            github_username = user_info.get("login")
+            
+        # Save credentials safely in Firestore under the user's Firebase UID
+        if firebase_uid != "unknown":
+            try:
+                db = firestore.client()
+                db.collection("users").document(firebase_uid).set({
+                    "github_access_token": token,
+                    "github_username": github_username,
+                    "installation_id": installation_id or "",
+                    "updated_at": firestore.SERVER_TIMESTAMP
+                }, merge=True)
+            except Exception as fe:
+                print(f"Firestore save error (continuing callback): {fe}")
+            
+        # Redirect back to frontend
+        frontend_url = f"{frontend_base}/candidate-flow"
+        params = {
+            "githubUsername": github_username or "",
+            "githubToken": token,
+            "status": "connected"
+        }
+        if installation_id:
+            params["installation_id"] = installation_id
+            
+        redirect_target = f"{frontend_url}?{urllib.parse.urlencode(params)}"
+        return RedirectResponse(url=redirect_target)
+        
+    except Exception as e:
+        print(f"Error during GitHub App OAuth callback: {e}")
+        return RedirectResponse(url=f"{frontend_base}/candidate-flow?error={urllib.parse.quote(str(e))}")
+
+

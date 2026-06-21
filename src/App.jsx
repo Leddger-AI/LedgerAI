@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, lazy, Suspense } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Briefcase,
@@ -38,6 +39,7 @@ import {
 import './App.css';
 import { loginWithGoogleAndCalendar } from './firebaseAuth';
 import LandingPage from './LandingPage.jsx';
+import Navbar from './Navbar.jsx';
 import KnowledgeBase from './KnowledgeBase.jsx';
 import ProjectsView from './ProjectsView.jsx';
 import TeamsView from './TeamsView.jsx';
@@ -45,6 +47,13 @@ import CalendarView from './CalendarView.jsx';
 import ReportsView from './ReportsView.jsx';
 import AlertsView from './AlertsView.jsx';
 import SettingsView from './SettingsView.jsx';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+// Lazy loaded page components to resolve startup slow-loading (buffering) warnings
+const RecruiterDashboard = lazy(() => import('./pages/RecruiterDashboard.jsx'));
+const StudentPortal = lazy(() => import('./pages/StudentPortal.jsx'));
+const AnalyticsEngine = lazy(() => import('./pages/AnalyticsEngine.jsx'));
 
 
 // Pre-defined avatars from public sources
@@ -290,6 +299,7 @@ export default function App() {
     setUser(null);
     setTokens(null);
     setApiError(null);
+    setShowDashboard(false);
     // Reset to mock data
     setMeetings([
       {
@@ -365,7 +375,7 @@ export default function App() {
     setLoading(true);
     setApiError(null);
     try {
-      const response = await fetch(`http://localhost:8000/api/calendar/events?google_token=${googleToken}`, {
+      const response = await fetch(`${API_BASE_URL}/api/calendar/events?google_token=${googleToken}`, {
         headers: {
           'Authorization': `Bearer ${firebaseToken}`
         }
@@ -660,22 +670,66 @@ export default function App() {
   };
 
   if (!showDashboard) {
+    const handleStartDashboard = async () => {
+      if (user) {
+        setShowDashboard(true);
+      } else {
+        const success = await handleLogin();
+        if (success) {
+          setShowDashboard(true);
+        }
+      }
+    };
+
     return (
-      <LandingPage 
-        onStartDashboard={async () => {
-          if (user) {
-            setShowDashboard(true);
-          } else {
-            const success = await handleLogin();
-            if (success) {
-              setShowDashboard(true);
-            }
-          }
-        }}
-        loading={loading}
-        apiError={apiError}
-        onClearError={() => setApiError(null)}
-      />
+      <>
+        <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
+        <Suspense fallback={
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '80vh',
+            color: 'var(--color-cyan)',
+            fontFamily: 'var(--font-display)',
+            fontSize: '18px'
+          }}>
+            <div className="animate-spin" style={{
+              marginRight: '12px',
+              width: '24px',
+              height: '24px',
+              border: '3px solid rgba(215, 254, 250, 0.1)',
+              borderTopColor: 'var(--color-cyan)',
+              borderRadius: '50%'
+            }} />
+            Loading LedgerAI Portal...
+          </div>
+        }>
+          <Routes>
+            <Route path="/" element={
+              <LandingPage 
+                onStartDashboard={handleStartDashboard}
+                loading={loading}
+                apiError={apiError}
+                onClearError={() => setApiError(null)}
+              />
+            } />
+            <Route path="/security" element={
+              <LandingPage 
+                onStartDashboard={handleStartDashboard}
+                loading={loading}
+                apiError={apiError}
+                onClearError={() => setApiError(null)}
+              />
+            } />
+            <Route path="/recruiter-flow" element={<RecruiterDashboard />} />
+            <Route path="/recruiter" element={<RecruiterDashboard />} />
+            <Route path="/candidate-flow" element={<StudentPortal />} />
+            <Route path="/analytics" element={<AnalyticsEngine />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </>
     );
   }
 
@@ -758,154 +812,28 @@ export default function App() {
           <div>HR Cost Intelligence Engine v1.4</div>
           <div>Powered by AI Attribution</div>
         </div>
+
+        {/* User Profile in Sidebar */}
+        <div className="sidebar-profile-widget" style={{ padding: '20px 0', borderTop: '1px solid var(--border-color)', width: '100%', display: 'flex', justifyContent: 'center' }}>
+          <img 
+            src={user?.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80"} 
+            alt="Profile" 
+            style={{ 
+              width: '40px', 
+              height: '40px', 
+              borderRadius: '50%', 
+              objectFit: 'cover', 
+              border: '2px solid rgba(255,255,255,0.08)',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+              cursor: 'pointer'
+            }} 
+            title={`${user?.displayName || "Sarah Jenkins"} (${user ? "Authenticated VP" : "HR Operations VP"})`}
+          />
+        </div>
       </aside>
 
       {/* --- MAIN WORKSPACE --- */}
       <div className="main-content">
-
-        {/* --- TOPBAR --- */}
-        <header className="top-header">
-          {/* Search bar filtering table */}
-          <div className="search-bar-container">
-            <Search className="search-icon-inside" />
-            <input
-              type="text"
-              placeholder="Search meetings or projects..."
-              className="search-input"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <span className="search-shortcut">⌘ K</span>
-          </div>
-
-          <div className="header-right">
-            {/* Live date selector dropdown */}
-            <div style={{ position: 'relative' }}>
-              <div className="date-selector" onClick={() => setShowDatePicker(!showDatePicker)}>
-                <Calendar />
-                <span>{datePreset}</span>
-                <ChevronDown size={14} />
-              </div>
-              {showDatePicker && (
-                <div className="glass-panel" style={{
-                  position: 'absolute',
-                  top: '46px',
-                  right: '0',
-                  width: '180px',
-                  zIndex: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  padding: '8px',
-                  gap: '4px'
-                }}>
-                  {['Last 7 Days', 'Last 30 Days', 'This Month'].map(preset => (
-                    <div
-                      key={preset}
-                      style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        backgroundColor: datePreset === preset ? 'rgba(0, 240, 255, 0.08)' : 'transparent',
-                        color: datePreset === preset ? 'var(--color-cyan)' : 'var(--text-secondary)',
-                      }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.03)'}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = datePreset === preset ? 'rgba(0, 240, 255, 0.08)' : 'transparent'}
-                      onClick={() => {
-                        setDatePreset(preset);
-                        setShowDatePicker(false);
-                      }}
-                    >
-                      {preset}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Notifications with counter */}
-            <button className="icon-btn">
-              <Bell size={18} />
-              {activeAlertsCount > 0 && <span className="notification-badge" />}
-            </button>
-
-            {/* Sync / Authentication controls */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {!tokens && (
-                <button 
-                  className="table-action-btn"
-                  onClick={enterDemoMode}
-                  style={{ 
-                    backgroundColor: 'rgba(255, 255, 255, 0.04)', 
-                    borderColor: 'rgba(255, 255, 255, 0.08)', 
-                    color: 'var(--text-secondary)',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Demo Mode
-                </button>
-              )}
-              <button 
-                className="table-action-btn"
-                onClick={handleSyncClick}
-                disabled={loading}
-                style={{ 
-                  backgroundColor: 'rgba(0, 240, 255, 0.12)', 
-                  borderColor: 'rgba(0, 240, 255, 0.2)', 
-                  color: 'var(--color-cyan)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  boxShadow: tokens ? 'none' : '0 0 10px rgba(0, 240, 255, 0.15)'
-                }}
-              >
-                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                <span>{tokens ? 'Sync' : 'Connect Calendar'}</span>
-              </button>
-              {tokens && (
-                <button 
-                  className="table-action-btn"
-                  onClick={handleLogout}
-                  style={{ 
-                    backgroundColor: 'rgba(244, 63, 94, 0.1)', 
-                    borderColor: 'rgba(244, 63, 94, 0.2)', 
-                    color: 'var(--color-pink)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '8px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    width: '32px',
-                    height: '32px'
-                  }}
-                  title="Disconnect account"
-                >
-                  <LogOut size={14} />
-                </button>
-              )}
-            </div>
-
-            {/* User Profile */}
-            <div className="user-profile-widget">
-              <img 
-                src={user?.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80"} 
-                alt="Profile" 
-                className="avatar"
-              />
-              <div className="user-info">
-                <span className="user-name">{user?.displayName || "Sarah Jenkins"}</span>
-                <span className="user-role">{user ? "Authenticated VP" : "HR Operations VP"}</span>
-              </div>
-            </div>
-          </div>
-        </header>
 
         {/* --- VIEWPORT --- */}
         <main className="dashboard-viewport">
@@ -1544,7 +1472,7 @@ export default function App() {
                   padding: '10px 18px', 
                   fontSize: '13px', 
                   backgroundColor: 'var(--color-cyan)', 
-                  color: '#060a1a', 
+                  color: '#1A1D1D', 
                   fontWeight: '600',
                   boxShadow: '0 0 10px var(--color-cyan-glow)' 
                 }}

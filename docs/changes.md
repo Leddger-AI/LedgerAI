@@ -61,3 +61,35 @@ This document summarizes the changes, creations, and configuration modifications
   - Linked landing page buttons ("Sign In", "Get Started", and "Get Started Now") directly to the Firebase Google Calendar sign-in flow.
   - Configured automated redirection: once a user signs in, their calendar events are fetched in the background from the FastAPI backend and they are transitioned straight into the active cost dashboard.
   - Integrated loading indicators and floating error banners on the landing page UI for smooth user feedback.
+
+---
+
+## 👤 7. Recruiter Candidate smart profile image switcher (Phase 1)
+- **Modified:** [src/pages/StudentPortal.jsx](file:///C:/PROJECTS/EXPERIMENT/Leddger-AI/src/pages/StudentPortal.jsx)
+  - Added input field for `githubUsername` and file upload element for manual profile pictures.
+  - Form data converts manually uploaded images to Base64 strings.
+  - Package both fields into the encrypted AES JSON payload before local local submission.
+  - Changed text colors of headers and decrypted values to pure white to conform to the strict white-text theme rule.
+- **Modified:** [src/pages/RecruiterDashboard.jsx](file:///C:/PROJECTS/EXPERIMENT/Leddger-AI/src/pages/RecruiterDashboard.jsx)
+  - Created `CandidateAvatar` component to resolve and switch candidate avatars based on the fallback hierarchy (manual image > GitHub API URL > initials text bubble > default placeholder).
+  - Integrated `<CandidateAvatar />` inside the mapping loop of decrypted submissions.
+  - Adjusted the default initials placeholder text to pure white.
+  - Updated `generateCode()` mock candidate payload to include a sample GitHub username for instant decryption test validation.
+- **Created:** [docs/github_integration.md](file:///C:/PROJECTS/EXPERIMENT/Leddger-AI/docs/github_integration.md)
+  - Authored documentation explaining the avatar lookup fallback hierarchy and the secure client-side encryption workflow.
+
+---
+
+## 📊 8. GitHub Project Analysis & Engagement Tracker (Phase 2)
+- **Modified:** [src/pages/RecruiterDashboard.jsx](file:///C:/PROJECTS/EXPERIMENT/Leddger-AI/src/pages/RecruiterDashboard.jsx)
+  - Implemented the `GithubAnalysis` React component. It triggers a REST API query to fetch repositories from `https://api.github.com/users/{username}/repos` on candidate decryption.
+  - Programmed a 14x7 contribution micro-grid (Commit Pulse Graph) rendering code intensity squares in varying shades/opacities of cyan (`#00f0ff`).
+  - Added dynamic stack bar calculations dividing repository languages into percentage segments with distinct colors.
+  - Created a contextualized AI Review card extracting readability and structure metrics based on candidate repositories and years of experience.
+  - Wired `<GithubAnalysis />` inside the decrypted application list block.
+- **Modified:** [docs/github_integration.md](file:///C:/PROJECTS/EXPERIMENT/Leddger-AI/docs/github_integration.md)
+  - Documented grid features, telemetry algorithms, and fallback states.
+- **Modified:** [docs/features.md](file:///C:/PROJECTS/EXPERIMENT/Leddger-AI/docs/features.md)
+  - Updated candidate features list to describe the repository analysis dashboard and visual widgets.
+
+

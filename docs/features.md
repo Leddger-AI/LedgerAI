@@ -47,3 +47,20 @@ Assigns meetings to project codes based on calendar descriptions and metadata:
   2. `Client ABC Onboarding` (Frontend/client calls for ABC)
   3. `Q4 Marketing Strategy` (Growth metrics/ad campaigns)
   4. `Internal Operations` (General standups/syncs/HR administrative work)
+
+---
+
+## 👤 5. Recruiter Candidate Smart Profile Image Switcher & Repo Analytics (Phases 1 & 2)
+Built-in component integrations to handle candidate identity presentation and repository analysis in the Recruiter Control Center:
+- **Form Integration:** Student portals securely prompt for the candidate's GitHub username and manual profile picture file upload.
+- **Smart Avatar Component:** Evaluates candidate profiles on decryption using a tiered fallback system:
+  1. Renders manually uploaded images (converted to Base64 strings) with a premium circular pill layout.
+  2. Resolves GitHub usernames via API fetches to display official GitHub avatars.
+  3. Reverts to stylized capitalized initials or a default placeholder bubble if no username or custom upload exists.
+- **Local Client Decryption:** Decrypts candidates' profiles in real-time, feeding resolved username and image strings into rendering layers.
+- **GitHub Repository Analysis Dashboard:** Renders an elegant telemetry grid under decrypted profiles:
+  - **Commit Pulse Graph:** Identifies developer activity over a 90-day span with a contribution density map.
+  - **Tech Stack bar:** Computes actual coding language usage percentages from active GitHub API requests.
+  - **AI Analysis summary:** Measures code quality scores (readability, modularity) and highlights structural strengths and security flags based on candidate repositories and years of experience.
+
+
