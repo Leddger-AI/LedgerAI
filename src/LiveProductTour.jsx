@@ -21,7 +21,32 @@ export default function LiveProductTour() {
     { id: 1, label: "Assessment Analytics Engine" }
   ];
 
+  const [hasStarted, setHasStarted] = useState(false);
+  const containerRef = useRef(null);
+
   useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasStarted(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.15 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasStarted) return;
+
     let isActive = true;
     
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -136,10 +161,10 @@ export default function LiveProductTour() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [hasStarted]);
 
   return (
-    <div className="lpt-container">
+    <div className="lpt-container" ref={containerRef}>
       <div className="lpt-browser-mockup" ref={mockupRef}>
         <div className="lpt-browser-header">
           <div className="lpt-browser-dots">
