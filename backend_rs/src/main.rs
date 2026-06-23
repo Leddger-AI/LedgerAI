@@ -1,6 +1,7 @@
 pub mod ai_engine;
 pub mod auth;
 pub mod routes;
+pub mod knowledge_base;
 
 use axum::{
     http::{Method, StatusCode},
@@ -13,6 +14,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use ai_engine::attribute_meeting;
 use routes::{get_calendar_events, github_callback};
+use knowledge_base::routes::{ingest_file, ingest_slack, list_documents, get_document, delete_document};
 
 #[derive(Deserialize)]
 pub struct MeetingPayload {
@@ -37,20 +39,25 @@ async fn attribute_meeting_endpoint(
 
 #[tokio::main]
 async fn main() {
-    // Load environment variables from .env file
-    let _ = dotenvy::from_path("../backend/.env");
+    // Load environment variables from root .env file (since backend/ will be deleted)
+    let _ = dotenvy::from_path(".env");
     let _ = dotenvy::dotenv();
 
     // Enable CORS for frontend client-side calls
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(vec![Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods(vec![Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
         .allow_headers(Any);
 
     let app = Router::new()
         .route("/api/calendar/events", get(get_calendar_events))
         .route("/api/github/callback", get(github_callback))
         .route("/ai/attribute-meeting", post(attribute_meeting_endpoint))
+        // Knowledge Base Routes
+        .route("/api/kb/ingest/file", post(ingest_file))
+        .route("/api/kb/ingest/slack", post(ingest_slack))
+        .route("/api/kb/documents", get(list_documents))
+        .route("/api/kb/documents/:document_id", get(get_document).delete(delete_document))
         .layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
