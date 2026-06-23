@@ -60,7 +60,11 @@ async fn main() {
         .route("/api/kb/documents/:document_id", get(get_document).delete(delete_document))
         .layer(cors);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
+    let port = env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(8000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("Ledger AI Rust Backend listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
