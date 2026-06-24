@@ -1,0 +1,143 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --bg-main: #121315;
+  --bg-card: #1C1E20;
+  --bg-card-hover: #212326;
+  --bg-sidebar: #08090A;
+  --bg-sidebar-active: rgba(215, 254, 250, 0.08);
+  --border-color: rgba(255, 255, 255, 0.04);
+  --border-hover: rgba(255, 255, 255, 0.08);
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  
+  --color-cyan: #FFFFFF;
+  --color-cyan-dim: #FFFFFF;
+  --color-cyan-glow: rgba(255, 255, 255, 0.15);
+  --color-purple: #FFFFFF;
+  --color-purple-dim: #FFFFFF;
+  --color-purple-glow: rgba(255, 255, 255, 0.15);
+  --color-pink: #FFFFFF;
+  
+  --color-success: #FFFFFF;
+  --color-success-glow: rgba(255, 255, 255, 0.15);
+  --color-warning: #FFFFFF;
+  --color-warning-glow: rgba(255, 255, 255, 0.15);
+  --color-danger: #FFFFFF;
+  --color-danger-glow: rgba(255, 255, 255, 0.2);
+  
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --shadow-glow-cyan: 0 0 15px rgba(215, 254, 250, 0.25);
+  --shadow-glow-purple: 0 0 15px rgba(215, 254, 250, 0.25);
+  --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  height: 100vh;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+@keyframes pulse-cyan {
+  0%, 100% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(0, 240, 255, 0.8);
+  }
+}
+
+@keyframes pulse-purple {
+  0%, 100% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px rgba(181, 95, 230, 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(181, 95, 230, 0.8);
+  }
+}
+
+@keyframes pulse-danger {
+  0%, 100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.pulse-cyan-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--color-cyan);
+  border-radius: 50%;
+  animation: pulse-cyan 2s infinite ease-in-out;
+}
+
+.pulse-purple-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--color-purple);
+  border-radius: 50%;
+  animation: pulse-purple 2s infinite ease-in-out;
+}
+
+.pulse-danger-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--color-pink);
+  border-radius: 50%;
+  animation: pulse-danger 1.5s infinite ease-in-out;
+}
+
+/* Glassmorphism panel class */
+.glass-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  transition: var(--transition-smooth);
+}
+
+.glass-panel:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-card-hover);
+}
