@@ -1,5 +1,5 @@
 import { useState, useMemo, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Briefcase,
@@ -22,7 +22,12 @@ import {
   TrendingUp,
   X,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  Send,
+  BarChart3,
+  UserSearch,
+  Video,
+  Download
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -47,6 +52,11 @@ import CalendarView from './CalendarView.jsx';
 import ReportsView from './ReportsView.jsx';
 import AlertsView from './AlertsView.jsx';
 import SettingsView from './SettingsView.jsx';
+import SourcingView from './SourcingView.jsx';
+import MeetView from './MeetView.jsx';
+import ExportView from './ExportView.jsx';
+import EmailAutomationView from './EmailAutomationView.jsx';
+import AnalysisView from './AnalysisView.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -54,6 +64,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const RecruiterDashboard = lazy(() => import('./pages/RecruiterDashboard.jsx'));
 const StudentPortal = lazy(() => import('./pages/StudentPortal.jsx'));
 const AnalyticsEngine = lazy(() => import('./pages/AnalyticsEngine.jsx'));
+const Welcome = lazy(() => import('./pages/Welcome.jsx'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
+const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
 
 
 // Pre-defined avatars from public sources
@@ -67,6 +80,7 @@ const avatars = [
 ];
 
 export default function App() {
+  const location = useLocation();
   const [showDashboard, setShowDashboard] = useState(false);
   // --- STATE MANAGEMENT ---
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -683,7 +697,9 @@ export default function App() {
 
     return (
       <>
-        <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
+        {location.pathname !== '/welcome' && (
+          <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
+        )}
         <Suspense fallback={
           <div style={{
             display: 'flex',
@@ -722,10 +738,13 @@ export default function App() {
                 onClearError={() => setApiError(null)}
               />
             } />
+            <Route path="/welcome" element={<Welcome onStartDashboard={handleStartDashboard} />} />
             <Route path="/recruiter-flow" element={<RecruiterDashboard />} />
             <Route path="/recruiter" element={<RecruiterDashboard />} />
             <Route path="/candidate-flow" element={<StudentPortal />} />
             <Route path="/analytics" element={<AnalyticsEngine />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
@@ -781,6 +800,46 @@ export default function App() {
             <span>Reports</span>
           </div>
           <div
+            className={`menu-item ${activeTab === 'Email Automation' ? 'active' : ''}`}
+            onClick={() => handleNavClick('Email Automation')}
+            title="Email Automation"
+          >
+            <Send />
+            <span>Email Automation</span>
+          </div>
+          <div
+            className={`menu-item ${activeTab === 'Analysis' ? 'active' : ''}`}
+            onClick={() => handleNavClick('Analysis')}
+            title="Analysis"
+          >
+            <BarChart3 />
+            <span>Analysis</span>
+          </div>
+          <div
+            className={`menu-item ${activeTab === 'Sourcing' ? 'active' : ''}`}
+            onClick={() => handleNavClick('Sourcing')}
+            title="Sourcing"
+          >
+            <UserSearch />
+            <span>Sourcing</span>
+          </div>
+          <div
+            className={`menu-item ${activeTab === 'Meet' ? 'active' : ''}`}
+            onClick={() => handleNavClick('Meet')}
+            title="Meet"
+          >
+            <Video />
+            <span>Meet</span>
+          </div>
+          <div
+            className={`menu-item ${activeTab === 'Export' ? 'active' : ''}`}
+            onClick={() => handleNavClick('Export')}
+            title="Export"
+          >
+            <Download />
+            <span>Export</span>
+          </div>
+          <div
             className={`menu-item ${activeTab === 'Knowledge Base' ? 'active' : ''}`}
             onClick={() => handleNavClick('Knowledge Base')}
           >
@@ -823,7 +882,7 @@ export default function App() {
               height: '40px', 
               borderRadius: '50%', 
               objectFit: 'cover', 
-              border: '2px solid rgba(255,255,255,0.08)',
+              border: '2px solid rgba(20,20,20,0.1)',
               boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
               cursor: 'pointer'
             }} 
@@ -896,8 +955,8 @@ export default function App() {
                     <svg className="sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
                       <defs>
                         <linearGradient id="cyanSparklineGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--color-cyan)" stopOpacity="0.4" />
-                          <stop offset="100%" stopColor="var(--color-cyan)" stopOpacity="0" />
+                          <stop offset="0%" stopColor="#16A34A" stopOpacity="0.4" />
+                          <stop offset="100%" stopColor="#16A34A" stopOpacity="0" />
                         </linearGradient>
                       </defs>
                       <path
@@ -907,7 +966,7 @@ export default function App() {
                       <path
                         d="M0,25 Q15,10 30,22 T60,5 T80,18 T100,8"
                         fill="none"
-                        stroke="var(--color-cyan)"
+                        stroke="#16A34A"
                         strokeWidth="1.5"
                       />
                     </svg>
@@ -936,7 +995,7 @@ export default function App() {
                         className="circle-bg"
                         d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                         fill="none"
-                        stroke="rgba(255,255,255,0.05)"
+                        stroke="rgba(20,20,20,0.1)"
                         strokeWidth="3.5"
                       />
                       <path
@@ -944,10 +1003,10 @@ export default function App() {
                         strokeDasharray={`${dynamicData.accuracy}, 100`}
                         d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                         fill="none"
-                        stroke="var(--color-purple)"
+                        stroke="#16A34A"
                         strokeWidth="3.5"
                         strokeLinecap="round"
-                        style={{ filter: 'drop-shadow(0 0 3px var(--color-purple))' }}
+                        style={{ filter: 'drop-shadow(0 0 3px #16A34A)' }}
                       />
                     </svg>
                     <div style={{
@@ -1003,7 +1062,7 @@ export default function App() {
                       -4.2h
                     </span>
                   </div>
-                  <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', height: '4px', backgroundColor: 'rgba(255,255,255,0.03)' }}>
+                  <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', height: '4px', backgroundColor: 'rgba(20,20,20,0.06)' }}>
                     <div
                       style={{
                         height: '100%',
@@ -1035,15 +1094,15 @@ export default function App() {
                       >
                         <defs>
                           <linearGradient id="barGradientCyan" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#00f0ff" stopOpacity={0.8} />
-                            <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.2} />
+                            <stop offset="0%" stopColor="#16A34A" stopOpacity={0.9} />
+                            <stop offset="100%" stopColor="#16A34A" stopOpacity={0.35} />
                           </linearGradient>
                           <linearGradient id="barGradientPurple" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#b55fe6" stopOpacity={0.8} />
-                            <stop offset="100%" stopColor="#a855f7" stopOpacity={0.2} />
+                            <stop offset="0%" stopColor="#F97316" stopOpacity={0.9} />
+                            <stop offset="100%" stopColor="#F97316" stopOpacity={0.35} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(20,20,20,0.08)" vertical={false} />
                         <XAxis
                           dataKey="name"
                           stroke="var(--text-muted)"
@@ -1131,15 +1190,15 @@ export default function App() {
                     >
                       <defs>
                         <linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-cyan)" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="var(--color-cyan)" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#16A34A" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="areaColorPurple" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-purple)" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="var(--color-purple)" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#F97316" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(20,20,20,0.06)" vertical={false} />
                       <XAxis
                         dataKey="date"
                         stroke="var(--text-muted)"
@@ -1167,11 +1226,11 @@ export default function App() {
                       <Area
                         type="monotone"
                         dataKey="cost"
-                        stroke="var(--color-cyan)"
+                        stroke="#16A34A"
                         strokeWidth={2}
                         fillOpacity={1}
                         fill="url(#areaColor)"
-                        style={{ filter: 'drop-shadow(0 0 4px var(--color-cyan-glow))' }}
+                        style={{ filter: 'drop-shadow(0 0 4px var(--chart-green-glow))' }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1339,6 +1398,16 @@ export default function App() {
             <CalendarView meetings={meetings} onAddMeeting={handleAddMeeting} />
           ) : activeTab === 'Reports' ? (
             <ReportsView meetings={meetings} />
+          ) : activeTab === 'Sourcing' ? (
+            <SourcingView />
+          ) : activeTab === 'Meet' ? (
+            <MeetView meetings={meetings} />
+          ) : activeTab === 'Export' ? (
+            <ExportView meetings={meetings} />
+          ) : activeTab === 'Email Automation' ? (
+            <EmailAutomationView />
+          ) : activeTab === 'Analysis' ? (
+            <AnalysisView meetings={meetings} />
           ) : activeTab === 'Alerts' ? (
             <AlertsView alerts={alerts} onResolveAlert={handleResolveAlert} />
           ) : activeTab === 'Settings' ? (
@@ -1397,8 +1466,8 @@ export default function App() {
               </select>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px', color: 'var(--text-muted)' }}>
-              <Brain size={14} style={{ color: 'var(--color-cyan)', flexShrink: 0 }} />
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', backgroundColor: 'rgba(20,20,20,0.04)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px', color: 'var(--text-muted)' }}>
+              <Brain size={14} style={{ color: '#16A34A', flexShrink: 0 }} />
               <span>Attributing this meeting will feed the reinforcement model to improve future predictions.</span>
             </div>
 
@@ -1472,7 +1541,7 @@ export default function App() {
                   padding: '10px 18px', 
                   fontSize: '13px', 
                   backgroundColor: 'var(--color-cyan)', 
-                  color: '#1A1D1D', 
+                  color: '#FFFFFF', 
                   fontWeight: '600',
                   boxShadow: '0 0 10px var(--color-cyan-glow)' 
                 }}

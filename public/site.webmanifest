@@ -1,0 +1,14 @@
+{
+  "name": "LedgerAI - Next-Gen HR Cost Intelligence",
+  "short_name": "LedgerAI",
+  "icons": [
+    {
+      "src": "/logo.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    }
+  ],
+  "theme_color": "#F2E8D5",
+  "background_color": "#F2E8D5",
+  "display": "standalone"
+}

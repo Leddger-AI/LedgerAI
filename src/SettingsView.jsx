@@ -58,7 +58,7 @@ export default function SettingsView({
         
         {/* Section 1: Financial & Burden Tuning */}
         <div className="glass-panel" style={{ padding: '24px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Sliders size={18} style={{ color: 'var(--color-cyan)' }} />
             HR Financial & Burden Tuning
           </h3>
@@ -72,7 +72,7 @@ export default function SettingsView({
                 type="number"
                 value={rateInput}
                 onChange={e => setRateInput(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
               />
               <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
                 Used as fallback when individual cost rates are unavailable.
@@ -101,7 +101,7 @@ export default function SettingsView({
 
         {/* Section 2: AI Engine Configurations */}
         <div className="glass-panel" style={{ padding: '24px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Shield size={18} style={{ color: 'var(--color-purple)' }} />
             Gemini GenAI Client Keys
           </h3>
@@ -117,7 +117,7 @@ export default function SettingsView({
                   placeholder={geminiApiKey ? "••••••••••••••••••••••••••••" : "Paste custom GEMINI_API_KEY..."}
                   value={geminiApiKey}
                   onChange={e => setGeminiApiKey(e.target.value)}
-                  style={{ flex: 1, padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                  style={{ flex: 1, padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
                 />
                 {geminiApiKey && (
                   <button 
@@ -143,7 +143,7 @@ export default function SettingsView({
                 <select 
                   value={selectedModel}
                   onChange={e => setSelectedModel(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                  style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
                 >
                   <option value="gemini-2.5-flash">Gemini 2.5 Flash (Default Speed)</option>
                   <option value="gemini-2.5-pro">Gemini 2.5 Pro (Max Accuracy)</option>
@@ -158,7 +158,7 @@ export default function SettingsView({
                   type="text"
                   value={firebasePath}
                   onChange={e => setFirebasePath(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                  style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
                 />
               </div>
             </div>
@@ -167,7 +167,7 @@ export default function SettingsView({
 
         {/* Section 3: Environment Actions */}
         <div className="glass-panel" style={{ padding: '24px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Server size={18} style={{ color: 'var(--color-cyan)' }} />
             System Actions & Maintenance
           </h3>
@@ -175,7 +175,7 @@ export default function SettingsView({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyItems: 'space-between', justifyContent: 'space-between' }}>
               <div>
-                <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>System Demo Controls</h4>
+                <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>System Demo Controls</h4>
                 <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4', marginBottom: '12px' }}>
                   Load or disconnect pre-compiled mock datasets into calendar state.
                 </p>
@@ -193,7 +193,7 @@ export default function SettingsView({
 
             <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyItems: 'space-between', justifyContent: 'space-between' }}>
               <div>
-                <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>Reset App Registry</h4>
+                <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>Reset App Registry</h4>
                 <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4', marginBottom: '12px' }}>
                   Wipe all active and resolved alerts, meeting caches, and project cost logs.
                 </p>

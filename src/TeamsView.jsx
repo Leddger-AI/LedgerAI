@@ -182,7 +182,7 @@ export default function TeamsView() {
           >
             <X size={18} />
           </button>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#fff' }}>Add New Team Member</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: 'var(--text-primary)' }}>Add New Team Member</h3>
           
           <form onSubmit={handleAddMember} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
             <div>
@@ -193,7 +193,7 @@ export default function TeamsView() {
                 placeholder="e.g. John Doe"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div>
@@ -204,7 +204,7 @@ export default function TeamsView() {
                 placeholder="e.g. Senior Frontend Dev"
                 value={newRole}
                 onChange={e => setNewRole(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div>
@@ -212,7 +212,7 @@ export default function TeamsView() {
               <select 
                 value={newDept}
                 onChange={e => setNewDept(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
               >
                 {departments.slice(1).map(d => (
                   <option key={d} value={d}>{d}</option>
@@ -227,7 +227,7 @@ export default function TeamsView() {
                 placeholder="e.g. 75"
                 value={newRate}
                 onChange={e => setNewRate(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div>
@@ -238,7 +238,7 @@ export default function TeamsView() {
                 placeholder="e.g. 20"
                 value={newHours}
                 onChange={e => setNewHours(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: '12px' }}>
@@ -301,7 +301,7 @@ export default function TeamsView() {
               backgroundColor: 'rgba(255,255,255,0.02)',
               border: '1px solid var(--border-color)',
               borderRadius: '6px',
-              color: '#fff',
+              color: 'var(--text-primary)',
               fontSize: '12px'
             }}
           />
@@ -335,7 +335,7 @@ export default function TeamsView() {
                     <td style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <img src={m.avatar} alt={m.name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                       <div>
-                        <div style={{ fontWeight: '700', color: '#fff' }}>{m.name}</div>
+                        <div style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{m.name}</div>
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{m.role}</div>
                       </div>
                     </td>
@@ -354,7 +354,7 @@ export default function TeamsView() {
                             type="number"
                             value={editRate}
                             onChange={e => setEditRate(e.target.value)}
-                            style={{ width: '60px', padding: '4px', backgroundColor: '#1c1e20', border: '1px solid var(--border-color)', borderRadius: '4px', color: '#fff', fontSize: '12px' }}
+                            style={{ width: '60px', padding: '4px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '12px' }}
                           />
                           <button style={{ background: 'none', border: 'none', color: 'var(--color-success)', cursor: 'pointer' }} onClick={() => handleSaveRate(m.id)}>
                             <Check size={14} />

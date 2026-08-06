@@ -120,31 +120,6 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
           <p className="cz-hero-desc">
             End-to-end AES encryption. Protect candidate data and analyze submissions with confidence.
           </p>
-          <div style={{ display: 'flex', gap: '16px', marginTop: '30px' }}>
-            <button 
-              className="cz-btn-hero-primary" 
-              onClick={onStartDashboard}
-              disabled={loading}
-              style={{
-                background: 'linear-gradient(135deg, #D7FEFA 0%, #D7FEFA 100%)',
-                color: '#1A1D1D',
-                border: 'none',
-                padding: '12px 28px',
-                borderRadius: '9999px',
-                fontSize: '15px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 0 20px rgba(215, 254, 250, 0.3)',
-                transition: 'all 0.3s ease'
-              }}
-            >
-              {loading ? 'Connecting...' : 'Connect to Dashboard'}
-              <ArrowRight size={18} />
-            </button>
-          </div>
         </div>
         
         <div className="cz-hero-right">

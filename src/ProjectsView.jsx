@@ -208,7 +208,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
           >
             <X size={18} />
           </button>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: '#fff' }}>Create New Cost Code</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px', color: 'var(--text-primary)' }}>Create New Cost Code</h3>
           
           <form onSubmit={handleAddProject} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
@@ -219,7 +219,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 placeholder="e.g. Project Apollo"
                 value={newProjName}
                 onChange={e => setNewProjName(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div>
@@ -230,7 +230,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 placeholder="e.g. APL-101"
                 value={newProjCode}
                 onChange={e => setNewProjCode(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div>
@@ -240,7 +240,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 placeholder="e.g. Jane Doe"
                 value={newProjLead}
                 onChange={e => setNewProjLead(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div>
@@ -250,7 +250,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 placeholder="e.g. 5000"
                 value={newProjBudget}
                 onChange={e => setNewProjBudget(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             <div style={{ gridColumn: 'span 2' }}>
@@ -260,7 +260,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 placeholder="Core objective and key deliverables of the project..."
                 value={newProjDesc}
                 onChange={e => setNewProjDesc(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px', resize: 'vertical' }}
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px', resize: 'vertical' }}
               />
             </div>
             <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
@@ -297,7 +297,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 {/* Card Title & Code */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                   <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {proj.name}
                     </h3>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Code: {proj.code}</span>
@@ -319,11 +319,11 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
                   <div>
                     <div style={{ color: 'var(--text-muted)', marginBottom: '2px' }}>Lead Owner</div>
-                    <strong style={{ color: '#fff' }}>{proj.lead}</strong>
+                    <strong style={{ color: 'var(--text-primary)' }}>{proj.lead}</strong>
                   </div>
                   <div>
                     <div style={{ color: 'var(--text-muted)', marginBottom: '2px' }}>Meeting Burden</div>
-                    <strong style={{ color: '#fff' }}>{stats.meetingCount} meetings ({Math.round(stats.hours)} hrs)</strong>
+                    <strong style={{ color: 'var(--text-primary)' }}>{stats.meetingCount} meetings ({Math.round(stats.hours)} hrs)</strong>
                   </div>
                 </div>
 
@@ -331,7 +331,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
                 <div style={{ marginBottom: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', marginBottom: '6px' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Cost Consumed</span>
-                    <span style={{ fontWeight: '600', color: '#fff' }}>
+                    <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
                       ${stats.spent.toLocaleString()} / 
                       {editingId === proj.id ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
@@ -389,7 +389,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
 
       {/* Associated Meeting Log */}
       <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', marginBottom: '16px' }}>Project Allocation Registry</h3>
+        <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>Project Allocation Registry</h3>
         <div style={{ overflowX: 'auto' }}>
           <table className="meetings-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -404,7 +404,7 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
             <tbody>
               {meetings.map((meeting) => (
                 <tr key={meeting.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>
-                  <td style={{ padding: '16px', fontWeight: '600', color: '#fff' }}>{meeting.title}</td>
+                  <td style={{ padding: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>{meeting.title}</td>
                   <td style={{ padding: '16px' }}>
                     <select
                       value={meeting.project}

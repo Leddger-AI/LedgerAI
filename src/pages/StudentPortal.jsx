@@ -1,16 +1,46 @@
 import { useState, useEffect } from 'react';
-import { Lock, FileSignature, UploadCloud } from 'lucide-react';
+import { Lock, FileSignature, UploadCloud, Link2, GitBranch, Globe } from 'lucide-react';
 import CryptoJS from 'crypto-js';
 import { useNavigate } from 'react-router-dom';
 import '../LandingPage.css'; // Inherit styling
 import { auth } from '../firebaseAuth';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
+// Default field template used when no recruiter config is found for a code
+// (e.g. testing the portal directly without going through the Recruiter Dashboard first).
+const DEFAULT_FORM_CONFIG = {
+  requestResume: true,
+  requestGithub: true,
+  requestGithubPrivate: false,
+  requestLinkedin: true,
+  requestPortfolio: true,
+  recruiterNotes: ''
+};
+
+// Input with a locked domain prefix chip, e.g. "linkedin.com/in/" + editable handle
+function PrefixedLinkInput({ prefix, value, onChange, placeholder }) {
+  return (
+    <div style={{ display: 'flex', width: '100%', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#1A1D1D' }}>
+      <span style={{ padding: '12px 6px 12px 12px', fontSize: '13px', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', backgroundColor: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center' }}>
+        {prefix}
+      </span>
+      <input
+        type="text"
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        style={{ flex: 1, minWidth: 0, padding: '12px 12px 12px 4px', border: 'none', backgroundColor: 'transparent', fontSize: '14px', outline: 'none', color: '#ffffff' }}
+      />
+    </div>
+  );
+}
+
 export default function StudentPortal() {
   const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [isCodeValid, setIsCodeValid] = useState(false);
-  const [formData, setFormData] = useState({ idea: '', procedure: '', experience: '', githubUsername: '', manualAvatar: '' });
+  const [formConfig, setFormConfig] = useState(DEFAULT_FORM_CONFIG);
+  const [formData, setFormData] = useState({ idea: '', procedure: '', experience: '', githubUsername: '', linkedinUsername: '', portfolioUrl: '', manualAvatar: '' });
   
   useEffect(() => {
     // Enable anonymous sign-in for candidates to establish a unique user ID
@@ -59,6 +89,8 @@ export default function StudentPortal() {
 
   const handleVerifyCode = () => {
     if (code.startsWith('REC-')) {
+      const stored = localStorage.getItem('ledgerai_form_config_' + code);
+      setFormConfig(stored ? JSON.parse(stored) : DEFAULT_FORM_CONFIG);
       setIsCodeValid(true);
     } else {
       alert("Invalid code format. Must start with REC-");
@@ -86,7 +118,10 @@ export default function StudentPortal() {
       workingProcedure: formData.procedure,
       experience: parseInt(formData.experience) || 0,
       score: Math.floor(Math.random() * 40) + 60, // Mock generated score
-      githubUsername: formData.githubUsername || '',
+      githubUsername: formConfig.requestGithub ? formData.githubUsername || '' : '',
+      githubPrivateAccessGranted: formConfig.requestGithubPrivate,
+      linkedinUsername: formConfig.requestLinkedin ? formData.linkedinUsername || '' : '',
+      portfolioUrl: formConfig.requestPortfolio ? formData.portfolioUrl || '' : '',
       manualAvatar: formData.manualAvatar || ''
     });
 
@@ -166,37 +201,78 @@ export default function StudentPortal() {
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>GitHub Username</label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <input 
-                    type="text"
-                    style={{ flex: 1, padding: '12px', backgroundColor: '#1A1D1D', color: '#ffffff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', outline: 'none' }}
-                    value={formData.githubUsername}
-                    onChange={(e) => setFormData({...formData, githubUsername: e.target.value})}
-                    placeholder="e.g. torvalds"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleConnectGitHub}
-                    style={{
-                      backgroundColor: '#2B2E2E',
-                      color: '#ffffff',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                      borderRadius: '8px',
-                      padding: '0 16px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'background-color 0.2s'
-                    }}
-                  >
-                    Connect GitHub
-                  </button>
+              {formConfig.requestGithub && (
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>
+                    <GitBranch size={14} /> GitHub Username
+                  </label>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <div style={{ flex: 1 }}>
+                      <PrefixedLinkInput
+                        prefix="github.com/"
+                        value={formData.githubUsername}
+                        onChange={(e) => setFormData({...formData, githubUsername: e.target.value})}
+                        placeholder="torvalds"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleConnectGitHub}
+                      style={{
+                        backgroundColor: '#2B2E2E',
+                        color: '#ffffff',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '8px',
+                        padding: '0 16px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'background-color 0.2s',
+                        flexShrink: 0
+                      }}
+                    >
+                      Connect GitHub
+                    </button>
+                  </div>
+                  {formConfig.requestGithubPrivate && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+                      <Lock size={12} />
+                      This recruiter also requests access to your private repositories.
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {formConfig.requestLinkedin && (
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>
+                    <Link2 size={14} /> LinkedIn Profile
+                  </label>
+                  <PrefixedLinkInput
+                    prefix="linkedin.com/in/"
+                    value={formData.linkedinUsername}
+                    onChange={(e) => setFormData({...formData, linkedinUsername: e.target.value})}
+                    placeholder="janedoe"
+                  />
+                </div>
+              )}
+
+              {formConfig.requestPortfolio && (
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>
+                    <Globe size={14} /> Portfolio URL
+                  </label>
+                  <input
+                    type="text"
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#1A1D1D', color: '#ffffff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', outline: 'none' }}
+                    value={formData.portfolioUrl}
+                    onChange={(e) => setFormData({...formData, portfolioUrl: e.target.value})}
+                    placeholder="https://myportfolio.dev"
+                  />
+                </div>
+              )}
 
               <div>
                 <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>Profile Picture (Manual Upload)</label>

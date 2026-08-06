@@ -195,7 +195,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
                             borderRadius: '3px',
                             backgroundColor: 'rgba(255,255,255,0.04)',
                             borderLeft: `2.5px solid ${color}`,
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             textOverflow: 'ellipsis',
                             overflow: 'hidden',
                             whiteSpace: 'nowrap',
@@ -231,7 +231,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
             >
               <X size={16} />
             </button>
-            <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#fff' }}>Schedule Meeting</h3>
+            <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: 'var(--text-primary)' }}>Schedule Meeting</h3>
             
             <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
@@ -242,7 +242,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
                   placeholder="e.g. Phoenix Code Review"
                   value={newTitle}
                   onChange={e => setNewTitle(e.target.value)}
-                  style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} 
+                  style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '12px' }} 
                 />
               </div>
 
@@ -252,7 +252,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
                   <select 
                     value={newProject}
                     onChange={e => setNewProject(e.target.value)}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '12px' }}
                   >
                     <option value="Project Phoenix">Project Phoenix</option>
                     <option value="Client ABC Onboarding">Client ABC Onboarding</option>
@@ -265,7 +265,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
                   <select 
                     value={newDay}
                     onChange={e => setNewDay(parseInt(e.target.value))}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '12px' }}
                   >
                     {Array.from({ length: 30 }, (_, i) => i + 1).map(day => (
                       <option key={day} value={day}>June {day}</option>
@@ -280,7 +280,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
                   <select 
                     value={newDuration}
                     onChange={e => setNewDuration(e.target.value)}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '12px' }}
                   >
                     <option value="30m">30m</option>
                     <option value="45m">45m</option>
@@ -295,7 +295,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
                     type="number" 
                     value={newAttendees}
                     onChange={e => setNewAttendees(e.target.value)}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '12px' }} 
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '12px' }} 
                   />
                 </div>
               </div>
@@ -328,7 +328,7 @@ export default function CalendarView({ meetings, onAddMeeting }) {
                 </span>
               </div>
 
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', marginBottom: '8px', lineHeight: '1.4' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px', lineHeight: '1.4' }}>
                 {selectedMeeting.title}
               </h3>
               

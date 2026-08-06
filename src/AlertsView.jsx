@@ -55,7 +55,7 @@ export default function AlertsView({ alerts, onResolveAlert }) {
           {activeAlerts.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 10px' }}>
               <CheckCircle2 size={48} style={{ color: 'var(--color-success)', marginBottom: '16px' }} />
-              <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#fff' }}>All Systems Healthy</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>All Systems Healthy</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
                 No budget anomalies or low confidence attributions detected.
               </p>
@@ -77,7 +77,7 @@ export default function AlertsView({ alerts, onResolveAlert }) {
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '6px' }}>{alert.title}</h4>
+                  <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>{alert.title}</h4>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '14px' }}>{alert.desc}</p>
                   
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -108,7 +108,7 @@ export default function AlertsView({ alerts, onResolveAlert }) {
 
       {/* Right Column: Resolved History */}
       <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
           Resolution Ledger
         </h3>
@@ -125,7 +125,7 @@ export default function AlertsView({ alerts, onResolveAlert }) {
                   width: '6px', height: '6px', borderRadius: '50%',
                   backgroundColor: 'var(--color-success)'
                 }} />
-                <strong style={{ fontSize: '13px', color: '#fff' }}>{item.title}</strong>
+                <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{item.title}</strong>
               </div>
               
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>

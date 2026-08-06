@@ -1,39 +1,57 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg-main: #121315;
-  --bg-card: #1C1E20;
-  --bg-card-hover: #212326;
-  --bg-sidebar: #08090A;
-  --bg-sidebar-active: rgba(215, 254, 250, 0.08);
-  --border-color: rgba(255, 255, 255, 0.04);
-  --border-hover: rgba(255, 255, 255, 0.08);
-  --text-primary: #FFFFFF;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-muted: rgba(255, 255, 255, 0.4);
-  
-  --color-cyan: #FFFFFF;
-  --color-cyan-dim: #FFFFFF;
-  --color-cyan-glow: rgba(255, 255, 255, 0.15);
-  --color-purple: #FFFFFF;
-  --color-purple-dim: #FFFFFF;
-  --color-purple-glow: rgba(255, 255, 255, 0.15);
-  --color-pink: #FFFFFF;
-  
-  --color-success: #FFFFFF;
-  --color-success-glow: rgba(255, 255, 255, 0.15);
-  --color-warning: #FFFFFF;
-  --color-warning-glow: rgba(255, 255, 255, 0.15);
-  --color-danger: #FFFFFF;
-  --color-danger-glow: rgba(255, 255, 255, 0.2);
+  /* Logo-matched cream + monochrome palette */
+  --bg-main: #F2E8D5;
+  --bg-card: #FBF6EC;
+  --bg-card-hover: #EFE4CE;
+  --bg-sidebar: #141414;
+  --bg-sidebar-active: rgba(255, 255, 255, 0.08);
+  --border-color: rgba(20, 20, 20, 0.08);
+  --border-hover: rgba(20, 20, 20, 0.18);
+  --text-primary: #141414;
+  --text-secondary: rgba(20, 20, 20, 0.65);
+  --text-muted: rgba(20, 20, 20, 0.42);
+
+  /* Sidebar sits on a black surface (like the logo's "R"), needs light text */
+  --text-on-dark: #FFFFFF;
+  --text-on-dark-secondary: rgba(255, 255, 255, 0.7);
+  --text-on-dark-muted: rgba(255, 255, 255, 0.4);
+  --border-on-dark: rgba(255, 255, 255, 0.08);
+  --sidebar-accent: #FFFFFF;
+
+  /* Neutral UI accent scale, mapped from logo letters: R (black) > G (charcoal) > D (grey) > L (white) */
+  --color-cyan: #141414;
+  --color-cyan-dim: #4A4A4A;
+  --color-cyan-glow: rgba(20, 20, 20, 0.14);
+  --color-purple: #4A4A4A;
+  --color-purple-dim: #6E6E6E;
+  --color-purple-glow: rgba(74, 74, 74, 0.16);
+  --color-pink: #DC2626;
+
+  /* Functional status colors for charts, buttons & badges */
+  --color-success: #16A34A;
+  --color-success-glow: rgba(22, 163, 74, 0.15);
+  --color-warning: #F97316;
+  --color-warning-glow: rgba(249, 115, 22, 0.15);
+  --color-danger: #DC2626;
+  --color-danger-glow: rgba(220, 38, 38, 0.15);
+
+  /* Data-viz palette (chart series) */
+  --chart-green: #16A34A;
+  --chart-green-glow: rgba(22, 163, 74, 0.2);
+  --chart-orange: #F97316;
+  --chart-orange-glow: rgba(249, 115, 22, 0.2);
+  --chart-red: #DC2626;
+  --chart-white: #FFFFFF;
   
   --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --shadow-glow-cyan: 0 0 15px rgba(215, 254, 250, 0.25);
-  --shadow-glow-purple: 0 0 15px rgba(215, 254, 250, 0.25);
-  --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --shadow-glow-cyan: 0 0 15px rgba(20, 20, 20, 0.14);
+  --shadow-glow-purple: 0 0 15px rgba(74, 74, 74, 0.16);
+  --shadow-card: 0 10px 25px -5px rgba(20, 20, 20, 0.12), 0 8px 10px -6px rgba(20, 20, 20, 0.08);
 }
 
 * {
@@ -74,22 +92,22 @@ body {
 @keyframes pulse-cyan {
   0%, 100% {
     opacity: 0.6;
-    box-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+    box-shadow: 0 0 8px rgba(20, 20, 20, 0.35);
   }
   50% {
     opacity: 1;
-    box-shadow: 0 0 16px rgba(0, 240, 255, 0.8);
+    box-shadow: 0 0 16px rgba(20, 20, 20, 0.7);
   }
 }
 
 @keyframes pulse-purple {
   0%, 100% {
     opacity: 0.6;
-    box-shadow: 0 0 8px rgba(181, 95, 230, 0.4);
+    box-shadow: 0 0 8px rgba(74, 74, 74, 0.35);
   }
   50% {
     opacity: 1;
-    box-shadow: 0 0 16px rgba(181, 95, 230, 0.8);
+    box-shadow: 0 0 16px rgba(74, 74, 74, 0.7);
   }
 }
 

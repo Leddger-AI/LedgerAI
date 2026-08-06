@@ -298,7 +298,7 @@ export default function KnowledgeBase() {
               <select 
                 value={scope} 
                 onChange={(e) => setScope(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
               >
                 <option value="personal">Personal (User Restricted)</option>
                 <option value="team">Team (Channel Restricted)</option>
@@ -311,7 +311,7 @@ export default function KnowledgeBase() {
                 type="text" 
                 value={teamId} 
                 onChange={(e) => setTeamId(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
           </div>
@@ -323,7 +323,7 @@ export default function KnowledgeBase() {
                 type="text" 
                 value={ownerId} 
                 onChange={(e) => setOwnerId(e.target.value)}
-                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
               />
             </div>
             {activeSubTab === 'file' && (
@@ -335,7 +335,7 @@ export default function KnowledgeBase() {
                   <select 
                     value={chunkSize} 
                     onChange={(e) => setChunkSize(parseInt(e.target.value))}
-                    style={{ flex: 1, padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+                    style={{ flex: 1, padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
                   >
                     <option value={2000}>2000 tokens</option>
                     <option value={3000}>3000 tokens</option>
@@ -351,7 +351,7 @@ export default function KnowledgeBase() {
                   type="text" 
                   value={slackThreadTs} 
                   onChange={(e) => setSlackThreadTs(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }} 
+                  style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }} 
                 />
               </div>
             )}
@@ -370,7 +370,7 @@ export default function KnowledgeBase() {
                 onClick={() => document.getElementById('kb-file-input').click()}
               >
                 <Upload size={32} style={{ color: 'var(--color-cyan)', opacity: 0.8, marginBottom: '12px' }} />
-                <div style={{ fontSize: '14px', color: '#fff', fontWeight: '500', marginBottom: '4px' }}>
+                <div style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: '500', marginBottom: '4px' }}>
                   {file ? file.name : 'Select or Drop your Document'}
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
@@ -482,10 +482,10 @@ export default function KnowledgeBase() {
                         {doc.source_type}
                       </span>
                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        Scope: <strong style={{ color: '#fff' }}>{doc.scope}</strong>
+                        Scope: <strong style={{ color: 'var(--text-primary)' }}>{doc.scope}</strong>
                       </span>
                     </div>
-                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {doc.source_type === 'file' ? doc.file_name : `Slack Thread ID: ${doc.document_id.replace('slack_thread_', '')}`}
                     </div>
                     
@@ -523,7 +523,7 @@ export default function KnowledgeBase() {
         <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px' }}>
             <div>
-              <h4 style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>
+              <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
                 Ingested Document Meta-Analysis & Chunks Preview
               </h4>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
@@ -547,7 +547,7 @@ export default function KnowledgeBase() {
                       Chunk #{idx + 1}
                     </span>
                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)', backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>
-                      Token Est: <strong style={{ color: '#fff' }}>{chunk.tokens_count}</strong>
+                      Token Est: <strong style={{ color: 'var(--text-primary)' }}>{chunk.tokens_count}</strong>
                     </span>
                   </div>
                   

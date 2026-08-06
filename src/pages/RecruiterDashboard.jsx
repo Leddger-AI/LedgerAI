@@ -1,9 +1,86 @@
 import { useState, useEffect } from 'react';
-import { Shield, Key, Download, FileText, BarChart2, Search, ArrowRight, UserCheck, Eye, Settings, FileUp, GitBranch, Globe, Check, Mail, Upload, X, FileSpreadsheet } from 'lucide-react';
+import { Shield, Key, Download, FileText, BarChart2, Search, ArrowRight, UserCheck, Eye, Settings, FileUp, GitBranch, Globe, Check, Mail, Upload, X, FileSpreadsheet, Link2, Lock } from 'lucide-react';
 import CryptoJS from 'crypto-js';
 import Papa from 'papaparse';
 import { useNavigate } from 'react-router-dom';
 import '../LandingPage.css'; // Inherit styling
+
+// Reusable pill-style toggle switch used throughout the Form Customizer
+function ToggleSwitch({ checked, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={disabled}
+      style={{
+        width: '42px',
+        height: '22px',
+        borderRadius: '9999px',
+        backgroundColor: checked ? '#D7FEFA' : 'rgba(255,255,255,0.1)',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+        position: 'relative',
+        transition: 'all 0.25s ease',
+        padding: '0',
+        flexShrink: 0
+      }}
+    >
+      <div style={{
+        width: '16px',
+        height: '16px',
+        borderRadius: '50%',
+        backgroundColor: checked ? '#1A1D1D' : '#FFFFFF',
+        position: 'absolute',
+        top: '3px',
+        left: checked ? '23px' : '3px',
+        transition: 'all 0.25s cubic-bezier(0.25, 1, 0.5, 1)'
+      }} />
+    </button>
+  );
+}
+
+// Reusable toggle field row (label + description + switch), used in Form Customizer
+function ToggleField({ title, description, checked, onChange, indent, disabled }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '14px 16px',
+      backgroundColor: 'rgba(255,255,255,0.02)',
+      border: '1px solid rgba(255,255,255,0.05)',
+      borderRadius: '12px',
+      marginLeft: indent ? '20px' : '0',
+      opacity: disabled ? 0.5 : 1
+    }}>
+      <div>
+        <div style={{ fontWeight: '600', fontSize: '13.5px', color: '#fff' }}>{title}</div>
+        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>{description}</div>
+      </div>
+      <ToggleSwitch checked={checked} onChange={onChange} disabled={disabled} />
+    </div>
+  );
+}
+
+// Input with a locked domain prefix chip, e.g. "linkedin.com/in/" + editable handle
+function PrefixedLinkInput({ prefix, value, onChange, placeholder }) {
+  return (
+    <div style={{ display: 'flex', width: '100%', border: '1px solid rgba(0,0,0,0.12)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.02)' }}>
+      <span style={{ padding: '10px 8px 10px 12px', fontSize: '12px', color: 'rgba(0,0,0,0.45)', whiteSpace: 'nowrap', backgroundColor: 'rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center' }}>
+        {prefix}
+      </span>
+      <input
+        type="text"
+        disabled={!onChange}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        style={{ flex: 1, minWidth: 0, padding: '10px 12px 10px 4px', border: 'none', backgroundColor: 'transparent', fontSize: '12px', outline: 'none', color: '#1a1d1d' }}
+      />
+    </div>
+  );
+}
 
 function CandidateAvatar({ githubUsername, manualAvatar }) {
   const [avatarUrl, setAvatarUrl] = useState(null);
@@ -379,6 +456,8 @@ export default function RecruiterDashboard() {
   // Form customizer states
   const [requestResume, setRequestResume] = useState(true);
   const [requestGithub, setRequestGithub] = useState(true);
+  const [requestGithubPrivate, setRequestGithubPrivate] = useState(false);
+  const [requestLinkedin, setRequestLinkedin] = useState(true);
   const [requestPortfolio, setRequestPortfolio] = useState(true);
   const [recruiterNotes, setRecruiterNotes] = useState(
     'Please provide detailed descriptions of your past engineering projects and experience. Upload your verified code repositories for cryptographic validation.'
@@ -405,6 +484,18 @@ export default function RecruiterDashboard() {
     const key = 'secret-key-' + code; 
     setUniqueCode(code);
     setEncryptionKey(key);
+
+    // Persist the recruiter's chosen field template so the candidate portal
+    // knows exactly which fields to render for this code.
+    const formConfig = {
+      requestResume,
+      requestGithub,
+      requestGithubPrivate: requestGithub && requestGithubPrivate,
+      requestLinkedin,
+      requestPortfolio,
+      recruiterNotes
+    };
+    localStorage.setItem('ledgerai_form_config_' + code, JSON.stringify(formConfig));
     
     setCandidates([{
       id: Date.now(),
@@ -623,109 +714,47 @@ export default function RecruiterDashboard() {
               </div>
 
               {/* Toggle Switches */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', marginBottom: '4px' }}>
                   Optional Fields Toggles
                 </span>
 
-                {/* Switch 1: Resume */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px' }}>
-                  <div>
-                    <div style={{ fontWeight: '600', fontSize: '13.5px', color: '#fff' }}>Request Resume</div>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>Let freshers upload their PDF resume.</div>
-                  </div>
-                  <button 
-                    onClick={() => setRequestResume(!requestResume)}
-                    style={{
-                      width: '42px',
-                      height: '22px',
-                      borderRadius: '9999px',
-                      backgroundColor: requestResume ? '#D7FEFA' : 'rgba(255,255,255,0.1)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      position: 'relative',
-                      transition: 'all 0.25s ease',
-                      padding: '0'
-                    }}
-                  >
-                    <div style={{
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '50%',
-                      backgroundColor: requestResume ? '#1A1D1D' : '#FFFFFF',
-                      position: 'absolute',
-                      top: '3px',
-                      left: requestResume ? '23px' : '3px',
-                      transition: 'all 0.25s cubic-bezier(0.25, 1, 0.5, 1)'
-                    }} />
-                  </button>
-                </div>
+                <ToggleField
+                  title="Request Resume"
+                  description="Let freshers upload their PDF resume."
+                  checked={requestResume}
+                  onChange={() => setRequestResume(!requestResume)}
+                />
 
-                {/* Switch 2: GitHub */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px' }}>
-                  <div>
-                    <div style={{ fontWeight: '600', fontSize: '13.5px', color: '#fff' }}>Request GitHub Repo Access</div>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>Request access to code repositories.</div>
-                  </div>
-                  <button 
-                    onClick={() => setRequestGithub(!requestGithub)}
-                    style={{
-                      width: '42px',
-                      height: '22px',
-                      borderRadius: '9999px',
-                      backgroundColor: requestGithub ? '#D7FEFA' : 'rgba(255,255,255,0.1)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      position: 'relative',
-                      transition: 'all 0.25s ease',
-                      padding: '0'
-                    }}
-                  >
-                    <div style={{
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '50%',
-                      backgroundColor: requestGithub ? '#1A1D1D' : '#FFFFFF',
-                      position: 'absolute',
-                      top: '3px',
-                      left: requestGithub ? '23px' : '3px',
-                      transition: 'all 0.25s cubic-bezier(0.25, 1, 0.5, 1)'
-                    }} />
-                  </button>
-                </div>
+                <ToggleField
+                  title="Request GitHub Username"
+                  description="Ask for the candidate's GitHub handle for code analysis."
+                  checked={requestGithub}
+                  onChange={() => setRequestGithub(!requestGithub)}
+                />
 
-                {/* Switch 3: Portfolio */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px' }}>
-                  <div>
-                    <div style={{ fontWeight: '600', fontSize: '13.5px', color: '#fff' }}>Require Portfolio Link</div>
-                    <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>Ask for candidate portfolio URL.</div>
-                  </div>
-                  <button 
-                    onClick={() => setRequestPortfolio(!requestPortfolio)}
-                    style={{
-                      width: '42px',
-                      height: '22px',
-                      borderRadius: '9999px',
-                      backgroundColor: requestPortfolio ? '#D7FEFA' : 'rgba(255,255,255,0.1)',
-                      border: 'none',
-                      cursor: 'pointer',
-                      position: 'relative',
-                      transition: 'all 0.25s ease',
-                      padding: '0'
-                    }}
-                  >
-                    <div style={{
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '50%',
-                      backgroundColor: requestPortfolio ? '#1A1D1D' : '#FFFFFF',
-                      position: 'absolute',
-                      top: '3px',
-                      left: requestPortfolio ? '23px' : '3px',
-                      transition: 'all 0.25s cubic-bezier(0.25, 1, 0.5, 1)'
-                    }} />
-                  </button>
-                </div>
+                <ToggleField
+                  title="Request Private Repository Access"
+                  description="Securely connect and analyze private repositories."
+                  checked={requestGithubPrivate}
+                  onChange={() => setRequestGithubPrivate(!requestGithubPrivate)}
+                  disabled={!requestGithub}
+                  indent
+                />
+
+                <ToggleField
+                  title="Request LinkedIn Profile"
+                  description="Candidate only types their handle after linkedin.com/in/"
+                  checked={requestLinkedin}
+                  onChange={() => setRequestLinkedin(!requestLinkedin)}
+                />
+
+                <ToggleField
+                  title="Require Portfolio Link"
+                  description="Ask for candidate portfolio URL."
+                  checked={requestPortfolio}
+                  onChange={() => setRequestPortfolio(!requestPortfolio)}
+                />
               </div>
 
               {/* Share Form Trigger Button */}
@@ -834,14 +863,26 @@ export default function RecruiterDashboard() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <label style={{ fontSize: '12px', fontWeight: '600', color: '#1a1d1d', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <GitBranch size={14} />
-                        GitHub Repository URL *
+                        GitHub Username *
                       </label>
-                      <input 
-                        type="text" 
-                        disabled
-                        placeholder="https://github.com/username/project"
-                        style={{ width: '100%', padding: '10px 12px', border: '1px solid rgba(0,0,0,0.12)', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.02)', fontSize: '12px' }}
-                      />
+                      <PrefixedLinkInput prefix="github.com/" value="" placeholder="username" />
+                      {requestGithubPrivate && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: 'rgba(0,0,0,0.55)' }}>
+                          <Lock size={11} />
+                          Candidate will be asked to grant private repository access
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Toggled Field: LinkedIn */}
+                  {requestLinkedin && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: '600', color: '#1a1d1d', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Link2 size={14} />
+                        LinkedIn Profile *
+                      </label>
+                      <PrefixedLinkInput prefix="linkedin.com/in/" value="" placeholder="username" />
                     </div>
                   )}
 

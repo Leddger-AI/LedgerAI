@@ -30,7 +30,7 @@ export default function InteractiveTour() {
   const [ref4, isVisible4] = useOnScreen({ threshold: 0.5 });
 
   // States
-  const [step1State, setStep1State] = useState({ text: '', cursorMoving: false, clicked: false, toggle1: false });
+  const [step1State, setStep1State] = useState({ text: '', cursorPos: 0, isClicking: false, toggle1: false, toggle2: false, toggle3: false });
   const [step2State, setStep2State] = useState('idle');
   const [step3State, setStep3State] = useState({ cursorMoving: false, clicked: false, repoChecked: false, avatarLoaded: true });
   const [step4State, setStep4State] = useState({ scoreVisible: false, graphVisible: false, pillsVisible: false, bulletsVisible: false });
@@ -40,7 +40,7 @@ export default function InteractiveTour() {
   // Step 1: Campaign Creation (Dark Theme)
   useEffect(() => {
     if (!isVisible1) {
-      setStep1State({ text: '', cursorMoving: false, clicked: false, toggle1: false });
+      setStep1State({ text: '', cursorPos: 0, isClicking: false, toggle1: false, toggle2: false, toggle3: false });
       return;
     }
 
@@ -48,7 +48,7 @@ export default function InteractiveTour() {
     let timeouts = [];
 
     const startAnimation = () => {
-      setStep1State({ text: '', cursorMoving: false, clicked: false, toggle1: false });
+      setStep1State({ text: '', cursorPos: 0, isClicking: false, toggle1: false, toggle2: false, toggle3: false });
       
       const typeText = "We are seeking a versatile developer to build highly secure and modular systems.";
       let i = 0;
@@ -59,16 +59,23 @@ export default function InteractiveTour() {
           i++;
         } else {
           clearInterval(typeInterval);
-          
-          const t1 = setTimeout(() => {
-            setStep1State(s => ({ ...s, cursorMoving: true }));
-          }, 500);
-          timeouts.push(t1);
 
-          const t2 = setTimeout(() => {
-            setStep1State(s => ({ ...s, clicked: true, toggle1: true }));
-          }, 1500);
-          timeouts.push(t2);
+          // Toggle 1: Require Resume Upload
+          const t1 = setTimeout(() => setStep1State(s => ({ ...s, cursorPos: 1 })), 500);
+          const t2 = setTimeout(() => setStep1State(s => ({ ...s, isClicking: true, toggle1: true })), 1500);
+          const t3 = setTimeout(() => setStep1State(s => ({ ...s, isClicking: false })), 1800);
+
+          // Toggle 2: Request Private GitHub Access
+          const t4 = setTimeout(() => setStep1State(s => ({ ...s, cursorPos: 2 })), 2300);
+          const t5 = setTimeout(() => setStep1State(s => ({ ...s, isClicking: true, toggle2: true })), 3300);
+          const t6 = setTimeout(() => setStep1State(s => ({ ...s, isClicking: false })), 3600);
+
+          // Toggle 3: Request LinkedIn Profile
+          const t7 = setTimeout(() => setStep1State(s => ({ ...s, cursorPos: 3 })), 4100);
+          const t8 = setTimeout(() => setStep1State(s => ({ ...s, isClicking: true, toggle3: true })), 5100);
+          const t9 = setTimeout(() => setStep1State(s => ({ ...s, isClicking: false })), 5400);
+
+          timeouts.push(t1, t2, t3, t4, t5, t6, t7, t8, t9);
         }
       }, 30);
     };
@@ -176,7 +183,7 @@ export default function InteractiveTour() {
             <h2 className="tour-section-title">
               1. <span className="cz-fw-highlight">Campaign</span> Creation
             </h2>
-            <p className="tour-section-desc">Instantly launch recruitment campaigns. Configure granular candidate requirements, mandate custom resume formats, and effortlessly request private GitHub repository access.</p>
+            <p className="tour-section-desc">Instantly launch recruitment campaigns. Configure granular candidate requirements, mandate custom resume formats, and effortlessly request private GitHub repository access and LinkedIn verification.</p>
           </div>
           <div className="tour-visual-block">
             <div className="it-campaign-builder">
@@ -188,7 +195,7 @@ export default function InteractiveTour() {
                 <label>Job Description & Notes</label>
                 <div className="it-textarea-mock">
                   {step1State.text}
-                  {!step1State.clicked && <span className="it-cursor">|</span>}
+                  {step1State.cursorPos === 0 && <span className="it-cursor">|</span>}
                 </div>
               </div>
               <div className="it-toggles-container" style={{ position: 'relative' }}>
@@ -206,16 +213,25 @@ export default function InteractiveTour() {
                     <div className="it-toggle-title">Request Private GitHub Access</div>
                     <div className="it-toggle-desc">Securely connect and analyze private repositories</div>
                   </div>
-                  <div className={`it-toggle-switch off`}>
+                  <div className={`it-toggle-switch ${step1State.toggle2 ? 'on' : 'off'}`}>
+                    <div className="it-toggle-knob"></div>
+                  </div>
+                </div>
+                <div className="it-toggle-row">
+                  <div className="it-toggle-info">
+                    <div className="it-toggle-title">Request LinkedIn Profile</div>
+                    <div className="it-toggle-desc">Verify professional history and endorsements</div>
+                  </div>
+                  <div className={`it-toggle-switch ${step1State.toggle3 ? 'on' : 'off'}`}>
                     <div className="it-toggle-knob"></div>
                   </div>
                 </div>
                 {/* Simulated Cursor */}
-                <div className={`simulated-cursor c-step1 ${step1State.cursorMoving ? 'moving' : ''} ${step1State.clicked ? 'clicked' : ''}`}>
+                <div className={`simulated-cursor c-step1 ${step1State.cursorPos > 0 ? `moving moving-${step1State.cursorPos}` : ''} ${step1State.isClicking ? 'clicked' : ''}`}>
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="#1A1D1D" stroke="#ffffff" strokeWidth="1.5" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
                     <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.42c.45 0 .67-.54.35-.85L5.85 2.86a.5.5 0 0 0-.85.35Z"/>
                   </svg>
-                  {step1State.clicked && <div className="click-ripple"></div>}
+                  {step1State.isClicking && <div className="click-ripple"></div>}
                 </div>
               </div>
             </div>
@@ -301,6 +317,13 @@ export default function InteractiveTour() {
                 <div className="it-cv-field">
                   <label>GitHub Username</label>
                   <div className="it-cv-input">torvalds</div>
+                </div>
+                <div className="it-cv-field">
+                  <label>LinkedIn Profile</label>
+                  <div className="it-cv-input-prefixed">
+                    <span className="it-cv-prefix">linkedin.com/in/</span>
+                    <span className="it-cv-suffix">torvalds</span>
+                  </div>
                 </div>
                 <button className="it-btn-connect-gh">Connect GitHub App</button>
               </div>

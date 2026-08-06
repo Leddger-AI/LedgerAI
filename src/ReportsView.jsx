@@ -54,7 +54,7 @@ export default function ReportsView({ meetings }) {
     }));
   }, [filteredMeetings]);
 
-  const COLORS = ['#b55fe6', '#00f0ff', '#f59e0b', '#10b981', '#f43f5e'];
+  const COLORS = ['#16A34A', '#F97316', '#DC2626', '#FFFFFF', '#4A4A4A'];
 
   const totalSpent = filteredMeetings.reduce((acc, m) => acc + m.cost, 0);
   const totalMeetings = filteredMeetings.length;
@@ -125,7 +125,7 @@ export default function ReportsView({ meetings }) {
           <select 
             value={projectFilter}
             onChange={e => setProjectFilter(e.target.value)}
-            style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+            style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
           >
             <option value="All">All Projects</option>
             <option value="Project Phoenix">Project Phoenix (PHX-408)</option>
@@ -142,7 +142,7 @@ export default function ReportsView({ meetings }) {
           <select 
             value={dateRange}
             onChange={e => setDateRange(e.target.value)}
-            style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '13px' }}
+            style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
           >
             <option value="Last 7 Days">Last 7 Days</option>
             <option value="Last 30 Days">Last 30 Days</option>
@@ -172,15 +172,15 @@ export default function ReportsView({ meetings }) {
       <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '24px' }}>
         <div className="glass-panel kpi-card" style={{ padding: '16px' }}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Filtered Budget Burden</div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: '#fff' }}>${totalSpent.toLocaleString()}</div>
+          <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>${totalSpent.toLocaleString()}</div>
         </div>
         <div className="glass-panel kpi-card" style={{ padding: '16px' }}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Filtered Meeting Count</div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: '#fff' }}>{totalMeetings} Meetings</div>
+          <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>{totalMeetings} Meetings</div>
         </div>
         <div className="glass-panel kpi-card" style={{ padding: '16px' }}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Average AI Confidence</div>
-          <div style={{ fontSize: '20px', fontWeight: '800', color: '#fff' }}>{avgConfidence}% Accuracy</div>
+          <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>{avgConfidence}% Accuracy</div>
         </div>
       </div>
 
@@ -188,7 +188,7 @@ export default function ReportsView({ meetings }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', marginBottom: '24px' }}>
         {/* Cost timeline chart */}
         <div className="glass-panel" style={{ padding: '20px' }}>
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <TrendingUp size={16} style={{ color: 'var(--color-cyan)' }} />
             Weekly Meeting Cost Expenditure Trend
           </h3>
@@ -205,7 +205,7 @@ export default function ReportsView({ meetings }) {
                 <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={11} />
                 <YAxis stroke="var(--text-muted)" fontSize={11} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)', color: '#fff', borderRadius: '8px' }}
+                  contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '8px' }}
                 />
                 <Area type="monotone" dataKey="cost" name="Meeting Cost" stroke="var(--color-cyan)" fillOpacity={1} fill="url(#reportsGrad)" />
               </AreaChart>
@@ -215,7 +215,7 @@ export default function ReportsView({ meetings }) {
 
         {/* Cost distribution pie chart */}
         <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <PieIcon size={16} style={{ color: 'var(--color-purple)' }} />
             Project Cost Share
           </h3>
@@ -239,7 +239,7 @@ export default function ReportsView({ meetings }) {
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)', color: '#fff', borderRadius: '8px' }}
+                    contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)', color: 'var(--text-primary)', borderRadius: '8px' }}
                     formatter={(value) => `$${value}`}
                   />
                   <Legend 
@@ -248,7 +248,7 @@ export default function ReportsView({ meetings }) {
                     verticalAlign="middle"
                     iconSize={8}
                     wrapperStyle={{ fontSize: '11px', color: 'var(--text-secondary)' }}
-                    formatter={(value) => <span style={{ color: '#ffffff' }}>{value}</span>}
+                    formatter={(value) => <span style={{ color: 'var(--text-primary)' }}>{value}</span>}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -259,7 +259,7 @@ export default function ReportsView({ meetings }) {
 
       {/* Detailed Report Table */}
       <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '16px' }}>Granular Cost Ledger</h3>
+        <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>Granular Cost Ledger</h3>
         <div style={{ overflowX: 'auto' }}>
           <table className="meetings-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -282,13 +282,13 @@ export default function ReportsView({ meetings }) {
               ) : (
                 filteredMeetings.map((meeting) => (
                   <tr key={meeting.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>
-                    <td style={{ padding: '14px 16px', fontWeight: '600', color: '#fff' }}>{meeting.title}</td>
+                    <td style={{ padding: '14px 16px', fontWeight: '600', color: 'var(--text-primary)' }}>{meeting.title}</td>
                     <td style={{ padding: '14px 16px' }}>
                       <span style={{
                         fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: '600',
                         backgroundColor: meeting.project === 'Project Phoenix' ? 'rgba(181, 95, 230, 0.15)' : 
                                         meeting.project === 'Client ABC Onboarding' ? 'rgba(6, 182, 212, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                        color: '#ffffff'
+                        color: 'var(--text-primary)'
                       }}>
                         {meeting.project}
                       </span>
@@ -296,14 +296,14 @@ export default function ReportsView({ meetings }) {
                     <td style={{ padding: '14px 16px' }}>
                       <span style={{
                         fontWeight: '700',
-                        color: '#ffffff'
+                        color: 'var(--text-primary)'
                       }}>
                         {meeting.confidence}%
                       </span>
                     </td>
                     <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{meeting.duration}</td>
                     <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{meeting.attendeeCount}</td>
-                    <td style={{ padding: '14px 16px', fontWeight: 'bold', color: '#ffffff' }}>${meeting.cost.toLocaleString()}</td>
+                    <td style={{ padding: '14px 16px', fontWeight: 'bold', color: 'var(--text-primary)' }}>${meeting.cost.toLocaleString()}</td>
                   </tr>
                 ))
               )}
