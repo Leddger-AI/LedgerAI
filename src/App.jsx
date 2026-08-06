@@ -758,8 +758,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="logo-container">
           <h1 className="logo-text">
-            <Brain size={20} style={{ color: 'var(--color-cyan)', filter: 'drop-shadow(0 0 5px var(--color-cyan-glow))' }} />
-            HR COST INTELLIGENCE
+            LEDDGER
           </h1>
         </div>
 

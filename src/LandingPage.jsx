@@ -70,7 +70,7 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
       {/* Home Page Top Header Navbar */}
       <header className={`cz-home-header ${scrollHeaderVisible ? 'visible' : 'hidden'}`}>
         <div className="cz-logo" onClick={onStartDashboard} style={{ cursor: 'pointer' }}>
-          LedgerAI
+          Leddger
         </div>
         <div className="cz-nav-right">
           <button className="cz-btn-login" onClick={onStartDashboard} disabled={loading}>Log In</button>
@@ -118,7 +118,7 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
             <span className="cz-fw-highlight">Recruitment</span>
           </h1>
           <p className="cz-hero-desc">
-            End-to-end AES encryption. Protect candidate data and analyze submissions with confidence.
+            End-to-end AES encryption. Protect candidate data, set dates, and securely sync with Google Calendar to manage schedules and cross-check your recruitment timelines.
           </p>
         </div>
         
@@ -263,7 +263,7 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
             </div>
             <h3 className="cz-hiw-col-title">Data Decryption & Analysis</h3>
             <p className="cz-hiw-col-desc">
-              Only the recruiter holds the key to decrypt the incoming payloads. Bulk upload Excel/CSV data to analyze and rank the best candidates.
+              Only the recruiter holds the key to decrypt incoming payloads. Integrate with Google Calendar to seamlessly set dates, schedule reminders, and track recruitment cycles.
             </p>
           </div>
         </div>
