@@ -9,7 +9,7 @@ const NAV_LINKS = [
   { label: 'Security', path: '/security' }
 ];
 
-const hiddenRoutes = ['/how-it-works', '/analytics'];
+const hiddenRoutes = ['/how-it-works', '/analytics', '/privacy', '/terms'];
 
 export default function Navbar({ onStartDashboard, loading }) {
   const location = useLocation();
