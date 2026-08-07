@@ -82,6 +82,8 @@ const AnalyticsEngine = lazy(() => import('./pages/AnalyticsEngine.jsx'));
 const Welcome = lazy(() => import('./pages/Welcome.jsx'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
+const PublicFormView = lazy(() => import('./pages/PublicFormView.jsx'));
+const DraftsView = lazy(() => import('./pages/DraftsView.jsx'));
 
 
 // Pre-defined avatars from public sources
@@ -182,7 +184,10 @@ export default function App() {
     Templates: [
       { id: 'Student Template', label: 'Student', icon: GraduationCap },
       { id: 'Employee Template', label: 'Employee', icon: Briefcase },
-      { id: 'Team Template', label: 'Team', icon: Users }
+      { id: 'Team Template', label: 'Team', icon: Users },
+      { id: 'dividerTemplates', isDivider: true },
+      { id: 'Drafts', label: 'Drafts', icon: File },
+      { id: 'Sent Forms', label: 'Sent', icon: Send }
     ],
     Analytics: [
       { id: 'Analysis', label: 'Analysis', icon: BarChart3 },
@@ -1456,6 +1461,14 @@ export default function App() {
             <EmployeeTemplateBuilder />
           ) : activeTab === 'Team Template' ? (
             <TeamTemplateBuilder />
+          ) : activeTab === 'Drafts' ? (
+            <DraftsView />
+          ) : activeTab === 'Sent Forms' ? (
+            <div style={{ padding: '40px', color: '#64748B', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px' }}>
+              <Send size={48} style={{ color: '#CBD5E1' }} />
+              <h2>Sent Forms</h2>
+              <p>Responses and statuses for your sent forms will appear here.</p>
+            </div>
           ) : activeTab === 'Projects' ? (
             <ProjectsView meetings={meetings} onUpdateMeetingProject={handleUpdateMeetingProject} />
           ) : activeTab === 'Teams' ? (
