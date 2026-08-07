@@ -31,6 +31,7 @@ export default function StudentTemplateBuilder() {
 
   // Draft Generation State
   const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const toggleField = (key) => {
     setToggles(prev => ({ ...prev, [key]: !prev[key] }));
@@ -60,7 +61,8 @@ export default function StudentTemplateBuilder() {
 
       const data = await response.json();
       if (response.ok) {
-        alert('Draft saved successfully! Go to the Drafts tab to generate a public link.');
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 2500);
       } else {
         console.error('Failed to save draft:', data.error);
         alert('Failed to save draft.');
@@ -114,8 +116,13 @@ export default function StudentTemplateBuilder() {
 
   return (
     <div className="template-builder-container">
+      {showSuccess && (
+        <div className="success-overlay">
+          <video src="/Sucess.webm" autoPlay muted className="success-video" />
+        </div>
+      )}
       
-      {/* LEFT PANEL - FIELD SELECTOR */}
+      {/* LEFT PANEL - Sidebar Controls */}
       <div className="tb-sidebar">
         <div className="tb-sidebar-header">
           <h1 className="tb-sidebar-title">Student Template</h1>

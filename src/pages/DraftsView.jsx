@@ -94,12 +94,43 @@ export default function DraftsView() {
 
   return (
     <div className="drafts-container">
-      {/* LEFT PANEL - Scheduler */}
-      <div className="drafts-left-panel">
+      {/* MAIN PANEL - Drafts List */}
+      <div className="drafts-main-panel">
         <div className="drafts-header">
-          <h2>Draft Configuration</h2>
-          <p>Select a saved draft to schedule its expiration and generate a public link.</p>
+          <h2>Your Saved Drafts</h2>
+          <p>Select a draft to schedule its expiration and generate a public link.</p>
         </div>
+        
+        {loading ? (
+          <p style={{ color: '#64748B', fontSize: '13px' }}>Loading drafts...</p>
+        ) : drafts.length === 0 ? (
+          <div className="empty-state">
+            <File size={48} />
+            <h3>No Drafts Yet</h3>
+            <p>You haven't saved any drafts. Create one in the template builder.</p>
+          </div>
+        ) : (
+          <div className="draft-list">
+            {drafts.map(draft => (
+              <div 
+                key={draft.draftId} 
+                className={`draft-card ${selectedDraft?.draftId === draft.draftId ? 'selected' : ''}`}
+                onClick={() => handleSelectDraft(draft)}
+              >
+                <div className="draft-card-title">{draft.title}</div>
+                <div className="draft-card-meta">
+                  <span>{new Date(draft.createdAt).toLocaleDateString()}</span>
+                  {getStatusBadge(draft.status)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT SIDEBAR - Scheduler */}
+      <div className="drafts-sidebar-panel">
+        <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#1E293B', marginBottom: '16px' }}>Draft Configuration</h3>
 
         {selectedDraft ? (
           <div className="scheduler-container">
@@ -167,37 +198,12 @@ export default function DraftsView() {
           <div className="empty-state">
             <File size={48} />
             <h3>No Draft Selected</h3>
-            <p>Select a draft from the right panel to schedule.</p>
+            <p>Select a draft from the main panel to schedule.</p>
           </div>
         )}
       </div>
 
-      {/* RIGHT PANEL - Drafts List */}
-      <div className="drafts-right-panel">
-        <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#1E293B', marginBottom: '16px' }}>Your Saved Drafts</h3>
-        
-        {loading ? (
-          <p style={{ color: '#64748B', fontSize: '13px' }}>Loading drafts...</p>
-        ) : drafts.length === 0 ? (
-          <p style={{ color: '#64748B', fontSize: '13px' }}>You haven't saved any drafts yet.</p>
-        ) : (
-          <div className="draft-list">
-            {drafts.map(draft => (
-              <div 
-                key={draft.draftId} 
-                className={`draft-card ${selectedDraft?.draftId === draft.draftId ? 'selected' : ''}`}
-                onClick={() => handleSelectDraft(draft)}
-              >
-                <div className="draft-card-title">{draft.title}</div>
-                <div className="draft-card-meta">
-                  <span>{new Date(draft.createdAt).toLocaleDateString()}</span>
-                  {getStatusBadge(draft.status)}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+
     </div>
   );
 }
