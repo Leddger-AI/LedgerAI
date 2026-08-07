@@ -5,19 +5,20 @@
   background-color: #F8FAFC;
 }
 
-.drafts-left-panel {
+.drafts-main-panel {
   flex: 1;
   padding: 40px;
   background-color: #FFFFFF;
-  border-right: 1px solid #E2E8F0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
-.drafts-right-panel {
+.drafts-sidebar-panel {
   width: 400px;
   background-color: #F8FAFC;
   padding: 30px;
+  border-left: 1px solid #E2E8F0;
   overflow-y: auto;
 }
 

@@ -511,3 +511,24 @@
 .compound-input-field::placeholder {
   color: #A0AEC0;
 }
+
+/* Success Overlay */
+.success-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+.success-video {
+  width: 300px;
+  height: 300px;
+  object-fit: contain;
+}

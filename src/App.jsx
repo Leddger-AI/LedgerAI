@@ -117,6 +117,8 @@ export default function App() {
     '/dashboard/alerts': 'Alerts',
     '/dashboard/settings': 'Settings',
     '/dashboard/knowledge-base': 'Knowledge Base',
+    '/dashboard/templates/drafts': 'Drafts',
+    '/dashboard/templates/sent': 'Sent Forms'
   };
 
   const TAB_PATH_MAP = Object.fromEntries(
@@ -127,7 +129,7 @@ export default function App() {
   
   const calculatePrimaryNav = (tab) => {
     if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
-    if (['Student Template', 'Employee Template', 'Team Template'].includes(tab)) return 'Templates';
+    if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Sent Forms'].includes(tab)) return 'Templates';
     if (['Projects', 'Teams', 'Sourcing', 'Calendar'].includes(tab)) return 'Workspace';
     if (['Analysis', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
