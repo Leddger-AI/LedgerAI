@@ -78,11 +78,7 @@ app.post('/api/user/departments', verifyToken, async (req, res) => {
  */
 app.post('/api/drafts', verifyToken, async (req, res) => {
   try {
-    const { title, config, expiresInHours } = req.body;
-    
-    // Calculate expiration date
-    const hours = parseInt(expiresInHours, 10) || 24;
-    const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+    const { title, config } = req.body;
     
     const draftId = uuidv4();
 
@@ -91,13 +87,57 @@ app.post('/api/drafts', verifyToken, async (req, res) => {
       recruiterId: req.user.uid,
       title,
       config,
-      expiresAt
+      status: 'draft',
+      expiresAt: null
     });
 
     res.json({ message: 'Draft created', draftId: newDraft.draftId });
   } catch (error) {
     console.error('Error creating draft:', error);
     res.status(500).json({ error: 'Failed to create draft' });
+  }
+});
+
+/**
+ * GET /api/drafts
+ * Fetch all form drafts for the logged in recruiter
+ */
+app.get('/api/drafts', verifyToken, async (req, res) => {
+  try {
+    const drafts = await FormDraft.find({ recruiterId: req.user.uid }).sort({ createdAt: -1 });
+    res.json({ drafts });
+  } catch (error) {
+    console.error('Error fetching drafts:', error);
+    res.status(500).json({ error: 'Failed to fetch drafts' });
+  }
+});
+
+/**
+ * PUT /api/drafts/:draftId/activate
+ * Activate a form draft by setting its expiration date
+ */
+app.put('/api/drafts/:draftId/activate', verifyToken, async (req, res) => {
+  try {
+    const { expiresAt } = req.body;
+    
+    if (!expiresAt) {
+      return res.status(400).json({ error: 'expiresAt is required' });
+    }
+
+    const draft = await FormDraft.findOne({ draftId: req.params.draftId, recruiterId: req.user.uid });
+    
+    if (!draft) {
+      return res.status(404).json({ error: 'Draft not found' });
+    }
+
+    draft.expiresAt = new Date(expiresAt);
+    draft.status = 'active';
+    await draft.save();
+
+    res.json({ message: 'Draft activated', draft });
+  } catch (error) {
+    console.error('Error activating draft:', error);
+    res.status(500).json({ error: 'Failed to activate draft' });
   }
 });
 
@@ -111,6 +151,10 @@ app.get('/api/forms/:draftId', async (req, res) => {
     
     if (!draft) {
       return res.status(404).json({ error: 'Form not found' });
+    }
+
+    if (draft.status === 'draft' || !draft.expiresAt) {
+      return res.status(403).json({ error: 'This form link is not yet active.' });
     }
 
     if (new Date() > draft.expiresAt || draft.status === 'expired') {

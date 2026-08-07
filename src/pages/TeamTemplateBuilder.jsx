@@ -39,8 +39,6 @@ export default function TeamTemplateBuilder() {
   
   // Draft Generation State
   const [isSaving, setIsSaving] = useState(false);
-  const [draftLink, setDraftLink] = useState('');
-  const [expiresInHours, setExpiresInHours] = useState('24');
   
   useEffect(() => {
     const fetchDepartments = async () => {
@@ -120,7 +118,6 @@ export default function TeamTemplateBuilder() {
 
   const handleSaveDraft = async () => {
     setIsSaving(true);
-    setDraftLink('');
     try {
       const config = {
         toggles,
@@ -144,14 +141,13 @@ export default function TeamTemplateBuilder() {
         },
         body: JSON.stringify({
           title: formTitle,
-          config,
-          expiresInHours
+          config
         })
       });
 
       const data = await response.json();
       if (response.ok) {
-        setDraftLink(`http://localhost:5173/form/${encodeURIComponent(formTitle)}/${data.draftId}`);
+        alert('Draft saved successfully! Go to the Drafts tab to generate a public link.');
       } else {
         console.error('Failed to save draft:', data.error);
         alert('Failed to save draft.');
@@ -187,40 +183,17 @@ export default function TeamTemplateBuilder() {
           </div>
 
           <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-            <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B', marginBottom: '12px' }}>Save & Generate Link</h4>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <select 
-                className="form-select" 
-                style={{ flex: 1, fontSize: '12px', padding: '8px' }}
-                value={expiresInHours}
-                onChange={e => setExpiresInHours(e.target.value)}
-              >
-                <option value="24">Expires in 24 Hours</option>
-                <option value="72">Expires in 3 Days</option>
-                <option value="168">Expires in 7 Days</option>
-              </select>
+            <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B', marginBottom: '12px' }}>Save Form</h4>
+            <div style={{ display: 'flex', gap: '8px' }}>
               <button 
                 className="form-btn primary" 
+                style={{ width: '100%' }}
                 onClick={handleSaveDraft}
                 disabled={isSaving}
               >
-                {isSaving ? 'Saving...' : 'Save Draft'}
+                {isSaving ? 'Saving...' : 'Save as Draft'}
               </button>
             </div>
-            
-            {draftLink && (
-              <div style={{ marginTop: '12px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748B' }}>Public Link:</label>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                  <input type="text" className="form-input" value={draftLink} readOnly style={{ flex: 1, fontSize: '11px', padding: '6px' }} />
-                  <button 
-                    className="form-btn outline" 
-                    style={{ fontSize: '11px', padding: '6px' }}
-                    onClick={() => navigator.clipboard.writeText(draftLink)}
-                  >Copy</button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 

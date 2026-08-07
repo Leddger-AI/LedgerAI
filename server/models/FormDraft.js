@@ -20,12 +20,12 @@ const FormDraftSchema = new mongoose.Schema({
   },
   expiresAt: {
     type: Date,
-    required: true
+    default: null
   },
   status: {
     type: String,
     enum: ['draft', 'active', 'expired'],
-    default: 'active'
+    default: 'draft'
   },
   createdAt: {
     type: Date,

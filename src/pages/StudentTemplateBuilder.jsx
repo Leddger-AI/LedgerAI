@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, Globe, Link, Mail, BookOpen, Star, Target, MessageSquare, ClipboardList, Clock, Layers, Monitor, Smartphone, Camera, FileUp } from 'lucide-react';
+import { auth } from '../firebaseAuth';
 import './TemplateBuilder.css';
 
 const DEFAULT_TOGGLES = {
@@ -28,8 +29,48 @@ export default function StudentTemplateBuilder() {
   const [formTitle, setFormTitle] = useState('Student Evaluation Form');
   const [emailFormat, setEmailFormat] = useState('@[branch].sreenidhi.edu.in');
 
+  // Draft Generation State
+  const [isSaving, setIsSaving] = useState(false);
+
   const toggleField = (key) => {
     setToggles(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSaveDraft = async () => {
+    setIsSaving(true);
+    try {
+      const config = {
+        toggles,
+        emailFormat
+      };
+
+      const token = await auth.currentUser.getIdToken();
+      
+      const response = await fetch('http://localhost:5000/api/drafts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: formTitle,
+          config
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        alert('Draft saved successfully! Go to the Drafts tab to generate a public link.');
+      } else {
+        console.error('Failed to save draft:', data.error);
+        alert('Failed to save draft.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error saving draft.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const renderCompoundEmail = (formatStr, placeholder = "john.doe") => {
@@ -85,10 +126,24 @@ export default function StudentTemplateBuilder() {
             <input 
               type="text" 
               className="form-input" 
-              style={{ width: '100%', backgroundColor: '#F8FAFC', border: '1px solid #E5E5E5' }}
+              style={{ width: '100%', backgroundColor: '#FFFFFF', border: '1px solid #E5E5E5' }}
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
             />
+          </div>
+
+          <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+            <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B', marginBottom: '12px' }}>Save Form</h4>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                className="form-btn primary" 
+                style={{ width: '100%' }}
+                onClick={handleSaveDraft}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save as Draft'}
+              </button>
+            </div>
           </div>
         </div>
 
