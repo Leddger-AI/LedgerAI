@@ -61,13 +61,17 @@
 }
 
 body {
-  background-color: var(--bg-main);
+  background-color: #f6eadc;
   color: var(--text-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  overflow: hidden;
   height: 100vh;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Custom Scrollbar */
