@@ -1,11 +1,12 @@
-import { useState, useMemo, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useState, useMemo, lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Briefcase,
   Users,
   Calendar,
   FileText,
+  GraduationCap,
   Bell,
   Settings,
   AlertTriangle,
@@ -27,7 +28,16 @@ import {
   BarChart3,
   UserSearch,
   Video,
-  Download
+  Download,
+  ChevronsRight,
+  ChevronsLeft,
+  Mail,
+  MessageCircle,
+  Phone,
+  Inbox as InboxIcon,
+  File,
+  Trash2,
+  ChevronUp
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -42,7 +52,8 @@ import {
   Cell
 } from 'recharts';
 import './App.css';
-import { loginWithGoogleAndCalendar } from './firebaseAuth';
+import { auth, loginWithGoogleAndCalendar } from './firebaseAuth';
+import { onAuthStateChanged } from 'firebase/auth';
 import LandingPage from './LandingPage.jsx';
 import Navbar from './Navbar.jsx';
 import KnowledgeBase from './KnowledgeBase.jsx';
@@ -57,6 +68,10 @@ import MeetView from './MeetView.jsx';
 import ExportView from './ExportView.jsx';
 import EmailAutomationView from './EmailAutomationView.jsx';
 import AnalysisView from './AnalysisView.jsx';
+import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
+import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
+import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -81,10 +96,109 @@ const avatars = [
 
 export default function App() {
   const location = useLocation();
-  const [showDashboard, setShowDashboard] = useState(false);
-  // --- STATE MANAGEMENT ---
-  const [activeTab, setActiveTab] = useState('Dashboard');
-  const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
+
+  const PATH_TAB_MAP = {
+    '/dashboard': 'Dashboard',
+    '/dashboard/templates/student': 'Student Template',
+    '/dashboard/templates/employee': 'Employee Template',
+    '/dashboard/templates/team': 'Team Template',
+    '/dashboard/projects': 'Projects',
+    '/dashboard/teams': 'Teams',
+    '/dashboard/calendar': 'Calendar',
+    '/dashboard/reports': 'Reports',
+    '/dashboard/sourcing': 'Sourcing',
+    '/dashboard/meet': 'Meet',
+    '/dashboard/export': 'Export',
+    '/dashboard/email-automation': 'Email Automation',
+    '/dashboard/analysis': 'Analysis',
+    '/dashboard/alerts': 'Alerts',
+    '/dashboard/settings': 'Settings',
+    '/dashboard/knowledge-base': 'Knowledge Base',
+  };
+
+  const TAB_PATH_MAP = Object.fromEntries(
+    Object.entries(PATH_TAB_MAP).map(([path, tab]) => [tab, path])
+  );
+
+  const activeTab = PATH_TAB_MAP[location.pathname] || 'Dashboard';
+  
+  const calculatePrimaryNav = (tab) => {
+    if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
+    if (['Student Template', 'Employee Template', 'Team Template'].includes(tab)) return 'Templates';
+    if (['Projects', 'Teams', 'Sourcing', 'Calendar'].includes(tab)) return 'Workspace';
+    if (['Analysis', 'Reports', 'Export'].includes(tab)) return 'Analytics';
+    if (['Knowledge Base'].includes(tab)) return 'Intelligence';
+    if (['Settings'].includes(tab)) return 'Settings';
+    return 'Home'; 
+  };
+  
+  const activePrimaryNav = calculatePrimaryNav(activeTab);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  
+  const PRIMARY_NAVS = [
+    { id: 'Home', icon: LayoutDashboard },
+    { id: 'Inbox', icon: Mail },
+    { id: 'Workspace', icon: Briefcase },
+    { id: 'Templates', icon: FileText },
+    { id: 'Analytics', icon: BarChart3 },
+    { id: 'Intelligence', icon: Sparkles },
+    { id: 'Settings', icon: Settings }
+  ];
+
+  const SECONDARY_NAVS = {
+    Home: [
+      { id: 'Dashboard', label: 'Overview', icon: LayoutDashboard },
+      { id: 'Alerts', label: 'Alerts', icon: AlertTriangle }
+    ],
+    Inbox: [
+      { id: 'Assigned', label: 'Assigned to me', icon: Users, count: 50 },
+      { id: 'Unassigned', label: 'Unassigned', icon: FileText, count: 2 },
+      { id: 'AllOpen', label: 'All open', icon: CheckCircle2, count: 2 },
+      { id: 'divider1', isDivider: true },
+      { id: 'Email Automation', label: 'Email', icon: Mail, count: 46 },
+      { id: 'Chat', label: 'Chat', icon: MessageCircle, count: 18 },
+      { id: 'Calls', label: 'Calls', icon: Phone, count: 12 },
+      { id: 'AllClosed', label: 'All Closed', icon: InboxIcon, count: 12 },
+      { id: 'divider2', isDivider: true },
+      { id: 'Sent', label: 'Sent', icon: Send, count: 12 },
+      { id: 'Draft', label: 'Draft', icon: File },
+      { id: 'Schedule', label: 'Schedule', icon: Clock },
+      { id: 'divider3', isDivider: true },
+      { id: 'OthersHeader', isHeader: true, label: 'Others' },
+      { id: 'Spam', label: 'Spam', icon: AlertCircle },
+      { id: 'Trash', label: 'Trash', icon: Trash2 },
+      { id: 'divider4', isDivider: true },
+      { id: 'TeamHeader', isHeader: true, label: 'Team inboxes' },
+      { id: 'ManageSubscription', label: 'Manage Subscription', icon: Briefcase, count: 1 },
+      { id: 'ManageLabels', label: 'Manage Labels', icon: Settings, count: 2 }
+    ],
+    Workspace: [
+      { id: 'Projects', label: 'Projects', icon: Briefcase },
+      { id: 'Teams', label: 'Teams', icon: Users },
+      { id: 'Sourcing', label: 'Sourcing', icon: UserSearch },
+      { id: 'Calendar', label: 'Calendar', icon: Calendar }
+    ],
+    Templates: [
+      { id: 'Student Template', label: 'Student', icon: GraduationCap },
+      { id: 'Employee Template', label: 'Employee', icon: Briefcase },
+      { id: 'Team Template', label: 'Team', icon: Users }
+    ],
+    Analytics: [
+      { id: 'Analysis', label: 'Analysis', icon: BarChart3 },
+      { id: 'Reports', label: 'Reports', icon: FileText },
+      { id: 'Export', label: 'Export', icon: Download }
+    ],
+    Intelligence: [
+      { id: 'Knowledge Base', label: 'Knowledge Base', icon: Sparkles }
+    ],
+    Settings: [
+      { id: 'Settings', label: 'General Settings', icon: Settings }
+    ]
+  };
+
+  const searchQueryState = useState('');
+  const [searchQuery, setSearchQuery] = searchQueryState;
   const [datePreset, setDatePreset] = useState('This Month');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -94,6 +208,7 @@ export default function App() {
 
   // Authentication & API state
   const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [tokens, setTokens] = useState(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -169,6 +284,44 @@ export default function App() {
     }
   ]);
 
+  // Auth persistence listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        // Auto-redirect to dashboard if logging in from public landing pages
+        if (location.pathname === '/' || location.pathname === '/welcome' || location.pathname === '/security') {
+          navigate('/dashboard');
+        }
+        
+        const googleToken = localStorage.getItem('googleAccessToken');
+        try {
+          const firebaseToken = await currentUser.getIdToken();
+          setTokens({
+            firebaseIdToken: firebaseToken,
+            googleAccessToken: googleToken
+          });
+          
+          if (googleToken) {
+            // Re-fetch events now that we have tokens
+            await fetchEvents(firebaseToken, googleToken);
+          }
+        } catch (e) {
+          console.error("Error restoring session:", e);
+        }
+      } else {
+        // Fallback for demo mode survival on refresh
+        const localUser = localStorage.getItem('authUser');
+        if (localUser && localUser.includes("Demo Mode")) {
+          setUser(JSON.parse(localUser));
+        }
+      }
+      // Mark auth as ready after first check completes
+      setAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const [alerts, setAlerts] = useState([
     {
       id: 1,
@@ -205,6 +358,13 @@ export default function App() {
         firebaseIdToken: data.firebaseIdToken,
         googleAccessToken: data.googleAccessToken
       });
+      // Store token in localStorage to survive refreshes
+      localStorage.setItem('googleAccessToken', data.googleAccessToken);
+      localStorage.setItem('authUser', JSON.stringify({
+        displayName: data.user.displayName,
+        photoURL: data.user.photoURL,
+        email: data.user.email
+      }));
       await fetchEvents(data.firebaseIdToken, data.googleAccessToken);
       return true;
     } catch (err) {
@@ -225,15 +385,17 @@ export default function App() {
   };
 
   const enterDemoMode = () => {
-    setUser({
+    const demoUser = {
       displayName: "Sarah Jenkins (Demo Mode)",
       photoURL: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80",
       email: "demo@ledgerai.co"
-    });
+    };
+    setUser(demoUser);
     setTokens({
       firebaseIdToken: "demo-firebase-id-token",
       googleAccessToken: "demo-google-access-token"
     });
+    localStorage.setItem('authUser', JSON.stringify(demoUser));
     // Reset to mock data
     setMeetings([
       {
@@ -304,16 +466,15 @@ export default function App() {
       }
     ]);
     setAuthErrorModal(null);
-    if (typeof setShowDashboard === 'function') {
-      setShowDashboard(true);
-    }
   };
 
   const handleLogout = () => {
+    auth.signOut();
     setUser(null);
     setTokens(null);
     setApiError(null);
-    setShowDashboard(false);
+    localStorage.removeItem('googleAccessToken');
+    localStorage.removeItem('authUser');
     // Reset to mock data
     setMeetings([
       {
@@ -680,215 +841,115 @@ export default function App() {
 
   // Navigation click handler
   const handleNavClick = (tab) => {
-    setActiveTab(tab);
+    const path = TAB_PATH_MAP[tab];
+    if (path) navigate(path);
   };
 
-  if (!showDashboard) {
-    const handleStartDashboard = async () => {
-      if (user) {
-        setShowDashboard(true);
-      } else {
-        const success = await handleLogin();
-        if (success) {
-          setShowDashboard(true);
-        }
+  const handleStartDashboard = async () => {
+    if (user) {
+      navigate('/dashboard');
+    } else {
+      const success = await handleLogin();
+      if (success) {
+        navigate('/dashboard');
       }
-    };
+    }
+  };
 
-    return (
-      <>
-        {location.pathname !== '/welcome' && (
-          <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
-        )}
-        <Suspense fallback={
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            minHeight: '80vh',
-            color: 'var(--color-cyan)',
-            fontFamily: 'var(--font-display)',
-            fontSize: '18px'
-          }}>
-            <div className="animate-spin" style={{
-              marginRight: '12px',
-              width: '24px',
-              height: '24px',
-              border: '3px solid rgba(215, 254, 250, 0.1)',
-              borderTopColor: 'var(--color-cyan)',
-              borderRadius: '50%'
-            }} />
-            Loading LedgerAI Portal...
-          </div>
-        }>
-          <Routes>
-            <Route path="/" element={
-              <LandingPage 
-                onStartDashboard={handleStartDashboard}
-                loading={loading}
-                apiError={apiError}
-                onClearError={() => setApiError(null)}
-              />
-            } />
-            <Route path="/security" element={
-              <LandingPage 
-                onStartDashboard={handleStartDashboard}
-                loading={loading}
-                apiError={apiError}
-                onClearError={() => setApiError(null)}
-              />
-            } />
-            <Route path="/welcome" element={<Welcome onStartDashboard={handleStartDashboard} />} />
-            <Route path="/recruiter-flow" element={<RecruiterDashboard />} />
-            <Route path="/recruiter" element={<RecruiterDashboard />} />
-            <Route path="/candidate-flow" element={<StudentPortal />} />
-            <Route path="/analytics" element={<AnalyticsEngine />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<TermsOfService />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </>
-    );
-  }
-
-  return (
-    <div className="app-container">
-      {/* --- SIDEBAR --- */}
-      <aside className="sidebar">
-        <div className="logo-container">
-          <h1 className="logo-text">
-            LEDDGER
-          </h1>
-        </div>
-
-        <nav className="sidebar-menu">
-          <div
-            className={`menu-item ${activeTab === 'Dashboard' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Dashboard')}
-          >
-            <LayoutDashboard />
-            <span>Dashboard</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Projects' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Projects')}
-          >
-            <Briefcase />
-            <span>Projects</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Teams' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Teams')}
-          >
-            <Users />
-            <span>Teams</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Calendar' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Calendar')}
-          >
-            <Calendar />
-            <span>Calendar</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Reports' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Reports')}
-          >
-            <FileText />
-            <span>Reports</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Email Automation' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Email Automation')}
-            title="Email Automation"
-          >
-            <Send />
-            <span>Email Automation</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Analysis' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Analysis')}
-            title="Analysis"
-          >
-            <BarChart3 />
-            <span>Analysis</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Sourcing' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Sourcing')}
-            title="Sourcing"
-          >
-            <UserSearch />
-            <span>Sourcing</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Meet' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Meet')}
-            title="Meet"
-          >
-            <Video />
-            <span>Meet</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Export' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Export')}
-            title="Export"
-          >
-            <Download />
-            <span>Export</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Knowledge Base' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Knowledge Base')}
-          >
-            <Sparkles size={20} />
-            <span>Knowledge Base</span>
-          </div>
-          <div
-            className={`menu-item ${activeTab === 'Alerts' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Alerts')}
-            style={{ position: 'relative' }}
-          >
-            <AlertTriangle />
-            <span>Alerts</span>
-            {activeAlertsCount > 0 && (
-              <span className="pulse-danger-dot" style={{ position: 'absolute', right: '16px', top: '18px' }} />
-            )}
-          </div>
-
-          <div
-            className={`menu-item ${activeTab === 'Settings' ? 'active' : ''}`}
-            onClick={() => handleNavClick('Settings')}
-          >
-            <Settings />
-            <span>Settings</span>
-          </div>
-        </nav>
-
-        <div className="sidebar-footer">
-          <div>HR Cost Intelligence Engine v1.4</div>
-          <div>Powered by AI Attribution</div>
-        </div>
-
-        {/* User Profile in Sidebar */}
-        <div className="sidebar-profile-widget" style={{ padding: '20px 0', borderTop: '1px solid var(--border-color)', width: '100%', display: 'flex', justifyContent: 'center' }}>
+  const dashboardUI = (
+    <div className="layout-wrapper">
+      {/* MINI SIDEBAR (LEVEL 1) */}
+      <aside className="mini-sidebar">
+        {/* Avatar Area */}
+        <div className="mini-sidebar-header">
           <img 
             src={user?.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80"} 
             alt="Profile" 
-            style={{ 
-              width: '40px', 
-              height: '40px', 
-              borderRadius: '50%', 
-              objectFit: 'cover', 
-              border: '2px solid rgba(20,20,20,0.1)',
-              boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
-              cursor: 'pointer'
-            }} 
-            title={`${user?.displayName || "Sarah Jenkins"} (${user ? "Authenticated VP" : "HR Operations VP"})`}
+            className="mini-avatar"
+            title={`${user?.displayName || "Sarah Jenkins"}`}
           />
         </div>
+
+        {/* Primary Nav Icons */}
+        <nav className="mini-sidebar-nav">
+          {PRIMARY_NAVS.map((nav) => {
+            const Icon = nav.icon;
+            const isActive = activePrimaryNav === nav.id;
+            return (
+              <div
+                key={nav.id}
+                className={`mini-nav-item ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  const firstSubItem = SECONDARY_NAVS[nav.id][0];
+                  if (firstSubItem) {
+                    const path = TAB_PATH_MAP[firstSubItem.id];
+                    if (path) navigate(path);
+                  }
+                }}
+                title={nav.id}
+              >
+                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                {activeAlertsCount > 0 && nav.id === 'Home' && (
+                  <span className="mini-nav-dot" />
+                )}
+              </div>
+            );
+          })}
+        </nav>
       </aside>
+
+      <div className="app-container">
+        {/* SECONDARY SIDEBAR (LEVEL 2) */}
+        <aside className="secondary-sidebar expanded">
+          <div className="secondary-sidebar-header">
+            <h2 className="secondary-title">{activePrimaryNav}</h2>
+          </div>
+          
+          <div className="secondary-sidebar-content">
+            {/* Navigation Groups */}
+            <nav className="secondary-nav-group">
+              {SECONDARY_NAVS[activePrimaryNav].map((subItem) => {
+                if (subItem.isDivider) {
+                  return <hr key={subItem.id} style={{ border: 0, borderTop: '1px solid #F0F0F0', margin: '8px 0' }} />;
+                }
+                if (subItem.isHeader) {
+                  return (
+                    <div key={subItem.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px 4px 12px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#141414' }}>{subItem.label}</span>
+                      <ChevronUp size={14} style={{ color: '#141414' }} />
+                    </div>
+                  );
+                }
+
+                const SubIcon = subItem.icon;
+                const isActive = activeTab === subItem.id;
+                
+                // Fallback for counts specifically for alerts if missing from mockup data
+                let displayCount = subItem.count;
+                if (subItem.id === 'Alerts' && activeAlertsCount > 0) {
+                  displayCount = activeAlertsCount;
+                }
+
+                return (
+                  <div
+                    key={subItem.id}
+                    className={`secondary-nav-item ${isActive ? 'active' : ''}`}
+                    onClick={() => handleNavClick(subItem.id)}
+                  >
+                    <SubIcon size={16} strokeWidth={1.5} style={{ color: isActive ? '#141414' : 'inherit' }} />
+                    <span style={{ color: isActive ? '#141414' : 'inherit' }}>{subItem.label}</span>
+                    
+                    {displayCount !== undefined && (
+                      <span className="nav-count-badge" style={{ color: isActive ? '#141414' : 'inherit', marginLeft: 'auto', fontSize: '12px' }}>
+                        {displayCount}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
 
       {/* --- MAIN WORKSPACE --- */}
       <div className="main-content">
@@ -1389,6 +1450,12 @@ export default function App() {
             </>
           ) : activeTab === 'Knowledge Base' ? (
             <KnowledgeBase />
+          ) : activeTab === 'Student Template' ? (
+            <StudentTemplateBuilder />
+          ) : activeTab === 'Employee Template' ? (
+            <EmployeeTemplateBuilder />
+          ) : activeTab === 'Team Template' ? (
+            <TeamTemplateBuilder />
           ) : activeTab === 'Projects' ? (
             <ProjectsView meetings={meetings} onUpdateMeetingProject={handleUpdateMeetingProject} />
           ) : activeTab === 'Teams' ? (
@@ -1552,5 +1619,70 @@ export default function App() {
         </div>
       )}
     </div>
+    </div>
+  );
+
+  return (
+    <>
+      {location.pathname !== '/welcome' && !location.pathname.startsWith('/dashboard') && (
+        <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
+      )}
+      <Suspense fallback={
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '80vh',
+          color: 'var(--color-cyan)',
+          fontFamily: 'var(--font-display)',
+          fontSize: '18px'
+        }}>
+          <div className="animate-spin" style={{
+            marginRight: '12px',
+            width: '24px',
+            height: '24px',
+            border: '3px solid rgba(215, 254, 250, 0.1)',
+            borderTopColor: 'var(--color-cyan)',
+            borderRadius: '50%'
+          }} />
+          Loading LedgerAI Portal...
+        </div>
+      }>
+        <Routes>
+          <Route path="/" element={
+            <LandingPage 
+              onStartDashboard={handleStartDashboard}
+              loading={loading}
+              apiError={apiError}
+              onClearError={() => setApiError(null)}
+            />
+          } />
+          <Route path="/security" element={
+            <LandingPage 
+              onStartDashboard={handleStartDashboard}
+              loading={loading}
+              apiError={apiError}
+              onClearError={() => setApiError(null)}
+            />
+          } />
+          <Route path="/welcome" element={<Welcome onStartDashboard={handleStartDashboard} />} />
+          <Route path="/recruiter-flow" element={<ProtectedRoute user={user} authReady={authReady}><RecruiterDashboard /></ProtectedRoute>} />
+          <Route path="/recruiter" element={<ProtectedRoute user={user} authReady={authReady}><RecruiterDashboard /></ProtectedRoute>} />
+          <Route path="/candidate-flow" element={<ProtectedRoute user={user} authReady={authReady}><StudentPortal /></ProtectedRoute>} />
+          <Route path="/analytics" element={<ProtectedRoute user={user} authReady={authReady}><AnalyticsEngine /></ProtectedRoute>} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/form/:title/:draftId" element={<PublicFormView />} />
+          
+          <Route path="/dashboard/*" element={
+            <ProtectedRoute user={user} authReady={authReady}>
+              {dashboardUI}
+            </ProtectedRoute>
+          } />
+          
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </>
   );
 }

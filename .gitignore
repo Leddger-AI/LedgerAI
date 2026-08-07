@@ -38,3 +38,6 @@ __pycache__/
 target/
 backend_rs/target/
 
+
+# Private keys
+github.private-key.pem
