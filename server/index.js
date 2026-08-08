@@ -209,6 +209,6 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
 });
