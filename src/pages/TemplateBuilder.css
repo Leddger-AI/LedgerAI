@@ -20,9 +20,7 @@
   scrollbar-width: none;
 }
 
-.tb-sidebar::-webkit-scrollbar {
-  display: none;
-}
+
 
 .tb-sidebar-header {
   padding: 24px;
@@ -128,7 +126,7 @@
 /* RIGHT PANEL (LIVE PREVIEW) */
 .tb-preview-panel {
   flex: 2;
-  background-color: #F3F4F6;
+  background-color: #FFFFFF;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -181,9 +179,7 @@
   scrollbar-width: none;
 }
 
-.device-frame::-webkit-scrollbar {
-  display: none;
-}
+
 
 .device-frame.desktop {
   width: 900px;
