@@ -61,7 +61,7 @@
 }
 
 body {
-  background-color: #f6eadc;
+  background-color: #FFFFFF;
   color: var(--text-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -162,4 +162,20 @@ body {
 .glass-panel:hover {
   border-color: var(--border-hover);
   background: var(--bg-card-hover);
+}
+
+/* Hide scrollbars globally including corners */
+*::-webkit-scrollbar,
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-corner,
+*::-webkit-resizer {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+* {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none;    /* Firefox */
 }

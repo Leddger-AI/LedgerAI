@@ -69,8 +69,7 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
     <div className="lp-wrapper">
       {/* Home Page Top Header Navbar */}
       <header className={`cz-home-header ${scrollHeaderVisible ? 'visible' : 'hidden'}`}>
-        <div className="cz-logo" onClick={onStartDashboard} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src="/logo.webp" alt="Leddger Logo" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
+        <div className="cz-logo" onClick={onStartDashboard} style={{ cursor: 'pointer' }}>
           Leddger
         </div>
         <div className="cz-nav-right">
