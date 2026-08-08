@@ -848,16 +848,7 @@ export default function App() {
     if (path) navigate(path);
   };
 
-  const handleStartDashboard = async () => {
-    if (user) {
-      navigate('/dashboard');
-    } else {
-      const success = await handleLogin();
-      if (success) {
-        navigate('/dashboard');
-      }
-    }
-  };
+  const handleStartDashboard = async () => { navigate('/login'); };
 
   const dashboardUI = (
     <div className="layout-wrapper">
@@ -1635,7 +1626,7 @@ export default function App() {
 
   return (
     <>
-      {location.pathname !== '/welcome' && !location.pathname.startsWith('/dashboard') && (
+      {location.pathname !== '/welcome' && location.pathname !== '/login' && location.pathname !== '/auth/github' && !location.pathname.startsWith('/dashboard') && (
         <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
       )}
       <Suspense fallback={
@@ -1697,3 +1688,4 @@ export default function App() {
     </>
   );
 }
+
