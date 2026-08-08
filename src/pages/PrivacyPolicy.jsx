@@ -17,7 +17,7 @@ export default function PrivacyPolicy() {
       <div style={{
         maxWidth: '800px',
         width: '100%',
-        backgroundColor: '#FBF6EC', /* Lighter cream card */
+        backgroundColor: '#FFFFFF', /* White card */
         padding: '50px',
         borderRadius: '12px',
         boxShadow: '0 10px 30px rgba(20, 20, 20, 0.1)',
@@ -73,3 +73,4 @@ export default function PrivacyPolicy() {
     </div>
   );
 }
+
