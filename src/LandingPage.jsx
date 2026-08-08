@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Plus
 } from 'lucide-react';
+import LiveProductTour from './LiveProductTour';
 import './LandingPage.css';
 
 // Custom Slack SVG Icon because lucide-react Slack icon export might not exist in this version
@@ -469,6 +470,10 @@ export default function LandingPage({ onStartDashboard }) {
         </section>
 
       </main>
+
+      <section className="cz-alt-section cz-alt-gray" style={{ padding: '80px 20px', backgroundColor: '#f9fafb' }}>
+        <LiveProductTour />
+      </section>
 
       {/* Footer CTA Section */}
       <footer className="lp-footer">
