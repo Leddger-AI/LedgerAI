@@ -294,14 +294,10 @@ export default function App() {
   // Auth persistence listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        // Auto-redirect to dashboard if logging in from public landing pages
-        if (location.pathname === '/' || location.pathname === '/welcome' || location.pathname === '/security') {
-          navigate('/dashboard');
-        }
-        
-        const googleToken = localStorage.getItem('googleAccessToken');
+        if (currentUser) {
+          setUser(currentUser);
+          
+          const googleToken = localStorage.getItem('googleAccessToken');
         try {
           const firebaseToken = await currentUser.getIdToken();
           setTokens({
