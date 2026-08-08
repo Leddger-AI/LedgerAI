@@ -52,7 +52,7 @@ import {
   Cell
 } from 'recharts';
 import './App.css';
-import { auth, loginWithGoogleAndCalendar } from './firebaseAuth';
+import { auth, loginWithGoogleAndCalendar, loginWithEmail } from './firebaseAuth';
 import { onAuthStateChanged } from 'firebase/auth';
 import LandingPage from './LandingPage.jsx';
 import Navbar from './Navbar.jsx';
@@ -72,6 +72,8 @@ import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
 import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
 import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import LoginDashboard from './pages/LoginDashboard.jsx';
+import GitHubAuthRedirect from './pages/GitHubAuthRedirect.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -350,6 +352,31 @@ export default function App() {
   ]);
 
   // --- AUTHENTICATION & SYNC HANDLERS ---
+    const handleEmailAuthLogin = async (email, password) => {
+    setLoading(true);
+    setApiError(null);
+    setAuthErrorModal(null);
+    try {
+      const data = await loginWithEmail(email, password);
+      setUser(data.user);
+      setTokens({
+        firebaseIdToken: data.firebaseIdToken,
+        googleAccessToken: null
+      });
+      localStorage.setItem('authUser', JSON.stringify({
+        displayName: data.user.displayName || email,
+        photoURL: data.user.photoURL || null,
+        email: data.user.email
+      }));
+      return true;
+    } catch (err) {
+      console.error("Email Login Error:", err);
+      setApiError("Authentication failed: " + err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
   const handleLogin = async () => {
     setLoading(true);
     setApiError(null);
@@ -1659,14 +1686,36 @@ export default function App() {
               onClearError={() => setApiError(null)}
             />
           } />
-          <Route path="/security" element={
-            <LandingPage 
-              onStartDashboard={handleStartDashboard}
-              loading={loading}
-              apiError={apiError}
-              onClearError={() => setApiError(null)}
-            />
-          } />
+                      <Route path="/security" element={
+              <LandingPage 
+                onStartDashboard={handleStartDashboard}
+                loading={loading}
+                apiError={apiError}
+                onClearError={() => setApiError(null)}
+              />
+            } />
+            <Route path="/login" element={
+              <LoginDashboard 
+                onGoogleLogin={async () => {
+                  const success = await handleLogin();
+                  if (success) {
+                    navigate('/dashboard');
+                  }
+                }} 
+                loading={loading} 
+              />
+            } />
+            <Route path="/auth/github" element={
+              <GitHubAuthRedirect 
+                onCompleteLogin={async () => {
+                  const success = await handleLogin();
+                  if (success) {
+                    navigate('/dashboard');
+                  }
+                }} 
+                loading={loading} 
+              />
+            } />
           <Route path="/welcome" element={<Welcome onStartDashboard={handleStartDashboard} />} />
           <Route path="/recruiter-flow" element={<ProtectedRoute user={user} authReady={authReady}><RecruiterDashboard /></ProtectedRoute>} />
           <Route path="/recruiter" element={<ProtectedRoute user={user} authReady={authReady}><RecruiterDashboard /></ProtectedRoute>} />
@@ -1688,4 +1737,9 @@ export default function App() {
     </>
   );
 }
+
+
+
+
+
 

@@ -50,3 +50,17 @@ export const loginWithGoogleAndCalendar = async () => {
     throw error;
   }
 };
+
+export const loginWithEmail = async (email, password) => {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    const firebaseIdToken = await result.user.getIdToken();
+    return {
+      user: result.user,
+      firebaseIdToken
+    };
+  } catch (error) {
+    console.error("Email/Password login error:", error);
+    throw error;
+  }
+};
