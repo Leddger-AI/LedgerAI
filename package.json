@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "postinstall": "cd server && npm install",
+    "start": "cd server && node index.js",
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "vite",
     "dev:backend": "cd server && node index.js",
