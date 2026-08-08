@@ -40,7 +40,7 @@
   max-width: 440px;
   border-radius: 20px;
   box-shadow: 0 20px 40px -15px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.03);
-  padding: 48px;
+  padding: 32px;
   position: relative;
   z-index: 10;
   display: flex;
@@ -52,7 +52,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
   font-size: 24px;
   font-weight: 700;
   color: #0F172A;
@@ -75,7 +75,7 @@
 .login-subtitle {
   font-size: 14px;
   color: #64748B;
-  margin: 0 0 40px 0;
+  margin: 0 0 24px 0;
   text-align: center;
   max-width: 300px;
 }
@@ -84,7 +84,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .login-btn {
@@ -179,7 +179,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 24px;
 }
 
@@ -237,4 +237,18 @@
   width: 80px !important;
   height: 80px !important;
   border-radius: 16px;
+}
+
+.login-btn-linkedin {
+  background-color: #0077b5;
+  color: #FFFFFF;
+}
+
+.login-btn-linkedin:hover {
+  background-color: #005582;
+  box-shadow: 0 4px 12px rgba(0, 119, 181, 0.2);
+}
+
+.login-btn-linkedin:active {
+  background-color: #00334e;
 }
