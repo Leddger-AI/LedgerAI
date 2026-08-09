@@ -611,7 +611,76 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      setApiError("Failed to sync calendar: " + err.message);
+      setApiError("Failed to sync real calendar, using mock data for demo: " + err.message);
+      // Fallback to mock data for demo if backend is missing/failing
+      setMeetings([
+        {
+          id: 1,
+          title: 'Q3 Product Planning & Roadmap',
+          duration: '2h 30m',
+          attendeeCount: 5,
+          cost: 2850,
+          project: 'Project Phoenix',
+          confidence: 94,
+          status: 'needs_review',
+          time: '10:30 AM'
+        },
+        {
+          id: 2,
+          title: 'Client ABC Sync & Deliverables',
+          duration: '1h 15m',
+          attendeeCount: 3,
+          cost: 1200,
+          project: 'Client ABC Onboarding',
+          confidence: 87,
+          status: 'approved',
+          time: 'Yesterday'
+        },
+        {
+          id: 3,
+          title: 'Weekly Alignment & HR Catchup',
+          duration: '45m',
+          attendeeCount: 6,
+          cost: 950,
+          project: 'Unassigned',
+          confidence: 42,
+          status: 'needs_review',
+          time: 'Yesterday'
+        },
+        {
+          id: 4,
+          title: 'Marketing Campaign Kickoff',
+          duration: '1h 30m',
+          attendeeCount: 4,
+          cost: 1650,
+          project: 'Q4 Marketing Strategy',
+          confidence: 78,
+          status: 'approved',
+          time: '2 days ago'
+        },
+        {
+          id: 5,
+          title: 'Phoenix Tech Architecture Review',
+          duration: '2h 00m',
+          attendeeCount: 3,
+          cost: 3100,
+          project: 'Project Phoenix',
+          confidence: 96,
+          status: 'approved',
+          time: '3 days ago'
+        },
+        {
+          id: 6,
+          title: 'Internal Budget Sync & Forecast',
+          duration: '1h 00m',
+          attendeeCount: 4,
+          cost: 1100,
+          project: 'Q4 Marketing Strategy',
+          confidence: 61,
+          status: 'needs_review',
+          time: '4 days ago'
+        }
+      ]);
     } finally {
       setLoading(false);
     }

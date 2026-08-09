@@ -209,6 +209,67 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
   }
 });
 
+const { google } = require('googleapis');
+
+/**
+ * GET /api/calendar/events
+ * Fetch Google Calendar events using the provided Google access token
+ */
+app.get('/api/calendar/events', verifyToken, async (req, res) => {
+  try {
+    const googleToken = req.query.google_token;
+    if (!googleToken) {
+      return res.status(400).json({ error: 'Missing google_token query parameter.' });
+    }
+
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: googleToken });
+
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    
+    // Calculate time bounds: start of yesterday to end of 7 days from now
+    const timeMin = new Date();
+    timeMin.setDate(timeMin.getDate() - 1);
+    timeMin.setHours(0, 0, 0, 0);
+
+    const timeMax = new Date();
+    timeMax.setDate(timeMax.getDate() + 7);
+    timeMax.setHours(23, 59, 59, 999);
+
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      maxResults: 100,
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    const events = response.data.items.map(evt => {
+      const start = new Date(evt.start.dateTime || evt.start.date);
+      const end = new Date(evt.end.dateTime || evt.end.date);
+      const durationMinutes = Math.round((end - start) / 60000);
+      
+      return {
+        eventId: evt.id,
+        title: evt.summary || 'Untitled Event',
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        durationMinutes: durationMinutes > 0 ? durationMinutes : 60, // Default to 60 if invalid
+        attendees: evt.attendees || [],
+        aiProject: null, // Let frontend assign mock projects/confidence if needed, or implement actual AI here
+        aiConfidence: null,
+        requiresHumanReview: Math.random() > 0.7 // Mock review requirement
+      };
+    });
+
+    res.json({ status: 'success', events });
+  } catch (error) {
+    console.error('Error fetching calendar events:', error);
+    res.status(500).json({ error: 'Failed to fetch calendar events from Google API' });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
 });
