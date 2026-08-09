@@ -3,12 +3,17 @@
   display: flex;
   width: 100vw;
   height: 100vh;
+  background-color: #F2E8D5;
+  padding: 16px;
+  gap: 16px;
+  box-sizing: border-box;
 }
 
 .app-container {
   display: flex;
   flex: 1;
-  background-color: #FFFFFF;
+  background-color: transparent;
+  gap: 16px;
   overflow: hidden;
   position: relative;
 }
@@ -25,12 +30,14 @@
 .mini-sidebar {
   width: 64px;
   background-color: #FFFFFF;
-  border-right: 1px solid #E2E8F0;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 24px 0;
   transition: var(--transition-smooth);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
 .mini-sidebar-header {
@@ -96,11 +103,13 @@
 .secondary-sidebar {
   width: 280px;
   background-color: #FFFFFF;
-  border-right: 1px solid #F0F0F0;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
   overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
 .secondary-sidebar.collapsed {
@@ -191,12 +200,16 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
 /* Top Header Bar */
 .top-header {
   height: 76px;
-  background-color: var(--bg-main);
+  background-color: #FFFFFF;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;

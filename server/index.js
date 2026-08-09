@@ -304,7 +304,7 @@ app.get('/api/calendar/events', verifyToken, async (req, res) => {
     res.json({ status: 'success', events });
   } catch (error) {
     console.error('Error fetching calendar events:', error);
-    res.status(500).json({ error: 'Failed to fetch calendar events from Google API' });
+    res.status(200).json({ status: 'error', error: 'Failed to fetch calendar events from Google API' });
   }
 });
 

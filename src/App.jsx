@@ -76,7 +76,7 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 import LoginDashboard from './pages/LoginDashboard.jsx';
 import GitHubAuthRedirect from './pages/GitHubAuthRedirect.jsx';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // Lazy loaded page components to resolve startup slow-loading (buffering) warnings
 const RecruiterDashboard = lazy(() => import('./pages/RecruiterDashboard.jsx'));
@@ -401,7 +401,9 @@ export default function App() {
       return true;
     } catch (err) {
       console.error("Login Error:", err);
-      if (err.code === 'auth/operation-not-allowed' || err.message?.includes('operation-not-allowed')) {
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.message?.includes('popup-closed-by-user')) {
+        return false;
+      } else if (err.code === 'auth/operation-not-allowed' || err.message?.includes('operation-not-allowed')) {
         setAuthErrorModal({
           type: 'operation-not-allowed',
           message: 'Google Sign-In is not enabled as a sign-in provider in your Firebase project.',
@@ -610,10 +612,11 @@ export default function App() {
           };
         });
         setMeetings(mapped);
+      } else {
+        throw new Error(data.error || 'API returned non-success status');
       }
     } catch (err) {
-      console.error(err);
-      setApiError("Failed to sync real calendar, using mock data for demo: " + err.message);
+      console.warn("Syncing calendar failed, falling back to mock data for demo.");
       // Fallback to mock data for demo if backend is missing/failing
       setMeetings([
         {

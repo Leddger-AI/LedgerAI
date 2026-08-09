@@ -3,8 +3,8 @@
 :root {
   /* Logo-matched cream + monochrome palette */
   --bg-main: #F2E8D5;
-  --bg-card: #FBF6EC;
-  --bg-card-hover: #EFE4CE;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #FAFAFA;
   --bg-sidebar: #141414;
   --bg-sidebar-active: rgba(255, 255, 255, 0.08);
   --border-color: rgba(20, 20, 20, 0.08);
@@ -61,7 +61,7 @@
 }
 
 body {
-  background-color: #FFFFFF;
+  background-color: #F2E8D5;
   color: var(--text-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
