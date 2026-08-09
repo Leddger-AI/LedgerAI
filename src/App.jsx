@@ -65,6 +65,7 @@ import AlertsView from './AlertsView.jsx';
 import SettingsView from './SettingsView.jsx';
 import SourcingView from './SourcingView.jsx';
 import MeetView from './MeetView.jsx';
+import WorkspaceMeetView from './WorkspaceMeetView.jsx';
 import ExportView from './ExportView.jsx';
 import EmailAutomationView from './EmailAutomationView.jsx';
 import AnalysisView from './AnalysisView.jsx';
@@ -132,7 +133,7 @@ export default function App() {
   const calculatePrimaryNav = (tab) => {
     if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
     if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Sent Forms'].includes(tab)) return 'Templates';
-    if (['Projects', 'Teams', 'Sourcing', 'Calendar'].includes(tab)) return 'Workspace';
+    if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Meet'].includes(tab)) return 'Workspace';
     if (['Analysis', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
     if (['Settings'].includes(tab)) return 'Settings';
@@ -183,7 +184,8 @@ export default function App() {
       { id: 'Projects', label: 'Projects', icon: Briefcase },
       { id: 'Teams', label: 'Teams', icon: Users },
       { id: 'Sourcing', label: 'Sourcing', icon: UserSearch },
-      { id: 'Calendar', label: 'Calendar', icon: Calendar }
+      { id: 'Calendar', label: 'Calendar', icon: Calendar },
+      { id: 'Meet', label: 'Meet', icon: Video }
     ],
     Templates: [
       { id: 'Student Template', label: 'Student', icon: GraduationCap },
@@ -1554,6 +1556,8 @@ export default function App() {
               <h2>Sent Forms</h2>
               <p>Responses and statuses for your sent forms will appear here.</p>
             </div>
+          ) : activeTab === 'Meet' ? (
+            <WorkspaceMeetView />
           ) : activeTab === 'Projects' ? (
             <ProjectsView meetings={meetings} onUpdateMeetingProject={handleUpdateMeetingProject} />
           ) : activeTab === 'Teams' ? (

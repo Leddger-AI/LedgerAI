@@ -21,8 +21,46 @@ mongoose.connect(MONGODB_URI)
 .catch(err => console.error('❌ Failed to connect to MongoDB', err));
 
 // ==========================================
+// ==========================================
 // API ENDPOINTS
 // ==========================================
+
+/**
+ * POST /api/meet/instant
+ * Generates an instant Google Meet link.
+ */
+app.post('/api/meet/instant', async (req, res) => {
+  try {
+    // In a full implementation, you would use googleapis and the Calendar API here.
+    // Example: google.calendar('v3').events.insert({ conferenceDataVersion: 1, ... })
+    // For this implementation, we simulate a successful Google Meet generation:
+    const randomId = Math.random().toString(36).substring(2, 11).match(/.{1,3}/g).join('-');
+    res.json({ hangoutLink: `https://meet.google.com/${randomId}` });
+  } catch (error) {
+    console.error('Error generating instant meet:', error);
+    res.status(500).json({ error: 'Failed to generate meeting link' });
+  }
+});
+
+/**
+ * POST /api/meet/schedule
+ * Schedules a Google Meet event.
+ */
+app.post('/api/meet/schedule', async (req, res) => {
+  try {
+    const { title, teamId, startTime, endTime } = req.body;
+    // Simulate scheduling a Google Calendar Event and returning the generated Meet link
+    const randomId = Math.random().toString(36).substring(2, 11).match(/.{1,3}/g).join('-');
+    res.json({
+      message: 'Meeting scheduled successfully',
+      hangoutLink: `https://meet.google.com/${randomId}`,
+      eventDetails: { title, teamId, startTime, endTime }
+    });
+  } catch (error) {
+    console.error('Error scheduling meet:', error);
+    res.status(500).json({ error: 'Failed to schedule meeting' });
+  }
+});
 
 // Helper: Ensure user exists in DB
 const getOrCreateUser = async (firebaseUid) => {
