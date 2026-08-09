@@ -31,6 +31,9 @@ export default function WorkspaceMeetView() {
   const [newTitle, setNewTitle] = useState('');
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [videoRequired, setVideoRequired] = useState(true);
+  const [participantsToggle, setParticipantsToggle] = useState(true);
 
   // --- Actions ---
 
@@ -88,7 +91,8 @@ export default function WorkspaceMeetView() {
       setNewTime('');
       setViewMode('upcoming');
     } catch (err) {
-      alert("Failed to schedule.");
+      console.error("Schedule error:", err);
+      alert(`Failed to schedule. Error: ${err.message}. Make sure your backend server is running on port 5000!`);
     }
   };
 
@@ -295,31 +299,91 @@ export default function WorkspaceMeetView() {
 
       {/* SCHEDULING MODAL */}
       {isScheduling && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: '#FFF', borderRadius: '16px', padding: '32px', width: '400px', boxShadow: '0px 8px 24px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: '600' }}>Schedule Meeting</h3>
-              <X size={20} style={{ cursor: 'pointer', color: '#6F767E' }} onClick={() => setIsScheduling(false)} />
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: '#252525', borderRadius: '12px', padding: '24px', width: '540px', color: '#FFF', boxShadow: '0px 12px 32px rgba(0,0,0,0.3)', fontFamily: 'var(--font-body)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '1px solid #3A3A3A', paddingBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '500' }}>Schedule Meeting</h3>
+              <X size={20} style={{ cursor: 'pointer', color: '#A0A0A0' }} onClick={() => setIsScheduling(false)} />
             </div>
             
             <form onSubmit={handleScheduleSubmit}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '8px' }}>Title</label>
-                <input type="text" required value={newTitle} onChange={e => setNewTitle(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #EFEFEF' }} />
+              {/* Add Title */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '13px', color: '#E0E0E0', marginBottom: '8px' }}>Add Title</label>
+                <input type="text" required value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Design UX Workshop" style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #454545', backgroundColor: '#353535', color: '#FFF', fontSize: '14px', outline: 'none' }} />
               </div>
-              <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '8px' }}>Date</label>
-                  <input type="date" required value={newDate} onChange={e => setNewDate(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #EFEFEF' }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '8px' }}>Time</label>
-                  <input type="time" required value={newTime} onChange={e => setNewTime(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #EFEFEF' }} />
+
+              {/* Date and Time */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '13px', color: '#E0E0E0', marginBottom: '8px' }}>Date and Time</label>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <input type="date" required value={newDate} onChange={e => setNewDate(e.target.value)} style={{ flex: 1, padding: '10px 12px', borderRadius: '6px', border: '1px solid #454545', backgroundColor: '#353535', color: '#FFF', fontSize: '14px', outline: 'none' }} />
+                  <input type="time" required value={newTime} onChange={e => setNewTime(e.target.value)} style={{ flex: 1, padding: '10px 12px', borderRadius: '6px', border: '1px solid #454545', backgroundColor: '#353535', color: '#FFF', fontSize: '14px', outline: 'none' }} />
                 </div>
               </div>
-              <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#1A1D1F', color: '#FFF', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}>
-                Schedule & Create Link
-              </button>
+
+              {/* Toggles: Video Required & Participants */}
+              <div style={{ display: 'flex', gap: '48px', marginBottom: '20px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#E0E0E0', marginBottom: '8px' }}>Video Required</label>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input type="radio" checked={videoRequired} onChange={() => setVideoRequired(true)} style={{ accentColor: '#FFF' }} /> On
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input type="radio" checked={!videoRequired} onChange={() => setVideoRequired(false)} style={{ accentColor: '#FFF' }} /> Off
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#E0E0E0', marginBottom: '8px' }}>Participants</label>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input type="radio" checked={participantsToggle} onChange={() => setParticipantsToggle(true)} style={{ accentColor: '#FFF' }} /> On
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input type="radio" checked={!participantsToggle} onChange={() => setParticipantsToggle(false)} style={{ accentColor: '#FFF' }} /> Off
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '13px', color: '#E0E0E0', marginBottom: '8px' }}>Description</label>
+                <textarea rows="4" value={newDesc} onChange={e => setNewDesc(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #454545', backgroundColor: '#353535', color: '#FFF', fontSize: '14px', outline: 'none', resize: 'none' }}></textarea>
+              </div>
+
+              {/* Notifications */}
+              <div style={{ marginBottom: '32px' }}>
+                <label style={{ display: 'block', fontSize: '13px', color: '#E0E0E0', marginBottom: '8px' }}>Notifications</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <select style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #454545', backgroundColor: '#353535', color: '#FFF', fontSize: '13px', outline: 'none', width: '140px' }}>
+                    <option>Email and SMS</option>
+                    <option>Email Only</option>
+                    <option>SMS Only</option>
+                  </select>
+                  <input type="number" defaultValue={30} style={{ width: '60px', padding: '8px', borderRadius: '6px', border: '1px solid #454545', backgroundColor: '#353535', color: '#FFF', fontSize: '13px', outline: 'none', textAlign: 'center' }} />
+                  <select style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #454545', backgroundColor: '#353535', color: '#FFF', fontSize: '13px', outline: 'none', width: '100px' }}>
+                    <option>Minutes</option>
+                    <option>Hours</option>
+                    <option>Days</option>
+                  </select>
+                  <button type="button" style={{ background: 'none', border: 'none', color: '#A0A0A0', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                    <Plus size={14} /> Add Notification
+                  </button>
+                </div>
+              </div>
+
+              {/* Footer Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button type="button" onClick={() => setIsScheduling(false)} style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#FFF', border: '1px solid #555', borderRadius: '6px', fontSize: '14px', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+                <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#FFF', color: '#000', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}>
+                  Save Meeting
+                </button>
+              </div>
             </form>
           </div>
         </div>
