@@ -1,10 +1,15 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { 
   Paperclip, AlignLeft, ChevronDown, Bold, Italic, Underline, 
-  List, ListOrdered, Sparkles, Variable, X, UploadCloud, FileSpreadsheet
+  List, ListOrdered, Sparkles, Variable, X, UploadCloud, FileSpreadsheet,
+  Cloud, Loader2, FileUp, AlertTriangle, Save, CheckCircle2
 } from 'lucide-react';
+import { getAuthToken } from '../supabaseAuth';
 import './EmailBodyEditor.css';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const DEFAULT_VARIABLES = [
   { id: 'company_name', label: '{{company_name}}' },
@@ -43,6 +48,17 @@ export default function EmailBodyEditor() {
 
   const [variables, setVariables] = useState(DEFAULT_VARIABLES);
   const fileInputRef = useRef(null);
+
+  const [dataSourceTab, setDataSourceTab] = useState('upload');
+  const [cloudFiles, setCloudFiles] = useState([]);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudError, setCloudError] = useState(null);
+  const [cloudSelectedId, setCloudSelectedId] = useState(null);
+  const [cloudImporting, setCloudImporting] = useState(false);
+  const [importSource, setImportSource] = useState(null);
+  const [showRosterModal, setShowRosterModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null);
 
   const [metrics, setMetrics] = useState({
     subjectLength: 0,
@@ -115,31 +131,145 @@ export default function EmailBodyEditor() {
     saveSelection();
   };
 
+  const addVariablesFromHeaders = (headers) => {
+    const newVars = headers.filter(f => f).map(field => ({
+      id: field.toLowerCase().replace(/\s+/g, '_'),
+      label: `{{${field}}}`
+    }));
+    setVariables(prev => {
+      const existingIds = new Set(prev.map(v => v.id));
+      const toAdd = newVars.filter(h => !existingIds.has(h.id));
+      return [...prev, ...toAdd];
+    });
+  };
+
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: function(results) {
-        if (results.meta && results.meta.fields) {
-          const newHeaders = results.meta.fields.filter(f => f).map(field => ({
-            id: field.toLowerCase().replace(/\s+/g, '_'),
-            label: `{{${field}}}`
-          }));
+    const fileName = file.name.toLowerCase();
+    setImportSource(file.name);
 
-          setVariables(prev => {
-            const existingIds = new Set(prev.map(v => v.id));
-            const toAdd = newHeaders.filter(h => !existingIds.has(h.id));
-            return [...prev, ...toAdd];
-          });
+    if (fileName.endsWith('.csv')) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          if (results.meta && results.meta.fields) {
+            addVariablesFromHeaders(results.meta.fields);
+          }
         }
-      }
-    });
+      });
+    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          const firstSheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+          if (rows.length > 0) {
+            addVariablesFromHeaders(rows[0]);
+          }
+        } catch (err) {
+          console.error('Excel parse error:', err);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
     
-    // Reset file input so user can upload same file again if needed
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const fetchCloudFiles = useCallback(async () => {
+    setCloudLoading(true);
+    setCloudError(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        setCloudError('Not authenticated.');
+        setCloudLoading(false);
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/api/spreadsheets/metadata`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch files');
+      const data = await res.json();
+      setCloudFiles(data.spreadsheets || []);
+    } catch (err) {
+      console.error('Error fetching cloud files:', err);
+      setCloudError('Failed to load files.');
+    } finally {
+      setCloudLoading(false);
+    }
+  }, []);
+
+  const handleCloudFileSelect = async (fileId, fileName) => {
+    setCloudSelectedId(fileId);
+    setCloudImporting(true);
+    setCloudError(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        setCloudError('Not authenticated.');
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/api/spreadsheets/${fileId}/headers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch headers');
+      const data = await res.json();
+      if (data.headers && data.headers.length > 0) {
+        addVariablesFromHeaders(data.headers);
+        setImportSource(fileName);
+        setShowRosterModal(false);
+      } else {
+        setCloudError('No headers found in this spreadsheet.');
+      }
+    } catch (err) {
+      console.error('Error fetching cloud headers:', err);
+      setCloudError('Failed to load headers.');
+    } finally {
+      setCloudImporting(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    setSaving(true);
+    setSaveStatus(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        setSaveStatus({ type: 'error', message: 'Not authenticated. Please sign in.' });
+        return;
+      }
+      const subject = subjectRef.current?.innerText || '';
+      const bodyHtml = bodyRef.current?.innerHTML || '';
+      const res = await fetch(`${API_BASE_URL}/api/email/drafts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          subject,
+          bodyHtml,
+          variables,
+          dataSourceType: importSource ? (showRosterModal ? 'roster_studio' : 'upload') : 'none',
+          dataSourceFile: importSource || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save draft');
+      const data = await res.json();
+      setSaveStatus({ type: 'success', message: 'Draft saved successfully!' });
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (err) {
+      console.error('Error saving draft:', err);
+      setSaveStatus({ type: 'error', message: 'Failed to save draft.' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const insertVariable = (variable) => {
@@ -173,10 +303,6 @@ export default function EmailBodyEditor() {
 
   return (
     <div className="email-editor-container">
-      <div className="email-editor-header">
-        <h2 className="section-title" style={{ fontSize: '18px', fontWeight: '600', color: '#0F172A', marginBottom: '16px' }}>Write Email Body</h2>
-      </div>
-
       <div className="email-editor-layout">
         <div className="editor-card">
           {/* Subject Line */}
@@ -238,6 +364,14 @@ export default function EmailBodyEditor() {
             </div>
 
             <div className="toolbar-right">
+              <button
+                className={`save-draft-btn ${saving ? 'saving' : ''}`}
+                onClick={handleSaveDraft}
+                disabled={saving}
+              >
+                {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+                {saving ? 'Saving...' : 'Save Draft'}
+              </button>
               <button className="ai-btn">
                 <Sparkles size={16} />
                 AI Tools
@@ -338,36 +472,152 @@ export default function EmailBodyEditor() {
           </div>
         </div>
         
-        {/* CSV Upload Data Source Card */}
+        {/* Data Source Card */}
         <div className="data-source-card">
           <h3 className="data-source-title">
             <FileSpreadsheet size={16} /> Data Source
           </h3>
-          <p className="data-source-desc">Upload a CSV sheet to automatically add its columns to your Variables dropdown.</p>
-          
-          <input 
-            type="file" 
-            accept=".csv" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            style={{ display: 'none' }} 
-            id="csv-upload"
-          />
-          <label htmlFor="csv-upload" className="upload-csv-btn">
-            <UploadCloud size={16} /> Import Variables
-          </label>
-          
+          <p className="data-source-desc">Import variables from a local file or your Roster Studio cloud spreadsheets.</p>
+
+          {/* Source Option Buttons */}
+          <div className="ds-options-row">
+            <button
+              className={`ds-option-btn ${dataSourceTab === 'upload' ? 'active' : ''}`}
+              onClick={() => setDataSourceTab('upload')}
+            >
+              <FileUp size={18} /> Upload File
+            </button>
+            <button
+              className={`ds-option-btn ${dataSourceTab === 'roster' ? 'active' : ''}`}
+              onClick={() => {
+                setDataSourceTab('roster');
+                setShowRosterModal(true);
+                if (cloudFiles.length === 0 && !cloudLoading) fetchCloudFiles();
+              }}
+            >
+              <Cloud size={18} /> Roster Studio
+            </button>
+          </div>
+
+          {/* Upload Section */}
+          {dataSourceTab === 'upload' && (
+            <>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+                id="csv-upload"
+              />
+              <label htmlFor="csv-upload" className="upload-csv-btn">
+                <UploadCloud size={16} /> Import Variables
+              </label>
+            </>
+          )}
+
+          {/* Roster Studio Section — shows selected file or prompt */}
+          {dataSourceTab === 'roster' && (
+            <div className="ds-roster-selected">
+              {cloudSelectedId && importSource ? (
+                <div className="ds-roster-chip">
+                  <FileSpreadsheet size={14} />
+                  <span>{importSource}</span>
+                  <button onClick={() => setShowRosterModal(true)}>Change</button>
+                </div>
+              ) : (
+                <button className="ds-roster-pick-btn" onClick={() => {
+                  setShowRosterModal(true);
+                  if (cloudFiles.length === 0 && !cloudLoading) fetchCloudFiles();
+                }}>
+                  <Cloud size={16} /> Select a Spreadsheet
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Roster Studio Modal */}
+          {showRosterModal && (
+            <div className="ds-modal-overlay" onClick={() => !cloudImporting && setShowRosterModal(false)}>
+              <div className="ds-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="ds-modal-header">
+                  <h3>Select a Roster Studio Spreadsheet</h3>
+                  <X size={18} className="ds-modal-close" onClick={() => !cloudImporting && setShowRosterModal(false)} />
+                </div>
+                <div className="ds-modal-body">
+                  {cloudLoading ? (
+                    <div className="ds-cloud-loading">
+                      <Loader2 size={24} className="ds-spinner" />
+                      <span>Loading your files...</span>
+                    </div>
+                  ) : cloudError ? (
+                    <div className="ds-cloud-error">
+                      <AlertTriangle size={16} />
+                      <span>{cloudError}</span>
+                      <button className="ds-retry-btn" onClick={fetchCloudFiles}>Retry</button>
+                    </div>
+                  ) : cloudFiles.length === 0 ? (
+                    <div className="ds-cloud-empty">
+                      <FileSpreadsheet size={32} />
+                      <p>No saved spreadsheets yet.</p>
+                      <span>Create one in Roster Studio first.</span>
+                    </div>
+                  ) : (
+                    <div className="ds-cloud-list">
+                      {cloudFiles.map((file) => (
+                        <div
+                          key={file._id}
+                          className={`ds-cloud-item ${cloudSelectedId === file._id ? 'selected' : ''}`}
+                          onClick={() => !cloudImporting && handleCloudFileSelect(file._id, file.name)}
+                        >
+                          <FileSpreadsheet size={16} />
+                          <div className="ds-cloud-item-info">
+                            <span className="ds-cloud-item-name">{file.name}</span>
+                            <span className="ds-cloud-item-meta">{file.sheetCount} {file.sheetCount === 1 ? 'sheet' : 'sheets'}</span>
+                          </div>
+                          {cloudImporting && cloudSelectedId === file._id && (
+                            <Loader2 size={14} className="ds-spinner" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="ds-modal-actions">
+                  <button className="ds-modal-btn cancel" onClick={() => setShowRosterModal(false)}>Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Import Status */}
           {variables.length > DEFAULT_VARIABLES.length && (
             <div className="imported-vars-success">
-              ✓ Added {variables.length - DEFAULT_VARIABLES.length} custom variables!
+              <span>✓ Added {variables.length - DEFAULT_VARIABLES.length} custom variables{importSource ? ` from ${importSource}` : ''}!</span>
+              <button
+                className="ds-clear-btn"
+                onClick={() => {
+                  setVariables(DEFAULT_VARIABLES);
+                  setImportSource(null);
+                  setCloudSelectedId(null);
+                }}
+              >
+                <X size={12} /> Clear
+              </button>
             </div>
           )}
         </div>
-        
         </div>
         {/* End Sidebar Column */}
       </div>
       {/* End Sidebar Wrapper */}
+
+      {saveStatus && (
+        <div className={`save-toast ${saveStatus.type}`}>
+          {saveStatus.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+          {saveStatus.message}
+        </div>
+      )}
 
     </div>
   );

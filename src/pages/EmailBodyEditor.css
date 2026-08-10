@@ -3,10 +3,11 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
-  padding: 40px;
+  padding: 16px;
   background-color: #F8FAFC;
   box-sizing: border-box;
   font-family: inherit;
+  overflow: hidden;
 }
 
 .email-editor-header {
@@ -20,7 +21,9 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  max-width: 800px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
 }
 
 /* Subject Line */
@@ -55,7 +58,8 @@
 .body-container {
   padding: 20px;
   flex: 1;
-  min-height: 400px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .body-input {
@@ -190,17 +194,20 @@
 }
 .email-editor-layout {
   display: flex;
-  gap: 24px;
-  align-items: flex-start;
+  gap: 20px;
+  align-items: stretch;
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .check-template-sidebar {
-  width: 320px;
+  width: 100%;
   background-color: #FFFFFF;
   border: 1px solid #E2E8F0;
   border-radius: 8px;
-  padding: 24px;
+  padding: 20px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
 }
@@ -214,7 +221,7 @@
   font-size: 15px;
   font-weight: 600;
   color: #0F172A;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   text-align: center;
   box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
@@ -223,7 +230,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   font-size: 14px;
   color: #1E293B;
   font-weight: 500;
@@ -265,9 +272,11 @@
 .sidebar-column {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   width: 320px;
   flex-shrink: 0;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .check-template-sidebar {
@@ -279,12 +288,13 @@
   background-color: #FFFFFF;
   border: 1px dashed #CBD5E1;
   border-radius: 8px;
-  padding: 24px;
+  padding: 20px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   transition: border-color 0.2s;
+  flex-shrink: 0;
 }
 
 .data-source-card:hover {
@@ -341,4 +351,398 @@
   font-size: 13px;
   font-weight: 500;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ds-clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #A7F3D0;
+  border-radius: 4px;
+  background-color: #FFFFFF;
+  color: #059669;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.ds-clear-btn:hover {
+  background-color: #ECFDF5;
+  border-color: #6EE7B7;
+}
+
+/* Data Source Option Buttons */
+.ds-options-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  justify-content: center;
+}
+
+.ds-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 20px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  background-color: #FFFFFF;
+  color: #64748B;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+}
+
+.ds-option-btn.active {
+  background-color: #F1F5F9;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+.ds-option-btn:not(.active):hover {
+  background-color: #F8FAFC;
+  border-color: #CBD5E1;
+}
+
+/* Roster Studio Selected Section */
+.ds-roster-selected {
+  width: 100%;
+}
+
+.ds-roster-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background-color: #EFF6FF;
+  border: 1px solid #93C5FD;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1E40AF;
+}
+
+.ds-roster-chip span {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-roster-chip button {
+  border: none;
+  background: none;
+  color: #3B82F6;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.ds-roster-chip button:hover {
+  background-color: #DBEAFE;
+}
+
+.ds-roster-pick-btn {
+  width: 100%;
+  padding: 12px;
+  background-color: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0F172A;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ds-roster-pick-btn:hover {
+  background-color: #F1F5F9;
+  border-color: #CBD5E1;
+}
+
+/* Roster Studio Modal */
+.ds-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: ds-fade-in 0.15s ease;
+}
+
+@keyframes ds-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ds-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.ds-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.ds-modal-header h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.ds-modal-close {
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.ds-modal-close:hover {
+  color: #475569;
+}
+
+.ds-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.ds-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.ds-modal-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ds-modal-btn.cancel {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.ds-modal-btn.cancel:hover {
+  background: #e2e8f0;
+}
+
+/* Cloud Section */
+.ds-cloud-section {
+  width: 100%;
+}
+
+.ds-cloud-loading,
+.ds-cloud-error,
+.ds-cloud-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  text-align: center;
+  gap: 8px;
+}
+
+.ds-cloud-loading span,
+.ds-cloud-error span {
+  font-size: 13px;
+  color: #64748B;
+}
+
+.ds-cloud-error {
+  color: #EF4444;
+}
+
+.ds-cloud-empty p {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  margin: 0;
+}
+
+.ds-cloud-empty span {
+  font-size: 12px;
+  color: #94A3B8;
+}
+
+.ds-retry-btn {
+  padding: 6px 16px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  background-color: #FFFFFF;
+  color: #0F172A;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.ds-retry-btn:hover {
+  background-color: #F1F5F9;
+}
+
+.ds-cloud-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ds-cloud-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #475569;
+}
+
+.ds-cloud-item:hover {
+  background-color: #F8FAFC;
+  border-color: #CBD5E1;
+}
+
+.ds-cloud-item.selected {
+  background-color: #EFF6FF;
+  border-color: #93C5FD;
+  color: #1E40AF;
+}
+
+.ds-cloud-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-cloud-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-cloud-item-meta {
+  font-size: 11px;
+  color: #94A3B8;
+}
+
+.ds-spinner {
+  animation: ds-spin 1s linear infinite;
+}
+
+@keyframes ds-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Save Draft Button */
+.save-draft-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background-color: #0F172A;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.save-draft-btn:hover:not(:disabled) {
+  background-color: #1E293B;
+}
+
+.save-draft-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-draft-btn .spin {
+  animation: ds-spin 1s linear infinite;
+}
+
+/* Save Toast Notification */
+.save-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  animation: toast-slide-in 0.3s ease;
+}
+
+.save-toast.success {
+  background-color: #10B981;
+  color: #FFFFFF;
+}
+
+.save-toast.error {
+  background-color: #EF4444;
+  color: #FFFFFF;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
