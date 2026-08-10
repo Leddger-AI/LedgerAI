@@ -14,16 +14,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fortune-sheet/react": "^1.0.4",
+    "@supabase/supabase-js": "^2.112.2",
+    "ag-grid-community": "^36.1.0",
+    "ag-grid-react": "^36.1.0",
     "crypto-js": "^4.2.0",
-    "firebase": "^12.14.0",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.18.0",
+    "luckyexcel": "^1.0.1",
     "papaparse": "^5.5.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-is": "^19.2.7",
     "react-router-dom": "^7.18.2",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
