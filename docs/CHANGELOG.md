@@ -111,3 +111,20 @@ A comprehensive pass to fix data flow issues, hardcoded URLs, missing endpoints,
 - **Form submission emails:** Now uses the recruiter's own `EmailConfig` instead of global env vars
 - **SourcingView:** Replaced hardcoded mock data with real API calls to drafts and submissions endpoints
 - **Activate endpoint:** Returns full draft object to prevent state data loss in DraftsView
+
+---
+
+## 9. Email Send Tracking & Scheduling (August 11, 2026)
+
+Added email send logging to Supabase, email campaign scheduling via Agenda.js, and sidebar restructuring.
+
+See **[docs/email-scheduling-plan.md](./email-scheduling-plan.md)** for the full architecture and research.
+
+### Key Changes:
+- **New Supabase table `email_send_log`:** Tracks every campaign sent — draft title, sender email (user's own or `ai.leddger@gmail.com`), recipient/sent/failed counts, timestamp, status. RLS scoped to `user_id`.
+- **Sidebar restructured:** Removed redundant `Drafts` from Templates and `Draft` from Inbox. Moved `Active Links` to Inbox. Wired `Sent` and `Schedule` tabs to real view components.
+- **SentView page:** KPI cards (total campaigns, delivered, failed) + full send history table with sender email, recipient counts, status, and timestamp.
+- **Agenda.js scheduling:** Installed `agenda` + `@agendajs/mongo-backend`. Jobs persist in MongoDB, survive server restarts. Graceful shutdown on SIGTERM/SIGINT.
+- **ScheduleView page:** Shows upcoming scheduled campaigns with countdown, recipient count, and cancel functionality.
+- **Send Campaign modal:** Added "Schedule" button next to "Send" — opens date/time picker, creates scheduled campaign via `POST /api/email/schedule`, Agenda job fires at scheduled time.
+- **New API endpoints:** `POST /api/email/schedule`, `GET /api/email/scheduled`, `DELETE /api/email/schedule/:campaignId`, `GET /api/email/send-log`, `GET /api/email/send-log/:campaignId`

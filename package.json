@@ -7,6 +7,7 @@
     "postinstall": "cd server && npm install",
     "start": "cd server && node index.js",
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "predev": "node -e \"require('fs').rmSync('node_modules/.vite',{recursive:true,force:true})\"",
     "dev:frontend": "vite",
     "dev:backend": "cd server && node index.js",
     "build": "vite build",

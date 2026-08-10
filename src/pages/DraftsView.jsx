@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { File, Calendar, Clock, CheckCircle2, AlertCircle, Link as LinkIcon, Copy, GraduationCap, Briefcase, Users, Trash2, Inbox } from 'lucide-react';
+import { File, Calendar, Clock, CheckCircle2, AlertCircle, Link as LinkIcon, Copy, GraduationCap, Briefcase, Users, Trash2, Inbox, Send, XCircle } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
 import CustomCalendar from '../components/CustomCalendar';
 import CustomTimePicker from '../components/CustomTimePicker';
@@ -22,6 +22,13 @@ export default function DraftsView() {
   const [submissions, setSubmissions] = useState([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [showSubmissions, setShowSubmissions] = useState(false);
+
+  // Schedule state
+  const [scheduleMode, setScheduleMode] = useState(false);
+  const [goesLiveDate, setGoesLiveDate] = useState(new Date().toISOString().split('T')[0]);
+  const [goesLiveTime, setGoesLiveTime] = useState('09:00');
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [isCancellingSchedule, setIsCancellingSchedule] = useState(false);
 
   useEffect(() => {
     fetchDrafts();
@@ -143,6 +150,81 @@ export default function DraftsView() {
     setSelectedDraft(draft);
     setSubmissions([]);
     setShowSubmissions(false);
+    setScheduleMode(false);
+  };
+
+  const handleScheduleDraft = async () => {
+    if (!goesLiveDate || !goesLiveTime || !expiryDate || !expiryTime) {
+      alert('Please select both go-live and expiry date/time.');
+      return;
+    }
+
+    const goesLiveStr = `${goesLiveDate}T${goesLiveTime}:00`;
+    const expiryStr = `${expiryDate}T${expiryTime}:00`;
+    const goesLiveObj = new Date(goesLiveStr);
+    const expiryObj = new Date(expiryStr);
+
+    if (goesLiveObj <= new Date()) {
+      alert('Go-live time must be in the future.');
+      return;
+    }
+    if (expiryObj <= goesLiveObj) {
+      alert('Expiry must be after the go-live time.');
+      return;
+    }
+
+    setIsScheduling(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/api/drafts/${selectedDraft.draftId}/schedule`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          goesLiveAt: goesLiveObj.toISOString(),
+          expiresAt: expiryObj.toISOString()
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setDrafts(prev => prev.map(d => d.draftId === selectedDraft.draftId ? data.draft : d));
+        setSelectedDraft(data.draft);
+      } else {
+        alert(data.error || 'Failed to schedule draft');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while scheduling draft.');
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  const handleCancelSchedule = async () => {
+    setIsCancellingSchedule(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/api/drafts/${selectedDraft.draftId}/schedule`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setDrafts(prev => prev.map(d => d.draftId === selectedDraft.draftId ? data.draft : d));
+        setSelectedDraft(data.draft);
+      } else {
+        alert(data.error || 'Failed to cancel schedule');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while cancelling schedule.');
+    } finally {
+      setIsCancellingSchedule(false);
+    }
   };
 
   const handleViewSubmissions = () => {
@@ -162,6 +244,8 @@ export default function DraftsView() {
         return <span className="status-badge active">Active</span>;
       case 'expired':
         return <span className="status-badge expired">Expired</span>;
+      case 'scheduled':
+        return <span className="status-badge" style={{ background: 'rgba(6, 182, 212, 0.1)', color: '#06B6D4' }}>Scheduled</span>;
       default:
         return <span className="status-badge draft">Draft</span>;
     }
@@ -234,41 +318,149 @@ export default function DraftsView() {
 
       {/* RIGHT SIDEBAR - Scheduler */}
       <div className="drafts-sidebar-panel">
-        
-        <div style={{ marginBottom: '16px' }}>
 
-          <CustomCalendar 
-            value={expiryDate} 
-            onChange={(val) => setExpiryDate(new Date(val).toISOString().split('T')[0])} 
-          />
-        </div>
-        
-        <div style={{ marginBottom: '24px' }}>
+        {/* Mode Toggle: Activate Now vs Schedule */}
+        {selectedDraft && selectedDraft.status === 'draft' && (
+          <div style={{ display: 'flex', gap: '0', marginBottom: '20px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+            <button
+              onClick={() => setScheduleMode(false)}
+              style={{
+                flex: 1, padding: '10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                background: !scheduleMode ? '#0F172A' : '#F8FAFC',
+                color: !scheduleMode ? '#fff' : '#64748B'
+              }}
+            >
+              <LinkIcon size={14} />
+              Activate Now
+            </button>
+            <button
+              onClick={() => setScheduleMode(true)}
+              style={{
+                flex: 1, padding: '10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                background: scheduleMode ? '#0F172A' : '#F8FAFC',
+                color: scheduleMode ? '#fff' : '#64748B'
+              }}
+            >
+              <Clock size={14} />
+              Schedule
+            </button>
+          </div>
+        )}
 
-          <CustomTimePicker 
-            value={expiryTime} 
-            onChange={(val) => setExpiryTime(val)} 
-          />
-        </div>
+        {/* Schedule Mode: Go-Live + Expiry pickers */}
+        {selectedDraft && selectedDraft.status === 'draft' && scheduleMode ? (
+          <>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Send size={13} style={{ color: '#06B6D4' }} />
+                Goes Live At
+              </label>
+              <CustomCalendar
+                value={goesLiveDate}
+                onChange={(val) => setGoesLiveDate(new Date(val).toISOString().split('T')[0])}
+              />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <CustomTimePicker
+                value={goesLiveTime}
+                onChange={(val) => setGoesLiveTime(val)}
+              />
+            </div>
 
-        {!selectedDraft ? (
-          <button 
-            className="activate-btn" 
-            disabled={true}
-          >
-            <LinkIcon size={16} />
-            Select a draft to schedule
-          </button>
-        ) : selectedDraft.status === 'draft' ? (
-          <button 
-            className="activate-btn" 
-            onClick={handleActivateDraft}
-            disabled={isActivating || !expiryDate || !expiryTime}
-          >
-            <LinkIcon size={16} />
-            {isActivating ? 'Generating Link...' : 'Activate & Generate Link'}
-          </button>
-        ) : (
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: '#0F172A', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Clock size={13} style={{ color: '#EF4444' }} />
+                Expires At
+              </label>
+              <CustomCalendar
+                value={expiryDate}
+                onChange={(val) => setExpiryDate(new Date(val).toISOString().split('T')[0])}
+              />
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <CustomTimePicker
+                value={expiryTime}
+                onChange={(val) => setExpiryTime(val)}
+              />
+            </div>
+
+            <button
+              className="activate-btn"
+              onClick={handleScheduleDraft}
+              disabled={isScheduling || !goesLiveDate || !goesLiveTime || !expiryDate || !expiryTime}
+              style={{ background: '#06B6D4' }}
+            >
+              <Clock size={16} />
+              {isScheduling ? 'Scheduling...' : 'Schedule Activation'}
+            </button>
+          </>
+        ) : selectedDraft && selectedDraft.status === 'draft' ? (
+          <>
+            {/* Activate Now Mode: Expiry picker only */}
+            <div style={{ marginBottom: '16px' }}>
+              <CustomCalendar
+                value={expiryDate}
+                onChange={(val) => setExpiryDate(new Date(val).toISOString().split('T')[0])}
+              />
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <CustomTimePicker
+                value={expiryTime}
+                onChange={(val) => setExpiryTime(val)}
+              />
+            </div>
+            <button
+              className="activate-btn"
+              onClick={handleActivateDraft}
+              disabled={isActivating || !expiryDate || !expiryTime}
+            >
+              <LinkIcon size={16} />
+              {isActivating ? 'Generating Link...' : 'Activate & Generate Link'}
+            </button>
+          </>
+        ) : selectedDraft && selectedDraft.status === 'scheduled' ? (
+          <div className="live-link-panel">
+            <div className="live-link-title" style={{ color: '#06B6D4' }}>
+              <Clock size={16} />
+              Scheduled
+            </div>
+            <div style={{ fontSize: '12px', color: '#475569', marginBottom: '8px' }}>
+              <strong>Goes live at:</strong><br />
+              {selectedDraft.goesLiveAt ? new Date(selectedDraft.goesLiveAt).toLocaleString() : '—'}
+            </div>
+            <div style={{ fontSize: '12px', color: '#475569', marginBottom: '12px' }}>
+              <strong>Expires at:</strong><br />
+              {selectedDraft.expiresAt ? new Date(selectedDraft.expiresAt).toLocaleString() : '—'}
+            </div>
+            <div className="live-link-box">
+              <input
+                type="text"
+                className="live-link-input"
+                value={`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`}
+                readOnly
+              />
+              <button
+                className="copy-btn"
+                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)}
+              >
+                <Copy size={16} />
+              </button>
+            </div>
+            <p style={{ fontSize: '11px', color: '#94A3B8', marginTop: '8px', marginBottom: '12px' }}>
+              Link will be accessible to applicants at the scheduled go-live time.
+            </p>
+            <button
+              onClick={handleCancelSchedule}
+              disabled={isCancellingSchedule}
+              style={{ width: '100%', padding: '10px', background: 'none', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: isCancellingSchedule ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isCancellingSchedule ? 0.6 : 1 }}
+            >
+              <XCircle size={16} />
+              {isCancellingSchedule ? 'Cancelling...' : 'Cancel Schedule'}
+            </button>
+          </div>
+        ) : selectedDraft ? (
           <div className="live-link-panel">
             <div className="live-link-title">
               {selectedDraft.status === 'active' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
@@ -278,20 +470,20 @@ export default function DraftsView() {
               Expires at: {new Date(selectedDraft.expiresAt).toLocaleString()}
             </p>
             <div className="live-link-box">
-              <input 
-                type="text" 
-                className="live-link-input" 
-                value={`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`} 
-                readOnly 
+              <input
+                type="text"
+                className="live-link-input"
+                value={`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`}
+                readOnly
               />
-              <button 
+              <button
                 className="copy-btn"
                 onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)}
               >
                 <Copy size={16} />
               </button>
             </div>
-            <button 
+            <button
               className="view-submissions-btn"
               onClick={handleViewSubmissions}
               style={{ marginTop: '12px', width: '100%', padding: '10px', background: '#0F172A', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
@@ -300,6 +492,14 @@ export default function DraftsView() {
               View Submissions
             </button>
           </div>
+        ) : (
+          <button
+            className="activate-btn"
+            disabled={true}
+          >
+            <LinkIcon size={16} />
+            Select a draft to schedule
+          </button>
         )}
       </div>
 

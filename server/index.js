@@ -9,6 +9,7 @@ const EmailDraft = require('./models/EmailDraft');
 const EmailConfig = require('./models/EmailConfig');
 const EmailCampaign = require('./models/EmailCampaign');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
+const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
@@ -235,6 +236,153 @@ app.put('/api/drafts/:draftId/activate', verifyToken, async (req, res) => {
 });
 
 /**
+ * GET /api/drafts/scheduled
+ * Fetch all scheduled form drafts for the current user
+ */
+app.get('/api/drafts/scheduled', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_drafts')
+      .select('*')
+      .eq('user_id', req.user.uid)
+      .eq('status', 'scheduled')
+      .order('goes_live_at', { ascending: true });
+
+    if (error) throw error;
+
+    const drafts = (data || []).map(d => ({
+      draftId: d.draft_id,
+      title: d.title,
+      config: d.config,
+      templateType: d.template_type,
+      status: d.status,
+      goesLiveAt: d.goes_live_at,
+      expiresAt: d.expires_at,
+      createdAt: d.created_at
+    }));
+
+    res.json({ drafts });
+  } catch (error) {
+    console.error('Error fetching scheduled drafts:', error);
+    res.status(500).json({ error: 'Failed to fetch scheduled drafts' });
+  }
+});
+
+/**
+ * PUT /api/drafts/:draftId/schedule
+ * Schedule a draft to go live at a future date/time
+ */
+app.put('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
+  try {
+    const { goesLiveAt, expiresAt } = req.body;
+    if (!goesLiveAt) return res.status(400).json({ error: 'goesLiveAt is required' });
+    if (!expiresAt) return res.status(400).json({ error: 'expiresAt is required' });
+
+    const liveDate = new Date(goesLiveAt);
+    const expiryDate = new Date(expiresAt);
+
+    if (isNaN(liveDate.getTime())) return res.status(400).json({ error: 'Invalid goesLiveAt' });
+    if (isNaN(expiryDate.getTime())) return res.status(400).json({ error: 'Invalid expiresAt' });
+    if (liveDate <= new Date()) return res.status(400).json({ error: 'goesLiveAt must be in the future' });
+    if (expiryDate <= liveDate) return res.status(400).json({ error: 'expiresAt must be after goesLiveAt' });
+
+    const { data: draft, error: findError } = await supabase
+      .from('form_drafts')
+      .select('*')
+      .eq('draft_id', req.params.draftId)
+      .eq('user_id', req.user.uid)
+      .single();
+
+    if (findError || !draft) return res.status(404).json({ error: 'Draft not found' });
+
+    const { data: updated, error: updateError } = await supabase
+      .from('form_drafts')
+      .update({
+        status: 'scheduled',
+        goes_live_at: liveDate.toISOString(),
+        expires_at: expiryDate.toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('draft_id', req.params.draftId)
+      .select('*')
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Schedule Agenda job to activate at goesLiveAt
+    await scheduleDraftActivation(req.params.draftId, liveDate);
+
+    res.json({
+      message: 'Draft scheduled',
+      draft: {
+        draftId: updated.draft_id,
+        title: updated.title,
+        config: updated.config,
+        templateType: updated.template_type,
+        status: updated.status,
+        goesLiveAt: updated.goes_live_at,
+        expiresAt: updated.expires_at,
+        createdAt: updated.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Error scheduling draft:', error);
+    res.status(500).json({ error: 'Failed to schedule draft: ' + error.message });
+  }
+});
+
+/**
+ * DELETE /api/drafts/:draftId/schedule
+ * Cancel a scheduled draft activation
+ */
+app.delete('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
+  try {
+    const { data: draft, error: findError } = await supabase
+      .from('form_drafts')
+      .select('*')
+      .eq('draft_id', req.params.draftId)
+      .eq('user_id', req.user.uid)
+      .single();
+
+    if (findError || !draft) return res.status(404).json({ error: 'Draft not found' });
+    if (draft.status !== 'scheduled') return res.status(400).json({ error: 'Draft is not scheduled' });
+
+    // Cancel Agenda job
+    await cancelDraftActivation(req.params.draftId);
+
+    const { data: updated, error: updateError } = await supabase
+      .from('form_drafts')
+      .update({
+        status: 'draft',
+        goes_live_at: null,
+        expires_at: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('draft_id', req.params.draftId)
+      .select('*')
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json({
+      message: 'Schedule cancelled',
+      draft: {
+        draftId: updated.draft_id,
+        title: updated.title,
+        config: updated.config,
+        templateType: updated.template_type,
+        status: updated.status,
+        expiresAt: updated.expires_at,
+        createdAt: updated.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Error cancelling draft schedule:', error);
+    res.status(500).json({ error: 'Failed to cancel schedule' });
+  }
+});
+
+/**
  * GET /api/forms/:draftId
  * Fetch public form config (no auth required)
  */
@@ -252,6 +400,20 @@ app.get('/api/forms/:draftId', async (req, res) => {
 
     if (draft.status === 'draft' || !draft.expires_at) {
       return res.status(403).json({ error: 'This form link is not yet active.' });
+    }
+
+    // Scheduled but not yet time to go live
+    if (draft.status === 'scheduled' && draft.goes_live_at && new Date() < new Date(draft.goes_live_at)) {
+      return res.status(403).json({ error: `This form link goes live at ${new Date(draft.goes_live_at).toLocaleString()}.` });
+    }
+
+    // Fallback: scheduled and time has arrived but Agenda hasn't fired yet — auto-activate
+    if (draft.status === 'scheduled' && draft.goes_live_at && new Date() >= new Date(draft.goes_live_at)) {
+      await supabase
+        .from('form_drafts')
+        .update({ status: 'active', updated_at: new Date().toISOString() })
+        .eq('draft_id', req.params.draftId);
+      draft.status = 'active';
     }
 
     if (new Date() > new Date(draft.expires_at) || draft.status === 'expired') {
@@ -1121,6 +1283,20 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
     campaign.sentAt = new Date();
     await campaign.save();
 
+    // Insert into Supabase email_send_log
+    await supabase.from('email_send_log').insert({
+      user_id: req.user.uid,
+      campaign_id: campaign._id.toString(),
+      draft_id: draftId,
+      draft_title: draft.subject || 'Untitled',
+      sender_email: config.email,
+      recipient_count: recipients.length,
+      sent_count: sentCount,
+      failed_count: failedCount,
+      status: campaign.status,
+      sent_at: new Date().toISOString()
+    });
+
     res.json({
       message: `Campaign ${campaign.status}`,
       campaignId: campaign._id,
@@ -1135,6 +1311,40 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
 });
 
 // --- Campaigns List ---
+
+app.get('/api/email/send-log', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('email_send_log')
+      .select('*')
+      .eq('user_id', req.user.uid)
+      .order('sent_at', { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+    res.json({ sendLog: data || [] });
+  } catch (error) {
+    console.error('Error fetching email send log:', error);
+    res.status(500).json({ error: 'Failed to fetch send log' });
+  }
+});
+
+app.get('/api/email/send-log/:campaignId', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('email_send_log')
+      .select('*')
+      .eq('user_id', req.user.uid)
+      .eq('campaign_id', req.params.campaignId)
+      .single();
+
+    if (error) throw error;
+    res.json({ entry: data });
+  } catch (error) {
+    console.error('Error fetching send log entry:', error);
+    res.status(500).json({ error: 'Failed to fetch send log entry' });
+  }
+});
 
 app.get('/api/email/campaigns', verifyToken, async (req, res) => {
   try {
@@ -1162,7 +1372,113 @@ app.get('/api/email/campaigns/:id', verifyToken, async (req, res) => {
   }
 });
 
+// --- Scheduled Campaigns ---
+
+app.post('/api/email/schedule', verifyToken, async (req, res) => {
+  try {
+    const { draftId, recipients, campaignName, scheduledAt } = req.body;
+
+    if (!draftId) return res.status(400).json({ error: 'draftId is required' });
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ error: 'recipients array is required' });
+    }
+    if (!scheduledAt) return res.status(400).json({ error: 'scheduledAt is required' });
+
+    const sendDate = new Date(scheduledAt);
+    if (isNaN(sendDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid scheduledAt date' });
+    }
+    if (sendDate <= new Date()) {
+      return res.status(400).json({ error: 'scheduledAt must be in the future' });
+    }
+
+    const draft = await EmailDraft.findOne({ _id: draftId, ownerUid: req.user.uid });
+    if (!draft) return res.status(404).json({ error: 'Draft not found' });
+
+    const config = await EmailConfig.findOne({ ownerUid: req.user.uid });
+    if (!config) {
+      return res.status(400).json({ error: 'No email config found. Please configure your email settings first.' });
+    }
+
+    const campaign = await EmailCampaign.create({
+      ownerUid: req.user.uid,
+      name: campaignName || `Scheduled Campaign ${sendDate.toLocaleDateString()}`,
+      draftId,
+      status: 'scheduled',
+      scheduledAt: sendDate,
+      recipients: recipients.map(r => ({
+        email: r.email,
+        name: r.name || '',
+        variables: r.variables || {},
+        status: 'pending',
+      })),
+    });
+
+    await scheduleCampaign(campaign._id.toString(), sendDate);
+
+    res.json({
+      message: 'Campaign scheduled successfully',
+      campaignId: campaign._id,
+      scheduledAt: sendDate.toISOString(),
+    });
+  } catch (error) {
+    console.error('Error scheduling campaign:', error);
+    res.status(500).json({ error: 'Failed to schedule campaign: ' + error.message });
+  }
+});
+
+app.get('/api/email/scheduled', verifyToken, async (req, res) => {
+  try {
+    const campaigns = await EmailCampaign.find({
+      ownerUid: req.user.uid,
+      status: 'scheduled',
+    })
+      .populate('draftId', 'subject')
+      .sort({ scheduledAt: 1 });
+    res.json({ campaigns });
+  } catch (error) {
+    console.error('Error fetching scheduled campaigns:', error);
+    res.status(500).json({ error: 'Failed to fetch scheduled campaigns' });
+  }
+});
+
+app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
+  try {
+    const campaign = await EmailCampaign.findOne({
+      _id: req.params.campaignId,
+      ownerUid: req.user.uid,
+    });
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    if (campaign.status !== 'scheduled') {
+      return res.status(400).json({ error: 'Campaign is not scheduled' });
+    }
+
+    await cancelScheduledCampaign(campaign._id.toString());
+
+    campaign.status = 'cancelled';
+    await campaign.save();
+
+    res.json({ message: 'Scheduled campaign cancelled' });
+  } catch (error) {
+    console.error('Error cancelling scheduled campaign:', error);
+    res.status(500).json({ error: 'Failed to cancel scheduled campaign' });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down...');
+  await stopAgenda();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down...');
+  await stopAgenda();
+  process.exit(0);
 });
 

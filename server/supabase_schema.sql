@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS form_drafts (
   template_type TEXT DEFAULT 'unknown',
   status TEXT DEFAULT 'draft',
   expires_at TIMESTAMPTZ,
+  goes_live_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -79,12 +80,29 @@ CREATE TABLE IF NOT EXISTS candidates (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Email Send Log table
+CREATE TABLE IF NOT EXISTS email_send_log (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  campaign_id TEXT,
+  draft_id TEXT,
+  draft_title TEXT NOT NULL,
+  sender_email TEXT NOT NULL,
+  recipient_count INT DEFAULT 0,
+  sent_count INT DEFAULT 0,
+  failed_count INT DEFAULT 0,
+  status TEXT DEFAULT 'sent',
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================
 -- Row Level Security (RLS)
 -- ============================================
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE form_drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_send_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE form_submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
@@ -117,6 +135,10 @@ CREATE POLICY "Users manage own alerts" ON alerts
 CREATE POLICY "Users manage own candidates" ON candidates
   FOR ALL USING (auth.uid() = user_id);
 
+-- Email Send Log: users view their own send history
+CREATE POLICY "Users view own email send log" ON email_send_log
+  FOR ALL USING (auth.uid() = user_id);
+
 -- ============================================
 -- Indexes
 -- ============================================
@@ -128,6 +150,8 @@ CREATE INDEX IF NOT EXISTS idx_form_submissions_user_id ON form_submissions(user
 CREATE INDEX IF NOT EXISTS idx_meetings_user_id ON meetings(user_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_user_id ON alerts(user_id);
 CREATE INDEX IF NOT EXISTS idx_candidates_user_id ON candidates(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_send_log_user_id ON email_send_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_send_log_sent_at ON email_send_log(sent_at DESC);
 
 -- ============================================
 -- Auto-create profile on signup

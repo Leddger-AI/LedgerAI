@@ -70,6 +70,10 @@ export default function EmailAutomationView() {
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState(null);
   const [sendError, setSendError] = useState(null);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [scheduleDateTime, setScheduleDateTime] = useState('');
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduleSuccess, setScheduleSuccess] = useState(null);
 
   const fetchDrafts = useCallback(async () => {
     setDraftsLoading(true);
@@ -239,6 +243,9 @@ export default function EmailAutomationView() {
     setVariableMapping({});
     setSendStatus(null);
     setSendError(null);
+    setShowSchedulePicker(false);
+    setScheduleDateTime('');
+    setScheduleSuccess(null);
     setShowSendModal(true);
   };
 
@@ -323,6 +330,51 @@ export default function EmailAutomationView() {
       setSendError(err.message);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleScheduleCampaign = async () => {
+    setScheduling(true);
+    setSendError(null);
+    setScheduleSuccess(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) { setSendError('Not authenticated.'); return; }
+      if (!sendDraft?._id) { setSendError('No draft selected.'); return; }
+      if (recipients.length === 0) { setSendError('Add at least one recipient.'); return; }
+      if (!scheduleDateTime) { setSendError('Pick a date and time.'); return; }
+
+      const finalRecipients = recipients.map(r => {
+        const mappedVars = {};
+        if (sendDraft.variables) {
+          sendDraft.variables.forEach(v => {
+            const csvCol = variableMapping[v.id];
+            if (csvCol && r.variables[csvCol] !== undefined) {
+              mappedVars[v.id] = r.variables[csvCol];
+            }
+          });
+        }
+        return { email: r.email, name: r.name, variables: mappedVars };
+      });
+
+      const res = await fetch(`${API_BASE_URL}/api/email/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          draftId: sendDraft._id,
+          recipients: finalRecipients,
+          campaignName: campaignName || `Scheduled Campaign ${new Date().toLocaleDateString()}`,
+          scheduledAt: new Date(scheduleDateTime).toISOString(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to schedule campaign');
+      setScheduleSuccess({ scheduledAt: data.scheduledAt, campaignId: data.campaignId });
+      fetchCampaigns();
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setScheduling(false);
     }
   };
 
@@ -791,17 +843,78 @@ export default function EmailAutomationView() {
               )}
             </div>
 
-            {!sendStatus && (
-              <div className="ea-config-modal-footer">
-                <button className="ea-cancel-btn" onClick={() => setShowSendModal(false)}>Cancel</button>
-                <button
-                  className="ea-save-config-btn"
-                  onClick={handleSendCampaign}
-                  disabled={sending || recipients.length === 0 || !config}
-                >
-                  {sending ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
-                  {sending ? 'Sending...' : `Send to ${recipients.length} recipient${recipients.length !== 1 ? 's' : ''}`}
-                </button>
+            {!sendStatus && !scheduleSuccess && (
+              <>
+                {showSchedulePicker && (
+                  <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={14} style={{ color: 'var(--color-cyan)' }} />
+                      Schedule Date & Time
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={scheduleDateTime}
+                      onChange={(e) => setScheduleDateTime(e.target.value)}
+                      min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        background: 'var(--bg-secondary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                      <button className="ea-cancel-btn" onClick={() => setShowSchedulePicker(false)}>Back</button>
+                      <button
+                        className="ea-save-config-btn"
+                        onClick={handleScheduleCampaign}
+                        disabled={scheduling || recipients.length === 0 || !config || !scheduleDateTime}
+                        style={{ background: 'var(--color-cyan)' }}
+                      >
+                        {scheduling ? <Loader2 size={14} className="spin" /> : <Clock size={14} />}
+                        {scheduling ? 'Scheduling...' : 'Confirm Schedule'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!showSchedulePicker && (
+                  <div className="ea-config-modal-footer">
+                    <button className="ea-cancel-btn" onClick={() => setShowSendModal(false)}>Cancel</button>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        className="ea-cancel-btn"
+                        onClick={() => setShowSchedulePicker(true)}
+                        disabled={sending || recipients.length === 0 || !config}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Clock size={14} />
+                        Schedule
+                      </button>
+                      <button
+                        className="ea-save-config-btn"
+                        onClick={handleSendCampaign}
+                        disabled={sending || recipients.length === 0 || !config}
+                      >
+                        {sending ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
+                        {sending ? 'Sending...' : `Send to ${recipients.length} recipient${recipients.length !== 1 ? 's' : ''}`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {scheduleSuccess && (
+              <div className="ea-config-modal-footer" style={{ flexDirection: 'column', gap: '12px' }}>
+                <div className="ea-test-status success" style={{ width: '100%' }}>
+                  <CheckCircle2 size={14} />
+                  Campaign scheduled for {new Date(scheduleSuccess.scheduledAt).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}
+                </div>
+                <button className="ea-save-config-btn" onClick={() => setShowSendModal(false)}>Done</button>
               </div>
             )}
           </div>
