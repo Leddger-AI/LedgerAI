@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense, useEffect } from 'react';
+import { useState, useMemo, lazy, Suspense, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -37,7 +37,8 @@ import {
   Inbox as InboxIcon,
   File,
   Trash2,
-  ChevronUp
+  ChevronUp,
+  FolderOpen
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -53,7 +54,7 @@ import {
 } from 'recharts';
 import './App.css';
 import { supabase } from './supabaseClient';
-import { loginWithGoogleAndCalendar, loginWithEmail, onAuthChange, signOut as supabaseSignOut, getCurrentSession } from './supabaseAuth';
+import { loginWithGoogleAndCalendar, loginWithEmail, loginWithGitHub, onAuthChange, signOut as supabaseSignOut, getCurrentSession } from './supabaseAuth';
 import LandingPage from './LandingPage.jsx';
 import Navbar from './Navbar.jsx';
 import KnowledgeBase from './KnowledgeBase.jsx';
@@ -66,6 +67,7 @@ import SettingsView from './SettingsView.jsx';
 import SourcingView from './SourcingView.jsx';
 import BulkCampaignView from './BulkCampaignView.jsx';
 import RosterStudioView from './RosterStudioView.jsx';
+import FilesView from './FilesView.jsx';
 import MeetView from './MeetView.jsx';
 import ExportView from './ExportView.jsx';
 import EmailAutomationView from './EmailAutomationView.jsx';
@@ -74,12 +76,24 @@ import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
 import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
 import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import WelcomeLoader from './components/WelcomeLoader.jsx';
 import LoginDashboard from './pages/LoginDashboard.jsx';
 import GitHubAuthRedirect from './pages/GitHubAuthRedirect.jsx';
 import ActiveLinksView from './pages/ActiveLinksView.jsx';
 import EmailBodyEditor from './pages/EmailBodyEditor.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+function normalizeUser(rawUser) {
+  if (!rawUser) return null;
+  const meta = rawUser.user_metadata || {};
+  return {
+    ...rawUser,
+    photoURL: meta.avatar_url || meta.picture || meta.profile_image_url || null,
+    displayName: meta.full_name || meta.name || meta.user_name || rawUser.email || 'User',
+    email: rawUser.email || meta.email || '',
+  };
+}
 
 // Lazy loaded page components to resolve startup slow-loading (buffering) warnings
 const RecruiterDashboard = lazy(() => import('./pages/RecruiterDashboard.jsx'));
@@ -118,6 +132,7 @@ export default function App() {
     '/dashboard/sourcing': 'Sourcing',
     '/dashboard/bulk-campaign': 'Bulk Campaign',
     '/dashboard/roster-studio': 'Roster Studio',
+    '/dashboard/files': 'Files',
     '/dashboard/meet': 'Meet',
     '/dashboard/export': 'Export',
     '/dashboard/email-automation': 'Email Automation',
@@ -144,6 +159,7 @@ export default function App() {
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
     if (['Settings'].includes(tab)) return 'Settings';
     if (['Email Automation', 'Email Body', 'Roster Studio'].includes(tab)) return 'Inbox';
+    if (['Files'].includes(tab)) return 'Inbox';
     return 'Home'; 
   };
   
@@ -173,19 +189,11 @@ export default function App() {
       { id: 'Email Automation', label: 'Email', icon: Mail, count: 46 },
       { id: 'Email Body', label: 'Body', icon: FileText },
       { id: 'Roster Studio', label: 'Roster Studio', icon: Table2 },
-      { id: 'AllClosed', label: 'All Closed', icon: InboxIcon, count: 12 },
       { id: 'divider2', isDivider: true },
       { id: 'Sent', label: 'Sent', icon: Send, count: 12 },
       { id: 'Draft', label: 'Draft', icon: File },
       { id: 'Schedule', label: 'Schedule', icon: Clock },
-      { id: 'divider3', isDivider: true },
-      { id: 'OthersHeader', isHeader: true, label: 'Others' },
-      { id: 'Spam', label: 'Spam', icon: AlertCircle },
-      { id: 'Trash', label: 'Trash', icon: Trash2 },
-      { id: 'divider4', isDivider: true },
-      { id: 'TeamHeader', isHeader: true, label: 'Team inboxes' },
-      { id: 'ManageSubscription', label: 'Manage Subscription', icon: Briefcase, count: 1 },
-      { id: 'ManageLabels', label: 'Manage Labels', icon: Settings, count: 2 }
+      { id: 'Files', label: 'Files', icon: FolderOpen }
     ],
     Workspace: [
       { id: 'Projects', label: 'Projects', icon: Briefcase },
@@ -228,104 +236,48 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [tokens, setTokens] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(null);
   const [authErrorModal, setAuthErrorModal] = useState(null);
   
-  // Custom interactive data stats
-  const [meetings, setMeetings] = useState([
-    {
-      id: 1,
-      title: 'Q3 Product Planning & Roadmap',
-      duration: '2h 30m',
-      attendeeCount: 5,
-      cost: 2850,
-      project: 'Project Phoenix',
-      confidence: 94,
-      status: 'needs_review',
-      time: '10:30 AM'
-    },
-    {
-      id: 2,
-      title: 'Client ABC Sync & Deliverables',
-      duration: '1h 15m',
-      attendeeCount: 3,
-      cost: 1200,
-      project: 'Client ABC Onboarding',
-      confidence: 87,
-      status: 'approved',
-      time: 'Yesterday'
-    },
-    {
-      id: 3,
-      title: 'Weekly Alignment & HR Catchup',
-      duration: '45m',
-      attendeeCount: 6,
-      cost: 950,
-      project: 'Unassigned',
-      confidence: 42,
-      status: 'needs_review',
-      time: 'Yesterday'
-    },
-    {
-      id: 4,
-      title: 'Marketing Campaign Kickoff',
-      duration: '1h 30m',
-      attendeeCount: 4,
-      cost: 1650,
-      project: 'Q4 Marketing Strategy',
-      confidence: 78,
-      status: 'approved',
-      time: '2 days ago'
-    },
-    {
-      id: 5,
-      title: 'Phoenix Tech Architecture Review',
-      duration: '2h 00m',
-      attendeeCount: 3,
-      cost: 3100,
-      project: 'Project Phoenix',
-      confidence: 96,
-      status: 'approved',
-      time: '3 days ago'
-    },
-    {
-      id: 6,
-      title: 'Internal Budget Sync & Forecast',
-      duration: '1h 00m',
-      attendeeCount: 4,
-      cost: 1100,
-      project: 'Q4 Marketing Strategy',
-      confidence: 61,
-      status: 'needs_review',
-      time: '4 days ago'
+  // Minimum loading display time (7 seconds) for welcome animation
+  const MIN_LOADING_MS = 7000;
+  const loadingStartRef = useRef(Date.now());
+  
+  const startLoading = useCallback(() => {
+    loadingStartRef.current = Date.now();
+    setLoading(true);
+  }, []);
+  
+  const stopLoading = useCallback(() => {
+    const elapsed = Date.now() - loadingStartRef.current;
+    if (elapsed < MIN_LOADING_MS) {
+      setTimeout(() => setLoading(false), MIN_LOADING_MS - elapsed);
+    } else {
+      setLoading(false);
     }
-  ]);
+  }, []);
+  
+  // Custom interactive data stats
+  const [meetings, setMeetings] = useState([]);
 
   // Auth persistence listener (Supabase)
   useEffect(() => {
     // Check existing session on mount
-    getCurrentSession().then((session) => {
+    getCurrentSession().then(async (session) => {
       if (session) {
-        setUser(session.user);
-        const googleToken = session.providerToken || localStorage.getItem('googleAccessToken');
+        setUser(normalizeUser(session.user));
         setTokens({
-          accessToken: session.accessToken,
-          googleAccessToken: googleToken
+          accessToken: session.accessToken
         });
-        if (googleToken) {
-          fetchEvents(session.accessToken, googleToken);
-        }
-        fetchMeetings(session.accessToken);
-        fetchAlerts(session.accessToken);
-      } else {
-        // Fallback for demo mode survival on refresh
-        const localUser = localStorage.getItem('authUser');
-        if (localUser && localUser.includes("Demo Mode")) {
-          setUser(JSON.parse(localUser));
-        }
+        startLoading();
+        await fetchMeetings(session.accessToken);
+        await fetchAlerts(session.accessToken);
+        stopLoading();
+        setAuthReady(true);
       }
-      setAuthReady(true);
+      // If no session, don't set authReady yet — wait for onAuthChange
+      // to fire (handles OAuth redirect where session isn't available immediately)
     });
 
     // Subscribe to auth state changes
@@ -333,72 +285,67 @@ export default function App() {
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setTokens(null);
+        setMeetings([]);
+        setAlerts([]);
+        localStorage.removeItem('authUser');
         setAuthReady(true);
         return;
       }
-      if (session?.user) {
-        setUser(session.user);
-        const googleToken = session.provider_token || localStorage.getItem('googleAccessToken');
+
+      // Only trigger loading animation + data fetch on actual SIGNED_IN
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(normalizeUser(session.user));
         setTokens({
-          accessToken: session.access_token,
-          googleAccessToken: googleToken
+          accessToken: session.access_token
         });
-        if (googleToken) {
-          await fetchEvents(session.access_token, googleToken);
-        }
+        startLoading();
         await fetchMeetings(session.access_token);
         await fetchAlerts(session.access_token);
-      } else {
+        stopLoading();
+        setAuthReady(true);
+        return;
+      }
+
+      // For TOKEN_REFRESHED: silently update tokens without loading animation
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        setUser(normalizeUser(session.user));
+        setTokens({
+          accessToken: session.access_token
+        });
+        setAuthReady(true);
+        return;
+      }
+
+      // For INITIAL_SESSION and other events with no session
+      if (!session) {
+        setLoading(false);
         const localUser = localStorage.getItem('authUser');
         if (localUser && localUser.includes("Demo Mode")) {
           setUser(JSON.parse(localUser));
         }
+        setAuthReady(true);
       }
-      setAuthReady(true);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const [alerts, setAlerts] = useState([
-    {
-      id: 1,
-      type: 'danger',
-      title: 'Phoenix Cost Overrun Risk',
-      desc: 'Project Phoenix meeting costs have exceeded Q2 threshold by 14%. Immediate review recommended.',
-      resolved: false
-    },
-    {
-      id: 2,
-      type: 'warning',
-      title: 'Low AI Attribution Confidence',
-      desc: '"Weekly Alignment & HR Catchup" has low AI matching confidence (42%). Needs manual tagging.',
-      resolved: false
-    },
-    {
-      id: 3,
-      type: 'info',
-      title: 'Unassigned Hours Detected',
-      desc: '18.5 hours of calendar activity from last week remain unattributed to any active project code.',
-      resolved: false
-    }
-  ]);
+  const [alerts, setAlerts] = useState([]);
 
   // --- AUTHENTICATION & SYNC HANDLERS ---
     const handleEmailAuthLogin = async (email, password) => {
-    setLoading(true);
+    startLoading();
     setApiError(null);
     setAuthErrorModal(null);
     try {
       const data = await loginWithEmail(email, password);
-      setUser(data.user);
+      setUser(normalizeUser(data.user));
       setTokens({
-        accessToken: data.accessToken,
-        googleAccessToken: null
+        accessToken: data.accessToken
       });
       localStorage.setItem('authUser', JSON.stringify({
-        displayName: data.user?.email || email,
-        photoURL: data.user?.user_metadata?.avatar_url || null,
+        displayName: data.user?.user_metadata?.full_name || data.user?.user_metadata?.name || data.user?.email || email,
+        photoURL: data.user?.user_metadata?.avatar_url || data.user?.user_metadata?.picture || null,
         email: data.user?.email || email
       }));
       return true;
@@ -407,11 +354,11 @@ export default function App() {
       setApiError("Authentication failed: " + err.message);
       return false;
     } finally {
-      setLoading(false);
+      stopLoading();
     }
   };
   const handleLogin = async () => {
-    setLoading(true);
+    startLoading();
     setApiError(null);
     setAuthErrorModal(null);
     try {
@@ -435,7 +382,33 @@ export default function App() {
       }
       return false;
     } finally {
-      setLoading(false);
+      stopLoading();
+    }
+  };
+
+  const handleGitHubLogin = async () => {
+    startLoading();
+    setApiError(null);
+    setAuthErrorModal(null);
+    try {
+      await loginWithGitHub();
+      return true;
+    } catch (err) {
+      console.error("GitHub Login Error:", err);
+      if (err.message?.includes('popup') || err.message?.includes('cancelled')) {
+        return false;
+      } else if (err.message?.includes('provider') || err.message?.includes('not enabled')) {
+        setAuthErrorModal({
+          type: 'operation-not-allowed',
+          message: 'GitHub Sign-In is not enabled in your Supabase project.',
+          detail: err.message
+        });
+      } else {
+        setApiError("Authentication failed: " + err.message);
+      }
+      return false;
+    } finally {
+      stopLoading();
     }
   };
 
@@ -447,79 +420,11 @@ export default function App() {
     };
     setUser(demoUser);
     setTokens({
-      accessToken: "demo-access-token",
-      googleAccessToken: "demo-google-access-token"
+      accessToken: "demo-access-token"
     });
     localStorage.setItem('authUser', JSON.stringify(demoUser));
-    // Reset to mock data
-    setMeetings([
-      {
-        id: 1,
-        title: 'Q3 Product Planning & Roadmap',
-        duration: '2h 30m',
-        attendeeCount: 5,
-        cost: 2850,
-        project: 'Project Phoenix',
-        confidence: 94,
-        status: 'needs_review',
-        time: '10:30 AM'
-      },
-      {
-        id: 2,
-        title: 'Client ABC Sync & Deliverables',
-        duration: '1h 15m',
-        attendeeCount: 3,
-        cost: 1200,
-        project: 'Client ABC Onboarding',
-        confidence: 87,
-        status: 'approved',
-        time: 'Yesterday'
-      },
-      {
-        id: 3,
-        title: 'Weekly Alignment & HR Catchup',
-        duration: '45m',
-        attendeeCount: 6,
-        cost: 950,
-        project: 'Unassigned',
-        confidence: 42,
-        status: 'needs_review',
-        time: 'Yesterday'
-      },
-      {
-        id: 4,
-        title: 'Marketing Campaign Kickoff',
-        duration: '1h 30m',
-        attendeeCount: 4,
-        cost: 1650,
-        project: 'Q4 Marketing Strategy',
-        confidence: 78,
-        status: 'approved',
-        time: '2 days ago'
-      },
-      {
-        id: 5,
-        title: 'Phoenix Tech Architecture Review',
-        duration: '2h 00m',
-        attendeeCount: 3,
-        cost: 3100,
-        project: 'Project Phoenix',
-        confidence: 96,
-        status: 'approved',
-        time: '3 days ago'
-      },
-      {
-        id: 6,
-        title: 'Internal Budget Sync & Forecast',
-        duration: '1h 00m',
-        attendeeCount: 4,
-        cost: 1100,
-        project: 'Q4 Marketing Strategy',
-        confidence: 61,
-        status: 'needs_review',
-        time: '4 days ago'
-      }
-    ]);
+    setMeetings([]);
+    setAlerts([]);
     setAuthErrorModal(null);
   };
 
@@ -528,188 +433,10 @@ export default function App() {
     setUser(null);
     setTokens(null);
     setApiError(null);
-    localStorage.removeItem('googleAccessToken');
     localStorage.removeItem('authUser');
-    // Reset to mock data
-    setMeetings([
-      {
-        id: 1,
-        title: 'Q3 Product Planning & Roadmap',
-        duration: '2h 30m',
-        attendeeCount: 5,
-        cost: 2850,
-        project: 'Project Phoenix',
-        confidence: 94,
-        status: 'needs_review',
-        time: '10:30 AM'
-      },
-      {
-        id: 2,
-        title: 'Client ABC Sync & Deliverables',
-        duration: '1h 15m',
-        attendeeCount: 3,
-        cost: 1200,
-        project: 'Client ABC Onboarding',
-        confidence: 87,
-        status: 'approved',
-        time: 'Yesterday'
-      },
-      {
-        id: 3,
-        title: 'Weekly Alignment & HR Catchup',
-        duration: '45m',
-        attendeeCount: 6,
-        cost: 950,
-        project: 'Unassigned',
-        confidence: 42,
-        status: 'needs_review',
-        time: 'Yesterday'
-      },
-      {
-        id: 4,
-        title: 'Marketing Campaign Kickoff',
-        duration: '1h 30m',
-        attendeeCount: 4,
-        cost: 1650,
-        project: 'Q4 Marketing Strategy',
-        confidence: 78,
-        status: 'approved',
-        time: '2 days ago'
-      },
-      {
-        id: 5,
-        title: 'Phoenix Tech Architecture Review',
-        duration: '2h 00m',
-        attendeeCount: 3,
-        cost: 3100,
-        project: 'Project Phoenix',
-        confidence: 96,
-        status: 'approved',
-        time: '3 days ago'
-      },
-      {
-        id: 6,
-        title: 'Internal Budget Sync & Forecast',
-        duration: '1h 00m',
-        attendeeCount: 4,
-        cost: 1100,
-        project: 'Q4 Marketing Strategy',
-        confidence: 61,
-        status: 'needs_review',
-        time: '4 days ago'
-      }
-    ]);
-  };
-
-  const fetchEvents = async (accessToken, googleToken) => {
-    setLoading(true);
-    setApiError(null);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/calendar/events?google_token=${googleToken}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-      if (!response.ok) {
-        throw new Error(`Server returned status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.status === 'success' && data.events) {
-        const mapped = data.events.map((evt, idx) => {
-          const hours = Math.floor(evt.durationMinutes / 60);
-          const mins = evt.durationMinutes % 60;
-          const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-          
-          return {
-            id: evt.eventId || idx,
-            title: evt.title,
-            duration: durationStr,
-            attendeeCount: evt.attendees.length,
-            cost: evt.cost || 0,
-            project: evt.aiProject || 'Internal Operations',
-            confidence: evt.aiConfidence || 0,
-            status: evt.requiresHumanReview ? 'needs_review' : 'approved',
-            time: evt.startTime ? new Date(evt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All-day'
-          };
-        });
-        setMeetings(mapped);
-      } else {
-        throw new Error(data.error || 'API returned non-success status');
-      }
-    } catch (err) {
-      console.warn("Syncing calendar failed, falling back to mock data for demo.");
-      // Fallback to mock data for demo if backend is missing/failing
-      setMeetings([
-        {
-          id: 1,
-          title: 'Q3 Product Planning & Roadmap',
-          duration: '2h 30m',
-          attendeeCount: 5,
-          cost: 2850,
-          project: 'Project Phoenix',
-          confidence: 94,
-          status: 'needs_review',
-          time: '10:30 AM'
-        },
-        {
-          id: 2,
-          title: 'Client ABC Sync & Deliverables',
-          duration: '1h 15m',
-          attendeeCount: 3,
-          cost: 1200,
-          project: 'Client ABC Onboarding',
-          confidence: 87,
-          status: 'approved',
-          time: 'Yesterday'
-        },
-        {
-          id: 3,
-          title: 'Weekly Alignment & HR Catchup',
-          duration: '45m',
-          attendeeCount: 6,
-          cost: 950,
-          project: 'Unassigned',
-          confidence: 42,
-          status: 'needs_review',
-          time: 'Yesterday'
-        },
-        {
-          id: 4,
-          title: 'Marketing Campaign Kickoff',
-          duration: '1h 30m',
-          attendeeCount: 4,
-          cost: 1650,
-          project: 'Q4 Marketing Strategy',
-          confidence: 78,
-          status: 'approved',
-          time: '2 days ago'
-        },
-        {
-          id: 5,
-          title: 'Phoenix Tech Architecture Review',
-          duration: '2h 00m',
-          attendeeCount: 3,
-          cost: 3100,
-          project: 'Project Phoenix',
-          confidence: 96,
-          status: 'approved',
-          time: '3 days ago'
-        },
-        {
-          id: 6,
-          title: 'Internal Budget Sync & Forecast',
-          duration: '1h 00m',
-          attendeeCount: 4,
-          cost: 1100,
-          project: 'Q4 Marketing Strategy',
-          confidence: 61,
-          status: 'needs_review',
-          time: '4 days ago'
-        }
-      ]);
-    } finally {
-      setLoading(false);
-    }
+    setMeetings([]);
+    setAlerts([]);
+    navigate('/');
   };
 
   const fetchMeetings = async (accessToken) => {
@@ -764,7 +491,10 @@ export default function App() {
 
   const handleSyncClick = async () => {
     if (tokens) {
-      await fetchEvents(tokens.accessToken, tokens.googleAccessToken);
+      startLoading();
+      await fetchMeetings(tokens.accessToken);
+      await fetchAlerts(tokens.accessToken);
+      stopLoading();
     } else {
       await handleLogin();
     }
@@ -899,97 +629,8 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    setMeetings([
-      {
-        id: 1,
-        title: 'Q3 Product Planning & Roadmap',
-        duration: '2h 30m',
-        attendeeCount: 5,
-        cost: 2850,
-        project: 'Project Phoenix',
-        confidence: 94,
-        status: 'needs_review',
-        time: '10:30 AM'
-      },
-      {
-        id: 2,
-        title: 'Client ABC Sync & Deliverables',
-        duration: '1h 15m',
-        attendeeCount: 3,
-        cost: 1200,
-        project: 'Client ABC Onboarding',
-        confidence: 87,
-        status: 'approved',
-        time: 'Yesterday'
-      },
-      {
-        id: 3,
-        title: 'Weekly Alignment & HR Catchup',
-        duration: '45m',
-        attendeeCount: 6,
-        cost: 950,
-        project: 'Unassigned',
-        confidence: 42,
-        status: 'needs_review',
-        time: 'Yesterday'
-      },
-      {
-        id: 4,
-        title: 'Marketing Campaign Kickoff',
-        duration: '1h 30m',
-        attendeeCount: 4,
-        cost: 1650,
-        project: 'Q4 Marketing Strategy',
-        confidence: 78,
-        status: 'approved',
-        time: '2 days ago'
-      },
-      {
-        id: 5,
-        title: 'Phoenix Tech Architecture Review',
-        duration: '2h 00m',
-        attendeeCount: 3,
-        cost: 3100,
-        project: 'Project Phoenix',
-        confidence: 96,
-        status: 'approved',
-        time: '3 days ago'
-      },
-      {
-        id: 6,
-        title: 'Internal Budget Sync & Forecast',
-        duration: '1h 00m',
-        attendeeCount: 4,
-        cost: 1100,
-        project: 'Q4 Marketing Strategy',
-        confidence: 61,
-        status: 'needs_review',
-        time: '4 days ago'
-      }
-    ]);
-    setAlerts([
-      {
-        id: 1,
-        type: 'danger',
-        title: 'Phoenix Cost Overrun Risk',
-        desc: 'Project Phoenix meeting costs have exceeded Q2 threshold by 14%. Immediate review recommended.',
-        resolved: false
-      },
-      {
-        id: 2,
-        type: 'warning',
-        title: 'Low AI Attribution Confidence',
-        desc: '"Weekly Alignment & HR Catchup" has low AI matching confidence (42%). Needs manual tagging.',
-        resolved: false
-      },
-      {
-        id: 3,
-        type: 'info',
-        title: 'Unassigned Hours Detected',
-        desc: '18.5 hours of calendar activity from last week remain unattributed to any active project code.',
-        resolved: false
-      }
-    ]);
+    setMeetings([]);
+    setAlerts([]);
   };
 
   const handleToggleDemo = () => {
@@ -1029,10 +670,10 @@ export default function App() {
         {/* Avatar Area */}
         <div className="mini-sidebar-header">
           <img 
-            src={user?.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80"} 
+            src={user?.photoURL || "https://api.dicebear.com/7.x/initials/svg?seed=" + encodeURIComponent(user?.displayName || user?.email || "U")} 
             alt="Profile" 
             className="mini-avatar"
-            title={`${user?.displayName || "Sarah Jenkins"}`}
+            title={`${user?.displayName || user?.email || "User"}`}
           />
         </div>
 
@@ -1641,6 +1282,8 @@ export default function App() {
             <BulkCampaignView />
           ) : activeTab === 'Roster Studio' ? (
             <RosterStudioView />
+          ) : activeTab === 'Files' ? (
+            <FilesView />
           ) : activeTab === 'Meet' ? (
             <MeetView meetings={meetings} />
           ) : activeTab === 'Export' ? (
@@ -1658,7 +1301,8 @@ export default function App() {
               onUpdateSettings={handleUpdateSettings}
               onResetData={handleResetData}
               onToggleDemo={handleToggleDemo}
-              demoActive={!!(user && user.displayName.includes("Demo Mode"))}
+              demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))}
+              onLogout={handleLogout}
             />
           ) : (
             // Simple mockup tabs for navigation
@@ -1825,6 +1469,7 @@ export default function App() {
       }>
         <Routes>
           <Route path="/" element={
+            user && authReady ? <Navigate to="/dashboard" replace /> :
             <LandingPage 
               onStartDashboard={handleStartDashboard}
               loading={loading}
@@ -1833,14 +1478,15 @@ export default function App() {
             />
           } />
                       <Route path="/security" element={
-              <LandingPage 
-                onStartDashboard={handleStartDashboard}
-                loading={loading}
-                apiError={apiError}
-                onClearError={() => setApiError(null)}
-              />
-            } />
+            <LandingPage 
+              onStartDashboard={handleStartDashboard}
+              loading={loading}
+              apiError={apiError}
+              onClearError={() => setApiError(null)}
+            />
+          } />
             <Route path="/login" element={
+              user && authReady ? <Navigate to="/dashboard" replace /> :
               <LoginDashboard 
                 onGoogleLogin={async () => {
                   const success = await handleLogin();
@@ -1854,7 +1500,7 @@ export default function App() {
             <Route path="/auth/github" element={
               <GitHubAuthRedirect 
                 onCompleteLogin={async () => {
-                  const success = await handleLogin();
+                  const success = await handleGitHubLogin();
                   if (success) {
                     navigate('/dashboard');
                   }
@@ -1873,7 +1519,11 @@ export default function App() {
           
           <Route path="/dashboard/*" element={
             <ProtectedRoute user={user} authReady={authReady}>
-              {dashboardUI}
+              {loading && meetings.length === 0 && !apiError ? (
+                <WelcomeLoader subtitle="Syncing your calendar and workspace data..." />
+              ) : (
+                dashboardUI
+              )}
             </ProtectedRoute>
           } />
           
