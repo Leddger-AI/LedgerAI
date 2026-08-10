@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Send, Mail, Clock, FileSpreadsheet, Trash2, RefreshCw,
   Settings, Loader2, AlertTriangle, CheckCircle2, Plus, X,
-  Zap
+  Zap, Users, Upload
 } from 'lucide-react';
+import Papa from 'papaparse';
 import { getAuthToken } from './supabaseAuth';
 import './EmailAutomationView.css';
 
@@ -60,6 +61,16 @@ export default function EmailAutomationView() {
   const [campaigns, setCampaigns] = useState([]);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
 
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [sendDraft, setSendDraft] = useState(null);
+  const [campaignName, setCampaignName] = useState('');
+  const [recipients, setRecipients] = useState([]);
+  const [csvHeaders, setCsvHeaders] = useState([]);
+  const [variableMapping, setVariableMapping] = useState({});
+  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState(null);
+  const [sendError, setSendError] = useState(null);
+
   const fetchDrafts = useCallback(async () => {
     setDraftsLoading(true);
     setDraftsError(null);
@@ -98,6 +109,7 @@ export default function EmailAutomationView() {
           authMethod: data.config.authMethod || 'app_password',
           smtpHost: data.config.smtpHost || 'smtp.gmail.com',
           smtpPort: data.config.smtpPort || 587,
+          clientId: data.config.clientId || '',
         }));
       }
     } catch (err) {
@@ -219,6 +231,101 @@ export default function EmailAutomationView() {
     fetchDraftDetail(draft._id);
   };
 
+  const openSendModal = (draft) => {
+    setSendDraft(draft);
+    setCampaignName(`Campaign — ${draft.subject || 'Untitled'}`);
+    setRecipients([]);
+    setCsvHeaders([]);
+    setVariableMapping({});
+    setSendStatus(null);
+    setSendError(null);
+    setShowSendModal(true);
+  };
+
+  const handleCsvUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        if (results.meta?.fields) {
+          setCsvHeaders(results.meta.fields);
+          const emailCol = results.meta.fields.find(f => f.toLowerCase().includes('email'));
+          const nameCol = results.meta.fields.find(f => f.toLowerCase().includes('name') && !f.toLowerCase().includes('company'));
+          const parsed = results.data.map(row => ({
+            email: emailCol ? (row[emailCol] || '').trim() : '',
+            name: nameCol ? (row[nameCol] || '').trim() : '',
+            variables: { ...row },
+          })).filter(r => r.email);
+          setRecipients(parsed);
+          if (sendDraft?.variables?.length) {
+            const mapping = {};
+            sendDraft.variables.forEach(v => {
+              const match = results.meta.fields.find(h => h.toLowerCase().replace(/\s+/g, '_') === v.id || h === v.id);
+              if (match) mapping[v.id] = match;
+            });
+            setVariableMapping(mapping);
+          }
+        }
+      }
+    });
+    if (e.target.value) e.target.value = '';
+  };
+
+  const addManualRecipient = () => {
+    setRecipients(prev => [...prev, { email: '', name: '', variables: {} }]);
+  };
+
+  const updateManualRecipient = (idx, field, value) => {
+    setRecipients(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  const removeRecipient = (idx) => {
+    setRecipients(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSendCampaign = async () => {
+    setSending(true);
+    setSendStatus(null);
+    setSendError(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) { setSendError('Not authenticated.'); return; }
+      if (!sendDraft?._id) { setSendError('No draft selected.'); return; }
+      if (recipients.length === 0) { setSendError('Add at least one recipient.'); return; }
+      const finalRecipients = recipients.map(r => {
+        const mappedVars = {};
+        if (sendDraft.variables) {
+          sendDraft.variables.forEach(v => {
+            const csvCol = variableMapping[v.id];
+            if (csvCol && r.variables[csvCol] !== undefined) {
+              mappedVars[v.id] = r.variables[csvCol];
+            }
+          });
+        }
+        return { email: r.email, name: r.name, variables: mappedVars };
+      });
+      const res = await fetch(`${API_BASE_URL}/api/email/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          draftId: sendDraft._id,
+          recipients: finalRecipients,
+          campaignName: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send campaign');
+      setSendStatus({ sentCount: data.sentCount, failedCount: data.failedCount, total: data.totalRecipients });
+      fetchCampaigns();
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="ea-container">
       <div className="ea-main">
@@ -284,12 +391,21 @@ export default function EmailAutomationView() {
                       {formatRelativeTime(draft.updatedAt)}
                     </span>
                   </div>
-                  <button
-                    className="ea-draft-delete"
-                    onClick={(e) => { e.stopPropagation(); handleDeleteDraft(draft._id); }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="ea-draft-actions">
+                    <button
+                      className="ea-draft-send"
+                      onClick={(e) => { e.stopPropagation(); openSendModal(draft); }}
+                      title="Send Campaign"
+                    >
+                      <Send size={14} />
+                    </button>
+                    <button
+                      className="ea-draft-delete"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteDraft(draft._id); }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -476,7 +592,7 @@ export default function EmailAutomationView() {
                       type="password"
                       value={configForm.appPassword}
                       onChange={e => setConfigForm(prev => ({ ...prev, appPassword: e.target.value }))}
-                      placeholder="16-character app password"
+                      placeholder={config?.hasAppPassword ? '•••••••• (saved — enter new to replace)' : '16-character app password'}
                     />
                     <span className="ea-form-hint">Generate from Google Account → Security → App Passwords</span>
                   </div>
@@ -498,7 +614,7 @@ export default function EmailAutomationView() {
                       type="password"
                       value={configForm.clientSecret}
                       onChange={e => setConfigForm(prev => ({ ...prev, clientSecret: e.target.value }))}
-                      placeholder="Google OAuth2 Client Secret"
+                      placeholder={config?.hasClientSecret ? '•••••••• (saved — enter new to replace)' : 'Google OAuth2 Client Secret'}
                     />
                   </div>
                   <div className="ea-form-group">
@@ -507,7 +623,7 @@ export default function EmailAutomationView() {
                       type="password"
                       value={configForm.refreshToken}
                       onChange={e => setConfigForm(prev => ({ ...prev, refreshToken: e.target.value }))}
-                      placeholder="Google OAuth2 Refresh Token"
+                      placeholder={config?.hasRefreshToken ? '•••••••• (saved — enter new to replace)' : 'Google OAuth2 Refresh Token'}
                     />
                     <span className="ea-form-hint">Obtain via OAuth2 Playground with mail.google.com scope</span>
                   </div>
@@ -529,6 +645,165 @@ export default function EmailAutomationView() {
                 {configSaving ? 'Saving...' : 'Save Configuration'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showSendModal && (
+        <div className="ea-config-modal-overlay" onClick={() => setShowSendModal(false)}>
+          <div className="ea-send-modal" onClick={e => e.stopPropagation()}>
+            <div className="ea-config-modal-header">
+              <h3>Send Campaign</h3>
+              <button onClick={() => setShowSendModal(false)}><X size={18} /></button>
+            </div>
+
+            <div className="ea-config-modal-body">
+              {sendStatus ? (
+                <div className="ea-send-result">
+                  <CheckCircle2 size={40} style={{ color: '#16A34A' }} />
+                  <h4>Campaign Complete</h4>
+                  <div className="ea-send-result-stats">
+                    <div className="ea-send-result-stat">
+                      <span className="ea-send-result-num">{sendStatus.sentCount}</span>
+                      <span className="ea-send-result-label">Sent</span>
+                    </div>
+                    <div className="ea-send-result-stat failed">
+                      <span className="ea-send-result-num">{sendStatus.failedCount}</span>
+                      <span className="ea-send-result-label">Failed</span>
+                    </div>
+                    <div className="ea-send-result-stat">
+                      <span className="ea-send-result-num">{sendStatus.total}</span>
+                      <span className="ea-send-result-label">Total</span>
+                    </div>
+                  </div>
+                  <button className="ea-save-config-btn" onClick={() => setShowSendModal(false)}>
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="ea-form-group">
+                    <label>Campaign Name</label>
+                    <input
+                      type="text"
+                      value={campaignName}
+                      onChange={e => setCampaignName(e.target.value)}
+                      placeholder="Campaign name"
+                    />
+                  </div>
+
+                  <div className="ea-form-group">
+                    <label>Draft</label>
+                    <div className="ea-send-draft-info">
+                      <Mail size={14} />
+                      <span>{sendDraft?.subject || 'Untitled Draft'}</span>
+                    </div>
+                  </div>
+
+                  <div className="ea-form-group">
+                    <label>Recipients</label>
+                    <div className="ea-csv-upload">
+                      <label className="ea-csv-upload-btn">
+                        <Upload size={14} />
+                        Upload CSV
+                        <input type="file" accept=".csv" onChange={handleCsvUpload} style={{ display: 'none' }} />
+                      </label>
+                      <button className="ea-manual-add-btn" onClick={addManualRecipient}>
+                        <Plus size={14} />
+                        Add Manually
+                      </button>
+                    </div>
+                  </div>
+
+                  {recipients.length > 0 && (
+                    <>
+                      {sendDraft?.variables?.length > 0 && csvHeaders.length > 0 && (
+                        <div className="ea-form-group">
+                          <label>Variable Mapping</label>
+                          <div className="ea-mapping-list">
+                            {sendDraft.variables.map(v => (
+                              <div key={v.id} className="ea-mapping-row">
+                                <span className="ea-mapping-var">{v.label}</span>
+                                <select
+                                  value={variableMapping[v.id] || ''}
+                                  onChange={e => setVariableMapping(prev => ({ ...prev, [v.id]: e.target.value }))}
+                                >
+                                  <option value="">— Not mapped —</option>
+                                  {csvHeaders.map(h => (
+                                    <option key={h} value={h}>{h}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="ea-recipient-list">
+                        <div className="ea-recipient-count">
+                          <Users size={14} />
+                          {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}
+                        </div>
+                        {recipients.slice(0, 10).map((r, idx) => (
+                          <div key={idx} className="ea-recipient-row">
+                            <input
+                              type="email"
+                              value={r.email}
+                              onChange={e => updateManualRecipient(idx, 'email', e.target.value)}
+                              placeholder="email@example.com"
+                              className="ea-recipient-email"
+                            />
+                            <input
+                              type="text"
+                              value={r.name}
+                              onChange={e => updateManualRecipient(idx, 'name', e.target.value)}
+                              placeholder="Name"
+                              className="ea-recipient-name"
+                            />
+                            <button className="ea-recipient-remove" onClick={() => removeRecipient(idx)}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        {recipients.length > 10 && (
+                          <div className="ea-recipient-more">
+                            + {recipients.length - 10} more...
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {sendError && (
+                    <div className="ea-test-status error">
+                      <AlertTriangle size={14} />
+                      {sendError}
+                    </div>
+                  )}
+
+                  {!config && (
+                    <div className="ea-test-status error">
+                      <AlertTriangle size={14} />
+                      Configure your email settings before sending a campaign.
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {!sendStatus && (
+              <div className="ea-config-modal-footer">
+                <button className="ea-cancel-btn" onClick={() => setShowSendModal(false)}>Cancel</button>
+                <button
+                  className="ea-save-config-btn"
+                  onClick={handleSendCampaign}
+                  disabled={sending || recipients.length === 0 || !config}
+                >
+                  {sending ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
+                  {sending ? 'Sending...' : `Send to ${recipients.length} recipient${recipients.length !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

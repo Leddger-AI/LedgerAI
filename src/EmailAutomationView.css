@@ -728,3 +728,248 @@
 .ea-save-config-btn .spin {
   animation: ea-spin 1s linear infinite;
 }
+
+/* Draft Card Actions */
+.ea-draft-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.ea-draft-send {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #CBD5E1;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.ea-draft-send:hover {
+  color: #0F172A;
+  background: #F1F5F9;
+}
+
+/* Send Modal */
+.ea-send-modal {
+  background: #FFFFFF;
+  border-radius: 12px;
+  width: 560px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+/* Send Draft Info */
+.ea-send-draft-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #334155;
+}
+
+/* CSV Upload */
+.ea-csv-upload {
+  display: flex;
+  gap: 10px;
+}
+
+.ea-csv-upload-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #0F172A;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.ea-csv-upload-btn:hover {
+  background: #1E293B;
+}
+
+.ea-manual-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.ea-manual-add-btn:hover {
+  border-color: #94A3B8;
+}
+
+/* Variable Mapping */
+.ea-mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ea-mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ea-mapping-var {
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  min-width: 140px;
+  font-family: monospace;
+}
+
+.ea-mapping-row select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0F172A;
+  outline: none;
+  cursor: pointer;
+  background: #FFFFFF;
+}
+
+.ea-mapping-row select:focus {
+  border-color: #0F172A;
+}
+
+/* Recipient List */
+.ea-recipient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ea-recipient-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  padding: 8px 0;
+}
+
+.ea-recipient-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ea-recipient-email,
+.ea-recipient-name {
+  padding: 8px 12px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0F172A;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.ea-recipient-email {
+  flex: 2;
+}
+
+.ea-recipient-name {
+  flex: 1;
+}
+
+.ea-recipient-email:focus,
+.ea-recipient-name:focus {
+  border-color: #0F172A;
+}
+
+.ea-recipient-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #CBD5E1;
+  padding: 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.ea-recipient-remove:hover {
+  color: #EF4444;
+  background: #FEF2F2;
+}
+
+.ea-recipient-more {
+  font-size: 12px;
+  color: #94A3B8;
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* Send Result */
+.ea-send-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.ea-send-result h4 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0;
+}
+
+.ea-send-result-stats {
+  display: flex;
+  gap: 24px;
+  padding: 16px 0;
+}
+
+.ea-send-result-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.ea-send-result-stat.failed .ea-send-result-num {
+  color: #DC2626;
+}
+
+.ea-send-result-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: #16A34A;
+}
+
+.ea-send-result-label {
+  font-size: 12px;
+  color: #64748B;
+  text-transform: uppercase;
+  font-weight: 600;
+}
