@@ -3,6 +3,8 @@ import { User, Globe, Link, Mail, BookOpen, Star, Target, MessageSquare, Clipboa
 import { getAuthToken } from '../supabaseAuth';
 import './TemplateBuilder.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const DEFAULT_TOGGLES = {
   fullName: true,
   profilePhoto: false,
@@ -47,7 +49,7 @@ export default function StudentTemplateBuilder() {
 
       const token = await getAuthToken();
       
-      const response = await fetch('http://localhost:5000/api/drafts', {
+      const response = await fetch(`${API_BASE_URL}/api/drafts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
