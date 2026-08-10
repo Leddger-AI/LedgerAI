@@ -7,14 +7,17 @@ Provide recruiters with a cleaner template building experience by removing the "
 
 ## 2. Backend Updates (`server/`)
 
-### Mongoose Models
-- **`FormDraft.js`**: `expiresAt` is no longer required upon creation. When `expiresAt` is `null`, the draft is considered inactive. The `status` will now properly flow through `draft` -> `active` -> `expired`.
+> **Migration Note:** Drafts are now stored in the Supabase `form_drafts` table instead of MongoDB. See [Dual-Database Architecture](./migration/dual-database-architecture.md) for details.
+
+### Supabase Table (`form_drafts`)
+- `expires_at` is no longer required upon creation. When `expires_at` is `null`, the draft is considered inactive. The `status` will now properly flow through `draft` -> `active` -> `expired`.
+- RLS policy ensures users can only access their own drafts (`auth.uid() = user_id`).
 
 ### API Endpoints
-- **`POST /api/drafts`**: Simplified to only take `title` and `config`. Generates a Draft with a `null` expiration and `draft` status.
-- **`GET /api/drafts`**: New endpoint that queries the DB for all `FormDraft` records where `recruiterId` matches the authenticated `req.user.uid`.
-- **`PUT /api/drafts/:draftId/activate`**: New endpoint that takes an exact ISO `expiresAt` timestamp and updates the draft's status to `active`.
-- **`GET /api/forms/:draftId` (Public)**: Updated to strictly enforce 410 (Gone) or 403 (Forbidden) if the draft's `expiresAt` is `null` (not yet activated) or if the current time exceeds `expiresAt`.
+- **`POST /api/drafts`**: Simplified to only take `title` and `config`. Generates a Draft with a `null` expiration and `draft` status. Saves to Supabase `form_drafts` table.
+- **`GET /api/drafts`**: Queries Supabase for all `form_drafts` records where `user_id` matches the authenticated `req.user.uid`.
+- **`PUT /api/drafts/:draftId/activate`**: Takes an exact ISO `expires_at` timestamp and updates the draft's status to `active` in Supabase.
+- **`GET /api/forms/:draftId` (Public)**: Updated to strictly enforce 410 (Gone) or 403 (Forbidden) if the draft's `expires_at` is `null` (not yet activated) or if the current time exceeds `expires_at`.
 
 ## 3. Frontend Updates (`src/`)
 
