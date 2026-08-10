@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS form_submissions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   submission_id TEXT UNIQUE NOT NULL,
   draft_id TEXT NOT NULL,
+  user_id UUID REFERENCES auth.users ON DELETE CASCADE,
   title TEXT NOT NULL,
   submitted_data JSONB NOT NULL,
   submitted_at TIMESTAMPTZ DEFAULT NOW()
@@ -100,7 +101,8 @@ CREATE POLICY "Users manage own drafts" ON form_drafts
 -- Form Submissions: public can submit (no auth), users can view their own
 CREATE POLICY "Users view own submissions" ON form_submissions
   FOR SELECT USING (
-    EXISTS (SELECT 1 FROM form_drafts WHERE form_drafts.draft_id = form_submissions.draft_id AND form_drafts.user_id = auth.uid())
+    user_id = auth.uid()
+    OR EXISTS (SELECT 1 FROM form_drafts WHERE form_drafts.draft_id = form_submissions.draft_id AND form_drafts.user_id = auth.uid())
   );
 
 -- Meetings: users manage their own
@@ -122,6 +124,7 @@ CREATE POLICY "Users manage own candidates" ON candidates
 CREATE INDEX IF NOT EXISTS idx_form_drafts_user_id ON form_drafts(user_id);
 CREATE INDEX IF NOT EXISTS idx_form_drafts_draft_id ON form_drafts(draft_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_draft_id ON form_submissions(draft_id);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_user_id ON form_submissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_meetings_user_id ON meetings(user_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_user_id ON alerts(user_id);
 CREATE INDEX IF NOT EXISTS idx_candidates_user_id ON candidates(user_id);
