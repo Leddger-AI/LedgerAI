@@ -2,7 +2,54 @@ const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 
-const createTransporter = async () => {
+const createTransporter = async (emailConfig = null) => {
+  if (emailConfig) {
+    if (emailConfig.authMethod === 'oauth2') {
+      const oauth2Client = new OAuth2(
+        emailConfig.clientId,
+        emailConfig.clientSecret,
+        "https://developers.google.com/oauthplayground"
+      );
+
+      oauth2Client.setCredentials({
+        refresh_token: emailConfig.refreshToken
+      });
+
+      const accessToken = await new Promise((resolve, reject) => {
+        oauth2Client.getAccessToken((err, token) => {
+          if (err) {
+            console.error('Failed to create access token', err);
+            reject("Failed to create access token: " + err);
+          }
+          resolve(token);
+        });
+      });
+
+      return nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          type: "OAuth2",
+          user: emailConfig.email,
+          accessToken,
+          clientId: emailConfig.clientId,
+          clientSecret: emailConfig.clientSecret,
+          refreshToken: emailConfig.refreshToken
+        }
+      });
+    } else {
+      return nodemailer.createTransport({
+        host: emailConfig.smtpHost,
+        port: emailConfig.smtpPort,
+        secure: emailConfig.smtpPort === 465,
+        auth: {
+          user: emailConfig.email,
+          pass: emailConfig.appPassword,
+        },
+      });
+    }
+  }
+
+  // Fallback to env vars
   const oauth2Client = new OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -23,32 +70,33 @@ const createTransporter = async () => {
     });
   });
 
-  const transporter = nodemailer.createTransport({
+  return nodemailer.createTransport({
     service: "gmail",
     auth: {
       type: "OAuth2",
-      user: process.env.GOOGLE_EMAIL, // Should be added to .env
+      user: process.env.GOOGLE_EMAIL,
       accessToken,
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       refreshToken: process.env.GOOGLE_REFRESH_TOKEN
     }
   });
-
-  return transporter;
 };
 
-const sendFormSubmissionEmail = async (formTitle, submittedData, recruiterEmail) => {
+const sendFormSubmissionEmail = async (formTitle, submittedData, recruiterEmail = null, emailConfig = null) => {
   try {
-    const transporter = await createTransporter();
+    const transporter = await createTransporter(emailConfig);
 
     const dataString = Object.entries(submittedData)
       .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
       .join('<br>');
 
+    const fromEmail = emailConfig?.email || process.env.GOOGLE_EMAIL;
+    const toEmail = recruiterEmail || emailConfig?.email || process.env.GOOGLE_EMAIL;
+
     const mailOptions = {
-      from: process.env.GOOGLE_EMAIL,
-      to: recruiterEmail || process.env.GOOGLE_EMAIL, // Send to recruiter, fallback to self
+      from: fromEmail,
+      to: toEmail,
       subject: `New Form Submission: ${formTitle}`,
       html: `
         <h2>New Submission for ${formTitle}</h2>

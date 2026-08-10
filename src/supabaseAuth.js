@@ -1,20 +1,39 @@
 import { supabase } from './supabaseClient';
 
 /**
- * Google OAuth login with Google Calendar read-only scope.
+ * Google OAuth login.
  * @returns {Promise<{user: any, accessToken: string, providerToken: string|null}>}
  */
 export const loginWithGoogleAndCalendar = async () => {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      scopes: 'https://www.googleapis.com/auth/calendar.events.readonly',
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}/dashboard`,
     },
   });
 
   if (error) {
     console.error('Google/Supabase login error:', error);
+    throw error;
+  }
+
+  return data;
+};
+
+/**
+ * GitHub OAuth login.
+ * @returns {Promise<{user: any, accessToken: string, providerToken: string|null}>}
+ */
+export const loginWithGitHub = async () => {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'github',
+    options: {
+      redirectTo: `${window.location.origin}/dashboard`,
+    },
+  });
+
+  if (error) {
+    console.error('GitHub/Supabase login error:', error);
     throw error;
   }
 

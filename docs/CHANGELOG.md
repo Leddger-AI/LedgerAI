@@ -90,3 +90,24 @@ This document outlines the entire development history, feature implementations, 
 - Added alerts CRUD endpoints (Supabase `alerts` table).
 - Wired `fetchMeetings()` and `fetchAlerts()` in `App.jsx` to load on auth state change.
 - Fallback to mock data if API calls fail (graceful degradation).
+
+---
+
+## 8. Data Integrity & Bug Fix Pass (August 11, 2026)
+
+A comprehensive pass to fix data flow issues, hardcoded URLs, missing endpoints, and UI gaps. See detailed documentation:
+
+- **[docs/data-integrity-fixes.md](./data-integrity-fixes.md)** — Full issue-by-issue breakdown of all 14 fixes
+- **[docs/api-endpoints.md](./api-endpoints.md)** — New and modified API endpoints reference
+- **[docs/database-schema-changes.md](./database-schema-changes.md)** — Schema migration guide and RLS policy updates
+
+### Key Changes:
+- **Hardcoded URLs eliminated:** All `localhost:5000` and `localhost:5173` URLs replaced with `API_BASE_URL` env var and `window.location.origin`
+- **Email draft updates:** Added PUT support to prevent duplicate drafts on resave
+- **Send Campaign UI:** Full modal with CSV upload, recipient management, variable mapping, and result tracking
+- **Submissions API:** New `GET /api/submissions` and `GET /api/submissions/:draftId` endpoints + viewer UI in DraftsView
+- **Form submissions RLS:** Added `user_id` column for direct RLS checks instead of subquery-only approach
+- **Email config OAuth2:** `clientId` now returned in API responses; sensitive fields show "saved" placeholders
+- **Form submission emails:** Now uses the recruiter's own `EmailConfig` instead of global env vars
+- **SourcingView:** Replaced hardcoded mock data with real API calls to drafts and submissions endpoints
+- **Activate endpoint:** Returns full draft object to prevent state data loss in DraftsView

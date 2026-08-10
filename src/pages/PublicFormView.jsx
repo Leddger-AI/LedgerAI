@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import './TemplateBuilder.css'; // Re-use styles
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 export default function PublicFormView() {
   const { title, draftId } = useParams();
   
@@ -17,7 +19,7 @@ export default function PublicFormView() {
   useEffect(() => {
     const fetchForm = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/forms/${draftId}`);
+        const response = await fetch(`${API_BASE_URL}/api/forms/${draftId}`);
         const data = await response.json();
         
         if (response.status === 410) {
@@ -50,7 +52,7 @@ export default function PublicFormView() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/forms/${draftId}/submit`, {
+      const response = await fetch(`${API_BASE_URL}/api/forms/${draftId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submittedData: formData })

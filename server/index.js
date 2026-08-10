@@ -221,8 +221,11 @@ app.put('/api/drafts/:draftId/activate', verifyToken, async (req, res) => {
       draft: {
         draftId: updated.draft_id,
         title: updated.title,
+        config: updated.config,
+        templateType: updated.template_type,
         status: updated.status,
-        expiresAt: updated.expires_at
+        expiresAt: updated.expires_at,
+        createdAt: updated.created_at
       }
     });
   } catch (error) {
@@ -296,6 +299,7 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
       .insert({
         submission_id: submissionId,
         draft_id: draft.draft_id,
+        user_id: draft.user_id,
         title: draft.title,
         submitted_data: submittedData
       });
@@ -303,12 +307,72 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
     if (submitError) throw submitError;
 
     // Fire and forget email (don't await so user gets fast response)
-    sendFormSubmissionEmail(draft.title, submittedData, null);
+    const ownerConfig = await EmailConfig.findOne({ ownerUid: draft.user_id }).catch(() => null);
+    sendFormSubmissionEmail(draft.title, submittedData, ownerConfig?.email || null, ownerConfig);
 
     res.json({ message: 'Form submitted successfully!' });
   } catch (error) {
     console.error('Error submitting form:', error);
     res.status(500).json({ error: 'Failed to submit form' });
+  }
+});
+
+/**
+ * GET /api/submissions
+ * Fetch all form submissions for the logged-in user
+ */
+app.get('/api/submissions', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .select('*')
+      .eq('user_id', req.user.uid)
+      .order('submitted_at', { ascending: false });
+
+    if (error) throw error;
+
+    const mapped = (data || []).map(s => ({
+      submissionId: s.submission_id,
+      draftId: s.draft_id,
+      title: s.title,
+      submittedData: s.submitted_data,
+      submittedAt: s.submitted_at
+    }));
+
+    res.json({ submissions: mapped });
+  } catch (error) {
+    console.error('Error fetching submissions:', error);
+    res.status(500).json({ error: 'Failed to fetch submissions' });
+  }
+});
+
+/**
+ * GET /api/submissions/:draftId
+ * Fetch all submissions for a specific draft
+ */
+app.get('/api/submissions/:draftId', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('form_submissions')
+      .select('*')
+      .eq('draft_id', req.params.draftId)
+      .eq('user_id', req.user.uid)
+      .order('submitted_at', { ascending: false });
+
+    if (error) throw error;
+
+    const mapped = (data || []).map(s => ({
+      submissionId: s.submission_id,
+      draftId: s.draft_id,
+      title: s.title,
+      submittedData: s.submitted_data,
+      submittedAt: s.submitted_at
+    }));
+
+    res.json({ submissions: mapped });
+  } catch (error) {
+    console.error('Error fetching submissions for draft:', error);
+    res.status(500).json({ error: 'Failed to fetch submissions' });
   }
 });
 
@@ -798,9 +862,11 @@ app.get('/api/email/config', verifyToken, async (req, res) => {
         authMethod: config.authMethod,
         smtpHost: config.smtpHost,
         smtpPort: config.smtpPort,
+        clientId: config.clientId || '',
         isActive: config.isActive,
         hasAppPassword: !!config.appPassword,
         hasRefreshToken: !!config.refreshToken,
+        hasClientSecret: !!config.clientSecret,
       },
     });
   } catch (error) {
@@ -846,9 +912,11 @@ app.put('/api/email/config', verifyToken, async (req, res) => {
         authMethod: config.authMethod,
         smtpHost: config.smtpHost,
         smtpPort: config.smtpPort,
+        clientId: config.clientId || '',
         isActive: config.isActive,
         hasAppPassword: !!config.appPassword,
         hasRefreshToken: !!config.refreshToken,
+        hasClientSecret: !!config.clientSecret,
       },
     });
   } catch (error) {

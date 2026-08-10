@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Shield, Key, Sliders, Server, Play, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Settings, Shield, Key, Sliders, Server, Play, RefreshCw, CheckCircle2, LogOut } from 'lucide-react';
 
 export default function SettingsView({ 
   onResetData, 
@@ -7,7 +7,8 @@ export default function SettingsView({
   demoActive, 
   defaultRate = 75,
   confidenceThreshold = 60,
-  onUpdateSettings 
+  onUpdateSettings,
+  onLogout
 }) {
   const [rateInput, setRateInput] = useState(defaultRate);
   const [sliderInput, setSliderInput] = useState(confidenceThreshold);
@@ -214,6 +215,32 @@ export default function SettingsView({
                 <span>Format Cache Database</span>
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Section 4: Account Session */}
+        <div className="glass-panel" style={{ padding: '24px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <LogOut size={18} style={{ color: 'var(--color-pink)' }} />
+            Account Session
+          </h3>
+
+          <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div>
+              <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>Sign Out</h4>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                Log out of your Leddger AI account. You will be returned to the login page.
+              </p>
+            </div>
+            <button 
+              type="button" 
+              className="table-action-btn"
+              onClick={onLogout}
+              style={{ width: 'fit-content', padding: '10px 24px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(244, 63, 94, 0.1)', borderColor: 'rgba(244, 63, 94, 0.2)', color: 'var(--color-pink)', fontWeight: '600' }}
+            >
+              <LogOut size={14} />
+              <span>Sign Out</span>
+            </button>
           </div>
         </div>
 

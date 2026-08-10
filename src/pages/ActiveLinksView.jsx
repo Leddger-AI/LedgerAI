@@ -3,6 +3,8 @@ import { Send, Clock, Copy, ExternalLink, Link2, AlertCircle } from 'lucide-reac
 import { getAuthToken } from '../supabaseAuth';
 import './ActiveLinksView.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const FormPreviewCard = ({ draft }) => {
   const { title, expiresAt, config, draftId } = draft;
   const isExpired = new Date(expiresAt) < new Date();
@@ -17,7 +19,7 @@ const FormPreviewCard = ({ draft }) => {
   }
 
   // Generate live link
-  const liveLink = `http://localhost:5173/form/${encodeURIComponent(title)}/${draftId}`;
+  const liveLink = `${window.location.origin}/form/${encodeURIComponent(title)}/${draftId}`;
 
   return (
     <div className="form-preview-card">
@@ -99,7 +101,7 @@ export default function ActiveLinksView() {
       const token = await getAuthToken();
       if (!token) return;
 
-      const response = await fetch('http://localhost:5000/api/drafts', {
+      const response = await fetch(`${API_BASE_URL}/api/drafts`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

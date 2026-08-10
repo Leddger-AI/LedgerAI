@@ -3,6 +3,8 @@ import { User, Link, Briefcase, Building, Calendar, Star, Target, MessageSquare,
 import './TemplateBuilder.css';
 import { getAuthToken, getCurrentUser } from '../supabaseAuth';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const DEFAULT_TOGGLES = {
   teamTitle: false,
   teamLead: true,
@@ -46,7 +48,7 @@ export default function TeamTemplateBuilder() {
       try {
         if (await getCurrentUser()) {
           const token = await getAuthToken();
-          const res = await fetch('http://localhost:5000/api/user/departments', {
+          const res = await fetch(`${API_BASE_URL}/api/user/departments`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           const data = await res.json();
@@ -66,7 +68,7 @@ export default function TeamTemplateBuilder() {
     try {
       if (await getCurrentUser()) {
         const token = await getAuthToken();
-        await fetch('http://localhost:5000/api/user/departments', {
+        await fetch(`${API_BASE_URL}/api/user/departments`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -134,7 +136,7 @@ export default function TeamTemplateBuilder() {
 
       const token = await getAuthToken();
       
-      const response = await fetch('http://localhost:5000/api/drafts', {
+      const response = await fetch(`${API_BASE_URL}/api/drafts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
