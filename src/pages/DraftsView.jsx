@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { File, Calendar, Clock, CheckCircle2, AlertCircle, Link as LinkIcon, Copy, GraduationCap, Briefcase, Users, Trash2 } from 'lucide-react';
+import { File, Calendar, Clock, CheckCircle2, AlertCircle, Link as LinkIcon, Copy, GraduationCap, Briefcase, Users, Trash2, Inbox } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
 import CustomCalendar from '../components/CustomCalendar';
 import CustomTimePicker from '../components/CustomTimePicker';
 import './DraftsView.css';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function DraftsView() {
   const [drafts, setDrafts] = useState([]);
@@ -17,6 +19,9 @@ export default function DraftsView() {
   const [expiryDate, setExpiryDate] = useState(new Date().toISOString().split('T')[0]);
   const [expiryTime, setExpiryTime] = useState('07:00');
   const [isActivating, setIsActivating] = useState(false);
+  const [submissions, setSubmissions] = useState([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [showSubmissions, setShowSubmissions] = useState(false);
 
   useEffect(() => {
     fetchDrafts();
@@ -27,7 +32,7 @@ export default function DraftsView() {
       const token = await getAuthToken();
       if (!token) return;
 
-      const res = await fetch('http://localhost:5000/api/drafts', {
+      const res = await fetch(`${API_BASE_URL}/api/drafts`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -41,16 +46,12 @@ export default function DraftsView() {
     }
   };
 
-  const handleSelectDraft = (draft) => {
-    setSelectedDraft(draft);
-  };
-
   const handleDeleteDraft = async () => {
     if (!draftToDelete || !deleteVerify) return;
     setIsDeleting(true);
     try {
       const token = await getAuthToken();
-      const res = await fetch(`http://localhost:5000/api/drafts/${draftToDelete.draftId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/drafts/${draftToDelete.draftId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -79,7 +80,7 @@ export default function DraftsView() {
       const dateObj = new Date(dateTimeString);
       
       const token = await getAuthToken();
-      const res = await fetch(`http://localhost:5000/api/drafts/${selectedDraft.draftId}/activate`, {
+      const res = await fetch(`${API_BASE_URL}/api/drafts/${selectedDraft.draftId}/activate`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -117,6 +118,37 @@ export default function DraftsView() {
       case 'team': return <Users size={16} className="draft-type-icon" />;
       default: return <File size={16} className="draft-type-icon" />;
     }
+  };
+
+  const fetchSubmissions = async (draftId) => {
+    setSubmissionsLoading(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/submissions/${draftId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSubmissions(data.submissions || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err);
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  };
+
+  const handleSelectDraft = (draft) => {
+    setSelectedDraft(draft);
+    setSubmissions([]);
+    setShowSubmissions(false);
+  };
+
+  const handleViewSubmissions = () => {
+    if (!selectedDraft) return;
+    setShowSubmissions(true);
+    fetchSubmissions(selectedDraft.draftId);
   };
 
   const filteredDrafts = drafts.filter(draft => {
@@ -249,16 +281,24 @@ export default function DraftsView() {
               <input 
                 type="text" 
                 className="live-link-input" 
-                value={`Http://localhost:5173/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`} 
+                value={`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`} 
                 readOnly 
               />
               <button 
                 className="copy-btn"
-                onClick={() => navigator.clipboard.writeText(`http://localhost:5173/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)}
+                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)}
               >
                 <Copy size={16} />
               </button>
             </div>
+            <button 
+              className="view-submissions-btn"
+              onClick={handleViewSubmissions}
+              style={{ marginTop: '12px', width: '100%', padding: '10px', background: '#0F172A', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            >
+              <Inbox size={16} />
+              View Submissions
+            </button>
           </div>
         )}
       </div>
@@ -301,6 +341,45 @@ export default function DraftsView() {
                 {isDeleting ? 'Deleting...' : 'Delete Draft'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showSubmissions && selectedDraft && (
+        <div className="delete-modal-overlay" onClick={() => setShowSubmissions(false)}>
+          <div className="delete-modal-card" style={{ maxWidth: '600px', maxHeight: '80vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 className="delete-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Inbox size={18} />
+                Submissions — {selectedDraft.title}
+              </h3>
+              <button onClick={() => setShowSubmissions(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#94A3B8' }}>&times;</button>
+            </div>
+
+            {submissionsLoading ? (
+              <p style={{ color: '#64748B', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Loading submissions...</p>
+            ) : submissions.length === 0 ? (
+              <p style={{ color: '#94A3B8', fontSize: '13px', textAlign: 'center', padding: '40px 0' }}>No submissions yet for this form.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {submissions.map((sub, idx) => (
+                  <div key={sub.submissionId} style={{ border: '1px solid #E2E8F0', borderRadius: '8px', padding: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A' }}>Submission #{idx + 1}</span>
+                      <span style={{ fontSize: '11px', color: '#94A3B8' }}>{new Date(sub.submittedAt).toLocaleString()}</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.5' }}>
+                      {Object.entries(sub.submittedData || {}).map(([key, value]) => (
+                        <div key={key} style={{ display: 'flex', gap: '8px', padding: '2px 0' }}>
+                          <span style={{ fontWeight: 600, minWidth: '120px', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}:</span>
+                          <span>{String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
