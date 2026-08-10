@@ -3,7 +3,9 @@
 This document outlines the architecture, data models, and logic implemented to support the creation of form drafts, temporary public links, and automated email notifications in the Leddger AI platform.
 
 ## 1. Overview
-The goal of this feature is to allow recruiters to configure a custom form template (e.g., Team Builder), save it as a "Draft" with a strict expiration timeline, and generate a temporary URL to share with end users. When users submit the form, the data is stored securely in MongoDB, and the recruiter receives an instant email notification via an automated OAuth2 Gmail integration.
+The goal of this feature is to allow recruiters to configure a custom form template (e.g., Team Builder), save it as a "Draft" with a strict expiration timeline, and generate a temporary URL to share with end users. When users submit the form, the data is stored securely in **Supabase (PostgreSQL)**, and the recruiter receives an instant email notification via an automated OAuth2 Gmail integration.
+
+> **Migration Note:** Form drafts and submissions were originally stored in MongoDB (Mongoose). They have been migrated to Supabase tables (`form_drafts` and `form_submissions`). See [Dual-Database Architecture](./migration/dual-database-architecture.md) for details.
 
 ## 2. Frontend Updates
 
@@ -24,29 +26,36 @@ The goal of this feature is to allow recruiters to configure a custom form templ
 - **Expiration Protection**: Automatically queries the backend to verify the link's validity. If the backend returns a `410 Gone` status, it strictly blocks access and renders a "Link Expired" warning.
 - Dynamically generates form inputs (`Team Name`, `Department`, `Team Lead`, `Objective`) strictly based on what the recruiter originally configured in the Template Builder.
 
-## 3. Backend Architecture (Node.js & MongoDB)
+## 3. Backend Architecture (Node.js & Supabase)
 
-### Data Models
-Two new Mongoose schemas were introduced to `server/models/`:
+### Supabase Tables
+Two Supabase (PostgreSQL) tables replace the former Mongoose models:
 
-1. **`FormDraft.js`**
+1. **`form_drafts` table**
    - Serves as the blueprint saved by the recruiter.
-   - `draftId`: Unique UUID.
-   - `recruiterId`: The Firebase UID of the creator.
-   - `config`: JSON object storing all toggle states.
-   - `expiresAt`: Date object defining the exact moment the link dies.
+   - `draft_id`: Unique UUID (text).
+   - `user_id`: The Supabase user UUID of the creator (FK to `auth.users`).
+   - `title`: Draft title.
+   - `config`: JSONB object storing all toggle states.
+   - `template_type`: String ('student', 'employee', 'team').
+   - `expires_at`: TIMESTAMPTZ defining the exact moment the link dies.
    - `status`: String (`draft`, `active`, `expired`).
+   - RLS policy: `auth.uid() = user_id`.
 
-2. **`FormSubmission.js`**
+2. **`form_submissions` table**
    - Captures the actual data submitted by the end user.
-   - `submissionId`: Unique UUID.
-   - `draftId`: Foreign key linking back to the `FormDraft`.
-   - `submittedData`: The JSON payload of what the user typed.
+   - `submission_id`: Unique UUID (text).
+   - `draft_id`: Foreign key linking back to `form_drafts.draft_id`.
+   - `title`: Draft title at time of submission.
+   - `submitted_data`: JSONB payload of what the user typed.
+   - `submitted_at`: TIMESTAMPTZ (default `NOW()`).
+
+> **Deprecated Mongoose models:** `server/models/FormDraft.js` and `server/models/FormSubmission.js` are dead code and safe to delete.
 
 ### API Endpoints (`server/index.js`)
-- `POST /api/drafts` (Protected): Generates the expiration date, creates the UUID, and saves the `FormDraft` model to MongoDB.
-- `GET /api/forms/:draftId` (Public): Validates the `draftId`. Performs a strict check: `if (new Date() > draft.expiresAt)`. If expired, it permanently updates the DB status to `expired` and rejects the request with a `410`.
-- `POST /api/forms/:draftId/submit` (Public): Receives the payload, saves it as a `FormSubmission`, and triggers the automated email script in the background.
+- `POST /api/drafts` (Protected): Generates the UUID, saves the draft to the Supabase `form_drafts` table.
+- `GET /api/forms/:draftId` (Public): Validates the `draftId` against Supabase. Performs a strict check: `if (new Date() > draft.expires_at)`. If expired, it permanently updates the status to `expired` and rejects the request with a `410`.
+- `POST /api/forms/:draftId/submit` (Public): Receives the payload, saves it to the Supabase `form_submissions` table, and triggers the automated email script in the background.
 
 ## 4. Gmail OAuth2 Automation
 
@@ -60,6 +69,8 @@ Two new Mongoose schemas were introduced to `server/models/`:
   4. Formats the submitted JSON data into a clean HTML email and sends it to the configured `GOOGLE_EMAIL` address.
 
 ## 5. Security & Authentication Overhaul
-- Upgraded the Firebase Admin SDK initialization in `server/middleware/auth.js`.
-- Shifted from using a hardcoded `serviceAccountKey.json` file to securely parsing environment variables (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`).
+- Replaced Firebase Admin SDK with Supabase JWT verification in `server/middleware/auth.js`.
+- Uses `supabase.auth.getUser(token)` with the service role key to verify Supabase access tokens.
+- Environment variables: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (replacing `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`).
 - This change ensures that production secrets never accidentally leak into version control, satisfying enterprise-level security standards.
+- See [Supabase Auth — Backend](./migration/supabase-auth-backend.md) for full details.

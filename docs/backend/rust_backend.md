@@ -1,6 +1,8 @@
-# Rust Backend Architecture
+# Rust Backend Architecture (LEGACY)
 
-Ledger AI features a high-performance, asynchronous Rust API server built on Axum and Tokio.
+> **⚠️ DEPRECATED:** This Rust backend (`backend_rs/`) is legacy and no longer the active backend for Leddger AI. The current backend is the Node.js/Express server in `server/`. The Rust backend's Firebase JWT verification (`auth.rs`) has been superseded by Supabase JWT verification in `server/middleware/auth.js`. See [Supabase Auth — Backend](../migration/supabase-auth-backend.md) for the current architecture.
+
+Leddger AI features a high-performance, asynchronous Rust API server built on Axum and Tokio.
 
 ---
 

@@ -364,6 +364,7 @@
 
 /* Dashboard Scroll Container */
 .dashboard-viewport {
+  position: relative;
   flex: 1;
   padding: 32px;
   overflow-y: auto;
@@ -977,4 +978,5 @@
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
 

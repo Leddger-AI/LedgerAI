@@ -43,3 +43,50 @@ This document outlines the entire development history, feature implementations, 
 ## 7. Environment Readiness
 - Secured all sensitive keys (GitHub Client Secret, Private `.pem` keys).
 - Injected Cloudinary credentials (`CLOUDINARY_CLOUDNAME`, `API_KEY`) to prepare for the upcoming unified asset upload pipeline.
+
+---
+
+## 8. Supabase Migration & Dual-Database Architecture (August 2026)
+
+> **See:** [Supabase Migration Overview](./migration/supabase-migration-overview.md) for complete details.
+
+### Phase 1: Supabase Client Setup
+- Installed `@supabase/supabase-js` on both frontend and backend.
+- Created `src/supabaseClient.js` (frontend, anon key) and `server/supabaseClient.js` (backend, service role key).
+- Created `src/supabaseAuth.js` with auth wrappers: Google OAuth, email/password login, sign-up, sign-out, session retrieval, `getAuthToken()`, `getCurrentUser()`, `onAuthChange()`.
+
+### Phase 2: Frontend Auth Migration
+- Migrated `App.jsx` from Firebase `onAuthStateChanged` to Supabase `getCurrentSession()` + `onAuthStateChange`.
+- Updated Google OAuth from Firebase popup flow to Supabase redirect flow.
+- Updated all token management from `firebaseIdToken` to `accessToken` (Supabase JWT).
+- Migrated 9 frontend files: `App.jsx`, `ProtectedRoute.jsx`, `SettingsView.jsx`, `ActiveLinksView.jsx`, `DraftsView.jsx`, `EmployeeTemplateBuilder.jsx`, `StudentTemplateBuilder.jsx`, `TeamTemplateBuilder.jsx`, `StudentPortal.jsx`.
+- Replaced `StudentPortal.jsx` Firebase anonymous auth with Supabase session check.
+
+### Phase 3: Backend Auth Migration
+- Completely rewrote `server/middleware/auth.js` from Firebase Admin SDK to Supabase JWT verification.
+- Removed `firebase-admin` package (142 dependencies) from backend.
+- Removed `firebase` package (80 dependencies) from frontend.
+- Backend now verifies tokens via `supabase.auth.getUser(token)` using service role key.
+
+### Phase 4: User Data Models → Supabase
+- Created `server/supabase_schema.sql` with 6 tables: `profiles`, `form_drafts`, `form_submissions`, `meetings`, `alerts`, `candidates`.
+- Implemented Row Level Security (RLS) policies for all tables.
+- Added auto-profile creation trigger on user signup.
+- Migrated all `server/index.js` endpoints from Mongoose models to Supabase queries.
+- Deprecated Mongoose models: `User.js`, `FormDraft.js`, `FormSubmission.js` (dead code).
+
+### Phase 5: Spreadsheet Model & 20-File Limit
+- Created `server/models/Spreadsheet.js` (Mongoose) for MongoDB spreadsheet storage.
+- Added 6 spreadsheet API endpoints with 20-file limit enforcement.
+- Returns HTTP 409 when user exceeds 20 saved spreadsheets.
+
+### Phase 6: Spreadsheet Cloud UI
+- Updated `LedgerSpreadsheet.jsx` with Save to Cloud, Load from Cloud, Delete, and Export & Delete functionality.
+- 5 modals: Save modal, Load modal, Limit reached modal, Delete confirmation, Export-before-delete confirmation.
+- Export-before-delete flow: exports `.xlsx` locally via SheetJS, then deletes from MongoDB.
+
+### Phase 7: Meetings & Alerts Persistence
+- Added meetings CRUD endpoints (Supabase `meetings` table).
+- Added alerts CRUD endpoints (Supabase `alerts` table).
+- Wired `fetchMeetings()` and `fetchAlerts()` in `App.jsx` to load on auth state change.
+- Fallback to mock data if API calls fail (graceful degradation).

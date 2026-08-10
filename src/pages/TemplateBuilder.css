@@ -202,13 +202,6 @@
   width: 100%;
 }
 
-.device-frame.mobile .form-paper {
-  padding: 32px 20px;
-}
-
-.device-frame.mobile .form-grid-2 {
-  grid-template-columns: 1fr;
-}
 
 .form-paper-header {
   border-bottom: 2px solid #F0F0F0;
@@ -527,4 +520,169 @@
   width: 300px;
   height: 300px;
   object-fit: contain;
+}
+
+
+
+/* ==========================================================================
+   Device Frame Mobile Overrides (MUST appear after all base rules)
+   ========================================================================== */
+
+/* Form Paper */
+.device-frame.mobile .form-paper {
+  padding: 32px 20px;
+}
+
+/* Grid: collapse 2-col to 1-col */
+.device-frame.mobile .form-grid-2 {
+  grid-template-columns: 1fr;
+}
+
+/* Full-span fields: don't span 2 on a 1-col grid */
+.device-frame.mobile .form-field.full {
+  grid-column: span 1;
+}
+
+/* Title sizing for narrow frame */
+.device-frame.mobile .form-paper-title {
+  font-size: 20px;
+}
+
+/* Section title sizing */
+.device-frame.mobile .form-section-title {
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* Input / textarea / select sizing */
+.device-frame.mobile .form-input,
+.device-frame.mobile .form-textarea,
+.device-frame.mobile .form-select {
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+/* Labels */
+.device-frame.mobile .form-label {
+  font-size: 12px;
+}
+
+/* Rating Scale */
+.device-frame.mobile .form-rating-container {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.device-frame.mobile .form-rating-scale {
+  width: 100%;
+}
+.device-frame.mobile .form-rating-dot {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+/* Compound Inputs */
+.device-frame.mobile .compound-input-group {
+  flex-direction: column;
+}
+.device-frame.mobile .compound-input-addon {
+  border-left: none;
+  border-right: none;
+  border-bottom: 1px solid #E5E5E5;
+}
+.device-frame.mobile .compound-input-addon:last-child {
+  border-bottom: none;
+  border-top: 1px solid #E5E5E5;
+}
+.device-frame.mobile .compound-input-field {
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 1px solid #E5E5E5;
+  width: 100%;
+}
+.device-frame.mobile .compound-input-field:last-child {
+  border-bottom: none;
+}
+
+/* Upload box */
+.device-frame.mobile .upload-box {
+  padding: 16px;
+  font-size: 12px;
+}
+
+/* Photo box */
+.device-frame.mobile .photo-box {
+  width: 80px;
+  height: 80px;
+}
+
+
+/* ==========================================================================
+   Responsive Layout Overrides (actual browser resize)
+   ========================================================================== */
+
+@media (max-width: 992px) {
+  .template-builder-container {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .tb-sidebar {
+    min-width: 100%;
+    max-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #E5E5E5;
+    flex: none;
+  }
+
+  .tb-preview-panel {
+    flex: none;
+    padding: 24px 0;
+  }
+
+  .device-toggle-container {
+    top: 12px;
+    right: 12px;
+  }
+
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .form-field.full {
+    grid-column: span 1;
+  }
+
+  .form-rating-container {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .form-rating-scale {
+    width: 100%;
+  }
+
+  .compound-input-group {
+    flex-direction: column;
+  }
+  .compound-input-addon {
+    border-left: none;
+    border-right: none;
+    border-bottom: 1px solid #E5E5E5;
+  }
+  .compound-input-addon:last-child {
+    border-bottom: none;
+    border-top: 1px solid #E5E5E5;
+  }
+  .compound-input-field {
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: 1px solid #E5E5E5;
+    width: 100%;
+  }
+  .compound-input-field:last-child {
+    border-bottom: none;
+  }
 }

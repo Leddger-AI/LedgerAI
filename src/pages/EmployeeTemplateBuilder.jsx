@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Link, Briefcase, Building, Calendar, Star, Target, MessageSquare, ClipboardList, Zap, Monitor, Smartphone, Camera, FileUp, Mail } from 'lucide-react';
-import { auth } from '../firebaseAuth';
+import { getAuthToken } from '../supabaseAuth';
 import './TemplateBuilder.css';
 
 const DEFAULT_TOGGLES = {
@@ -45,7 +45,7 @@ export default function EmployeeTemplateBuilder() {
         emailFormat
       };
 
-      const token = await auth.currentUser.getIdToken();
+      const token = await getAuthToken();
       
       const response = await fetch('http://localhost:5000/api/drafts', {
         method: 'POST',
@@ -55,6 +55,7 @@ export default function EmployeeTemplateBuilder() {
         },
         body: JSON.stringify({
           title: formTitle,
+          templateType: 'employee',
           config
         })
       });
@@ -375,3 +376,5 @@ function RatingField({ label }) {
     </div>
   );
 }
+
+

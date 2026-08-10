@@ -26,21 +26,30 @@ This document summarizes the changes, creations, and configuration modifications
 ---
 
 ## 🔐 3. Authentication & API Integration
-- **Created:** [src/firebaseAuth.js](file:///c:/PROJECTS/EXPERIMENT/reactHackathorn/src/firebaseAuth.js)
-  - Set up initialization for Firebase Client SDK.
-  - Configured Google OAuth sign-in popups requesting read-only calendar scope.
-  - Extracted double tokens (Firebase ID Token + Google Access Token) for backend authorization.
+- **Created:** [src/supabaseClient.js](file:///c:/PROJECTS/MAIN%20Projects/Leddger-AI/src/supabaseClient.js)
+  - Set up initialization for Supabase JS Client SDK.
+  - Configured Google OAuth redirect flow requesting read-only calendar scope.
+  - Extracted Supabase Access Token (JWT) + Google Provider Token for backend authorization.
+- **Created:** [src/supabaseAuth.js](file:///c:/PROJECTS/MAIN%20Projects/Leddger-AI/src/supabaseAuth.js)
+  - Wraps all Supabase auth methods: `loginWithGoogleAndCalendar()`, `loginWithEmail()`, `signUpWithEmail()`, `signOut()`, `getCurrentSession()`, `onAuthChange()`, `getAuthToken()`, `getCurrentUser()`.
+- **Deprecated:** `src/firebaseAuth.js` — Dead code, no longer imported. Safe to delete.
+
+> **Note:** The original Firebase auth setup (`src/firebaseAuth.js`) has been fully replaced by Supabase. See [Supabase Migration Overview](./migration/supabase-migration-overview.md) for details.
 
 ---
 
-## 🐍 4. Backend Service Core
-- **Created:** [backend/requirements.txt](file:///c:/PROJECTS/EXPERIMENT/reactHackathorn/backend/requirements.txt)
-  - Listed Python packages (fastapi, uvicorn, firebase-admin, google-api-python-client, google-auth, google-generativeai).
-- **Created:** [backend/auth.py](file:///c:/PROJECTS/EXPERIMENT/reactHackathorn/backend/auth.py)
-  - Wrote token decoding utility utilizing Firebase cert certificates for backend protection.
-- **Created:** [backend/main.py](file:///c:/PROJECTS/EXPERIMENT/reactHackathorn/backend/main.py)
-  - Setup core FastAPI server framework.
-  - Coded Calendar API query for past 7 days events with attendee lists and duration parsing.
+## � 4. Backend Service Core (Node.js + Express)
+- **Created:** [server/index.js](file:///c:/PROJECTS/MAIN%20Projects/Leddger-AI/server/index.js)
+  - Node.js + Express 5 backend server.
+  - JWT verification via Supabase service role key (`supabase.auth.getUser(token)`).
+  - Calendar API query for past 7 days events with attendee lists and duration parsing.
+  - User data stored in Supabase (PostgreSQL). Spreadsheet data stored in MongoDB.
+- **Created:** [server/middleware/auth.js](file:///c:/PROJECTS/MAIN%20Projects/Leddger-AI/server/middleware/auth.js)
+  - Token verification using Supabase JWT (replaces Firebase Admin SDK).
+- **Created:** [server/supabaseClient.js](file:///c:/PROJECTS/MAIN%20Projects/Leddger-AI/server/supabaseClient.js)
+  - Backend Supabase client with service role key (bypasses RLS).
+
+> **Note:** The original Python/FastAPI backend (`backend/`) has been replaced by the Node.js/Express backend (`server/`). The Rust backend (`backend_rs/`) is legacy. See [Dual-Database Architecture](./migration/dual-database-architecture.md) for details.
 
 ---
 

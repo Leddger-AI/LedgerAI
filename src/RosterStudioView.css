@@ -1,0 +1,160 @@
+.roster-studio-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  width: 100%;
+  padding: 0;
+  background-color: #FFFFFF;
+  box-sizing: border-box;
+  font-family: inherit;
+  overflow: hidden;
+}
+
+.roster-studio-header {
+  margin-bottom: 12px;
+}
+
+/* Window chrome */
+.roster-window {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.roster-add-sheet-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.roster-add-sheet-btn:hover {
+  background-color: #FFFFFF;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+
+/* Toolbar row: Import + Ask AI */
+.roster-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #FFFFFF;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.roster-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.roster-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid #E2E8F0;
+  background-color: #FFFFFF;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.roster-btn:hover {
+  background-color: #FFFFFF;
+  border-color: #CBD5E1;
+}
+
+.roster-ask-ai-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: none;
+  background-color: #10B981;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.roster-ask-ai-btn:hover {
+  background-color: #0EA371;
+}
+
+/* Grid area */
+.roster-grid-area {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* Hide FortuneSheet scrollbars visually — scroll still works via wheel events */
+.roster-grid-area .luckysheet-scrollbar-y,
+.roster-grid-area .luckysheet-scrollbar-x {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Footer / launch bar */
+.roster-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-top: 1px solid #E2E8F0;
+  background-color: #FFFFFF;
+}
+
+.roster-launch-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: 1px solid #E2E8F0;
+  background-color: #FFFFFF;
+  color: #0F172A;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.roster-launch-btn:hover {
+  background-color: #FFFFFF;
+}
+
+.roster-toast {
+  font-size: 13px;
+}
+.roster-toast.success { color: #1E7A34; }
+.roster-toast.error { color: #B3261E; }
+
+.roster-import-error {
+  padding: 8px 16px;
+  font-size: 12.5px;
+  color: #B3261E;
+  background-color: #FDEBEC;
+  border-bottom: 1px solid #F3C0C0;
+}
+
