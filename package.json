@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@fortune-sheet/react": "^1.0.4",
+    "@lottiefiles/dotlottie-react": "^0.19.13",
     "@supabase/supabase-js": "^2.112.2",
     "ag-grid-community": "^36.1.0",
     "ag-grid-react": "^36.1.0",

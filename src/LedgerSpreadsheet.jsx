@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Workbook } from '@fortune-sheet/react';
 import '@fortune-sheet/react/dist/index.css';
 import LuckyExcel from 'luckyexcel';
@@ -61,6 +62,7 @@ const getSheetRowCount = (sheet) => {
 };
 
 export default function LedgerSpreadsheet() {
+  const [searchParams] = useSearchParams();
   const [data, setData] = useState(DEFAULT_SHEET);
   const [importVersion, setImportVersion] = useState(0);
   const [importError, setImportError] = useState(null);
@@ -69,6 +71,7 @@ export default function LedgerSpreadsheet() {
   const fileInputRef = useRef(null);
   const workbookRef = useRef(null);
   const gridContainerRef = useRef(null);
+  const autoLoadTriggered = useRef(false);
 
   // Cloud save/load state
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -80,6 +83,38 @@ export default function LedgerSpreadsheet() {
   const [limitInfo, setLimitInfo] = useState({ count: 0, limit: 20 });
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [showExportConfirm, setShowExportConfirm] = useState(null);
+
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+  // Auto-load file from ?fileId= URL param (used by FilesView "Open" action)
+  useEffect(() => {
+    if (autoLoadTriggered.current) return;
+    const fileId = searchParams.get('fileId');
+    if (!fileId) return;
+    autoLoadTriggered.current = true;
+
+    (async () => {
+      setCloudLoading(true);
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        const response = await fetch(`${API_BASE}/api/spreadsheets/${fileId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (response.ok && result.spreadsheet?.sheets) {
+          setData(result.spreadsheet.sheets);
+          setImportVersion((v) => v + 1);
+          setQueueToast({ type: 'success', message: `Loaded "${result.spreadsheet.name}" from cloud.` });
+        }
+      } catch (err) {
+        console.error('Auto-load file error:', err);
+        setQueueToast({ type: 'error', message: 'Failed to auto-load file: ' + err.message });
+      } finally {
+        setCloudLoading(false);
+      }
+    })();
+  }, [searchParams]);
 
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -179,8 +214,6 @@ export default function LedgerSpreadsheet() {
   }, []);
 
   // --- CLOUD SAVE / LOAD / DELETE ---
-
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   const handleSaveToCloud = useCallback(async () => {
     const sheets = workbookRef.current?.getAllSheets?.();
