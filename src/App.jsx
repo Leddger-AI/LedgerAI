@@ -81,6 +81,9 @@ import LoginDashboard from './pages/LoginDashboard.jsx';
 import GitHubAuthRedirect from './pages/GitHubAuthRedirect.jsx';
 import ActiveLinksView from './pages/ActiveLinksView.jsx';
 import EmailBodyEditor from './pages/EmailBodyEditor.jsx';
+const SentView = lazy(() => import('./pages/SentView.jsx'));
+const ScheduleView = lazy(() => import('./pages/ScheduleView.jsx'));
+const ScheduledFormsView = lazy(() => import('./pages/ScheduledFormsView.jsx'));
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -136,12 +139,15 @@ export default function App() {
     '/dashboard/meet': 'Meet',
     '/dashboard/export': 'Export',
     '/dashboard/email-automation': 'Email Automation',
+    '/dashboard/sent': 'Sent',
+    '/dashboard/schedule': 'Schedule',
     '/dashboard/analysis': 'Analysis',
     '/dashboard/alerts': 'Alerts',
     '/dashboard/settings': 'Settings',
     '/dashboard/knowledge-base': 'Knowledge Base',
     '/dashboard/templates/drafts': 'Drafts',
     '/dashboard/templates/active': 'Active Links',
+    '/dashboard/templates/scheduled': 'Scheduled Forms',
     '/dashboard/templates/email-body': 'Email Body'
   };
 
@@ -153,13 +159,12 @@ export default function App() {
   
   const calculatePrimaryNav = (tab) => {
     if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
-    if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Active Links'].includes(tab)) return 'Templates';
+    if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Active Links', 'Scheduled Forms'].includes(tab)) return 'Templates';
     if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Bulk Campaign'].includes(tab)) return 'Workspace';
     if (['Analysis', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
     if (['Settings'].includes(tab)) return 'Settings';
-    if (['Email Automation', 'Email Body', 'Roster Studio'].includes(tab)) return 'Inbox';
-    if (['Files'].includes(tab)) return 'Inbox';
+    if (['Email Automation', 'Email Body', 'Roster Studio', 'Sent', 'Schedule', 'Files'].includes(tab)) return 'Inbox';
     return 'Home'; 
   };
   
@@ -190,8 +195,7 @@ export default function App() {
       { id: 'Email Body', label: 'Body', icon: FileText },
       { id: 'Roster Studio', label: 'Roster Studio', icon: Table2 },
       { id: 'divider2', isDivider: true },
-      { id: 'Sent', label: 'Sent', icon: Send, count: 12 },
-      { id: 'Draft', label: 'Draft', icon: File },
+      { id: 'Sent', label: 'Sent', icon: Send },
       { id: 'Schedule', label: 'Schedule', icon: Clock },
       { id: 'Files', label: 'Files', icon: FolderOpen }
     ],
@@ -208,7 +212,8 @@ export default function App() {
       { id: 'Team Template', label: 'Team', icon: Users },
       { id: 'dividerTemplates1', isDivider: true },
       { id: 'Drafts', label: 'Drafts', icon: File },
-      { id: 'Active Links', label: 'Active', icon: Send }
+      { id: 'Active Links', label: 'Active', icon: Send },
+      { id: 'Scheduled Forms', label: 'Schedule', icon: Clock }
     ],
     Analytics: [
       { id: 'Analysis', label: 'Analysis', icon: BarChart3 },
@@ -1268,6 +1273,8 @@ export default function App() {
             <DraftsView />
           ) : activeTab === 'Active Links' ? (
             <ActiveLinksView />
+          ) : activeTab === 'Scheduled Forms' ? (
+            <ScheduledFormsView />
           ) : activeTab === 'Projects' ? (
             <ProjectsView meetings={meetings} onUpdateMeetingProject={handleUpdateMeetingProject} />
           ) : activeTab === 'Teams' ? (
@@ -1290,6 +1297,10 @@ export default function App() {
             <ExportView meetings={meetings} />
           ) : activeTab === 'Email Automation' ? (
             <EmailAutomationView />
+          ) : activeTab === 'Sent' ? (
+            <SentView />
+          ) : activeTab === 'Schedule' ? (
+            <ScheduleView />
           ) : activeTab === 'Analysis' ? (
             <AnalysisView meetings={meetings} />
           ) : activeTab === 'Alerts' ? (
