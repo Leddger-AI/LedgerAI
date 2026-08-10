@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 export default function ProtectedRoute({ user, authReady, children }) {
   const location = useLocation();
 
-  // Firebase hasn't finished checking auth yet — show a loader, don't redirect
+  // Supabase hasn't finished checking auth yet — show a loader, don't redirect
   if (!authReady) {
     return (
       <div style={{

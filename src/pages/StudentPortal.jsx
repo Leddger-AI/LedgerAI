@@ -3,8 +3,8 @@ import { Lock, FileSignature, UploadCloud, Link2, GitBranch, Globe } from 'lucid
 import CryptoJS from 'crypto-js';
 import { useNavigate } from 'react-router-dom';
 import '../LandingPage.css'; // Inherit styling
-import { auth } from '../firebaseAuth';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { supabase } from '../supabaseClient';
+import { getCurrentUser } from '../supabaseAuth';
 
 // Default field template used when no recruiter config is found for a code
 // (e.g. testing the portal directly without going through the Recruiter Dashboard first).
@@ -43,14 +43,11 @@ export default function StudentPortal() {
   const [formData, setFormData] = useState({ idea: '', procedure: '', experience: '', githubUsername: '', linkedinUsername: '', portfolioUrl: '', manualAvatar: '' });
   
   useEffect(() => {
-    // Enable anonymous sign-in for candidates to establish a unique user ID
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    // Ensure user is signed in (Supabase handles session persistence)
+    getCurrentUser().then((user) => {
       if (!user) {
-        try {
-          await signInAnonymously(auth);
-        } catch (err) {
-          console.error("Anonymous auth failed:", err);
-        }
+        // No anonymous auth in Supabase by default — user can still browse
+        console.log('No authenticated user for student portal');
       }
     });
 
@@ -68,17 +65,16 @@ export default function StudentPortal() {
       alert(`Successfully connected GitHub account: ${username}!`);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-
-    return () => unsubscribe();
   }, []);
 
-  const handleConnectGitHub = () => {
+  const handleConnectGitHub = async () => {
     const clientId = 'Iv23liDJmyW1k1Xc3aA6';
     const redirectUri = encodeURIComponent('http://localhost:8000/api/github/callback');
     
-    // Extract candidate Firebase UID
-    const firebaseUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
-    const state = `${Math.random().toString(36).substring(2, 9)}:${firebaseUid}`;
+    // Extract candidate user ID (Supabase)
+    const currentUser = await getCurrentUser();
+    const userId = currentUser?.id || 'anonymous';
+    const state = `${Math.random().toString(36).substring(2, 9)}:${userId}`;
     
     localStorage.setItem('github_oauth_state', state);
     const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=user:email`;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Link, Briefcase, Building, Calendar, Star, Target, MessageSquare, ClipboardList, Zap, Monitor, Smartphone, Camera, FileUp, Mail, Users, Tag, CheckSquare, Search, Plus, Trash2 } from 'lucide-react';
 import './TemplateBuilder.css';
-import { auth } from '../firebaseAuth.js';
+import { getAuthToken, getCurrentUser } from '../supabaseAuth';
 
 const DEFAULT_TOGGLES = {
   teamTitle: false,
@@ -44,8 +44,8 @@ export default function TeamTemplateBuilder() {
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
-        if (auth.currentUser) {
-          const token = await auth.currentUser.getIdToken();
+        if (await getCurrentUser()) {
+          const token = await getAuthToken();
           const res = await fetch('http://localhost:5000/api/user/departments', {
             headers: { Authorization: `Bearer ${token}` }
           });
@@ -64,8 +64,8 @@ export default function TeamTemplateBuilder() {
 
   const handleSaveDepartments = async (updatedDepts) => {
     try {
-      if (auth.currentUser) {
-        const token = await auth.currentUser.getIdToken();
+      if (await getCurrentUser()) {
+        const token = await getAuthToken();
         await fetch('http://localhost:5000/api/user/departments', {
           method: 'POST',
           headers: { 
@@ -132,7 +132,7 @@ export default function TeamTemplateBuilder() {
         crossFunctional
       };
 
-      const token = await auth.currentUser.getIdToken();
+      const token = await getAuthToken();
       
       const response = await fetch('http://localhost:5000/api/drafts', {
         method: 'POST',
@@ -142,6 +142,7 @@ export default function TeamTemplateBuilder() {
         },
         body: JSON.stringify({
           title: formTitle,
+          templateType: 'team',
           config
         })
       });
@@ -548,3 +549,5 @@ function TextareaField({ label, placeholder }) {
     </div>
   );
 }
+
+

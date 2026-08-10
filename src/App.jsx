@@ -29,11 +29,11 @@ import {
   UserSearch,
   Video,
   Download,
+  FileSpreadsheet,
+  Table2,
   ChevronsRight,
   ChevronsLeft,
   Mail,
-  MessageCircle,
-  Phone,
   Inbox as InboxIcon,
   File,
   Trash2,
@@ -52,8 +52,8 @@ import {
   Cell
 } from 'recharts';
 import './App.css';
-import { auth, loginWithGoogleAndCalendar, loginWithEmail } from './firebaseAuth';
-import { onAuthStateChanged } from 'firebase/auth';
+import { supabase } from './supabaseClient';
+import { loginWithGoogleAndCalendar, loginWithEmail, onAuthChange, signOut as supabaseSignOut, getCurrentSession } from './supabaseAuth';
 import LandingPage from './LandingPage.jsx';
 import Navbar from './Navbar.jsx';
 import KnowledgeBase from './KnowledgeBase.jsx';
@@ -64,6 +64,8 @@ import ReportsView from './ReportsView.jsx';
 import AlertsView from './AlertsView.jsx';
 import SettingsView from './SettingsView.jsx';
 import SourcingView from './SourcingView.jsx';
+import BulkCampaignView from './BulkCampaignView.jsx';
+import RosterStudioView from './RosterStudioView.jsx';
 import MeetView from './MeetView.jsx';
 import ExportView from './ExportView.jsx';
 import EmailAutomationView from './EmailAutomationView.jsx';
@@ -74,6 +76,8 @@ import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import LoginDashboard from './pages/LoginDashboard.jsx';
 import GitHubAuthRedirect from './pages/GitHubAuthRedirect.jsx';
+import ActiveLinksView from './pages/ActiveLinksView.jsx';
+import EmailBodyEditor from './pages/EmailBodyEditor.jsx';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -112,6 +116,8 @@ export default function App() {
     '/dashboard/calendar': 'Calendar',
     '/dashboard/reports': 'Reports',
     '/dashboard/sourcing': 'Sourcing',
+    '/dashboard/bulk-campaign': 'Bulk Campaign',
+    '/dashboard/roster-studio': 'Roster Studio',
     '/dashboard/meet': 'Meet',
     '/dashboard/export': 'Export',
     '/dashboard/email-automation': 'Email Automation',
@@ -120,7 +126,8 @@ export default function App() {
     '/dashboard/settings': 'Settings',
     '/dashboard/knowledge-base': 'Knowledge Base',
     '/dashboard/templates/drafts': 'Drafts',
-    '/dashboard/templates/sent': 'Sent Forms'
+    '/dashboard/templates/active': 'Active Links',
+    '/dashboard/templates/email-body': 'Email Body'
   };
 
   const TAB_PATH_MAP = Object.fromEntries(
@@ -131,11 +138,12 @@ export default function App() {
   
   const calculatePrimaryNav = (tab) => {
     if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
-    if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Sent Forms'].includes(tab)) return 'Templates';
-    if (['Projects', 'Teams', 'Sourcing', 'Calendar'].includes(tab)) return 'Workspace';
+    if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Active Links'].includes(tab)) return 'Templates';
+    if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Bulk Campaign'].includes(tab)) return 'Workspace';
     if (['Analysis', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
     if (['Settings'].includes(tab)) return 'Settings';
+    if (['Email Automation', 'Email Body', 'Roster Studio'].includes(tab)) return 'Inbox';
     return 'Home'; 
   };
   
@@ -163,8 +171,8 @@ export default function App() {
       { id: 'AllOpen', label: 'All open', icon: CheckCircle2, count: 2 },
       { id: 'divider1', isDivider: true },
       { id: 'Email Automation', label: 'Email', icon: Mail, count: 46 },
-      { id: 'Chat', label: 'Chat', icon: MessageCircle, count: 18 },
-      { id: 'Calls', label: 'Calls', icon: Phone, count: 12 },
+      { id: 'Email Body', label: 'Body', icon: FileText },
+      { id: 'Roster Studio', label: 'Roster Studio', icon: Table2 },
       { id: 'AllClosed', label: 'All Closed', icon: InboxIcon, count: 12 },
       { id: 'divider2', isDivider: true },
       { id: 'Sent', label: 'Sent', icon: Send, count: 12 },
@@ -183,15 +191,16 @@ export default function App() {
       { id: 'Projects', label: 'Projects', icon: Briefcase },
       { id: 'Teams', label: 'Teams', icon: Users },
       { id: 'Sourcing', label: 'Sourcing', icon: UserSearch },
-      { id: 'Calendar', label: 'Calendar', icon: Calendar }
+      { id: 'Calendar', label: 'Calendar', icon: Calendar },
+      { id: 'Bulk Campaign', label: 'Bulk Campaign', icon: FileSpreadsheet }
     ],
     Templates: [
       { id: 'Student Template', label: 'Student', icon: GraduationCap },
       { id: 'Employee Template', label: 'Employee', icon: Briefcase },
       { id: 'Team Template', label: 'Team', icon: Users },
-      { id: 'dividerTemplates', isDivider: true },
+      { id: 'dividerTemplates1', isDivider: true },
       { id: 'Drafts', label: 'Drafts', icon: File },
-      { id: 'Sent Forms', label: 'Sent', icon: Send }
+      { id: 'Active Links', label: 'Active', icon: Send }
     ],
     Analytics: [
       { id: 'Analysis', label: 'Analysis', icon: BarChart3 },
@@ -293,27 +302,22 @@ export default function App() {
     }
   ]);
 
-  // Auth persistence listener
+  // Auth persistence listener (Supabase)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-        if (currentUser) {
-          setUser(currentUser);
-          
-          const googleToken = localStorage.getItem('googleAccessToken');
-        try {
-          const firebaseToken = await currentUser.getIdToken();
-          setTokens({
-            firebaseIdToken: firebaseToken,
-            googleAccessToken: googleToken
-          });
-          
-          if (googleToken) {
-            // Re-fetch events now that we have tokens
-            await fetchEvents(firebaseToken, googleToken);
-          }
-        } catch (e) {
-          console.error("Error restoring session:", e);
+    // Check existing session on mount
+    getCurrentSession().then((session) => {
+      if (session) {
+        setUser(session.user);
+        const googleToken = session.providerToken || localStorage.getItem('googleAccessToken');
+        setTokens({
+          accessToken: session.accessToken,
+          googleAccessToken: googleToken
+        });
+        if (googleToken) {
+          fetchEvents(session.accessToken, googleToken);
         }
+        fetchMeetings(session.accessToken);
+        fetchAlerts(session.accessToken);
       } else {
         // Fallback for demo mode survival on refresh
         const localUser = localStorage.getItem('authUser');
@@ -321,10 +325,39 @@ export default function App() {
           setUser(JSON.parse(localUser));
         }
       }
-      // Mark auth as ready after first check completes
       setAuthReady(true);
     });
-    return () => unsubscribe();
+
+    // Subscribe to auth state changes
+    const subscription = onAuthChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setTokens(null);
+        setAuthReady(true);
+        return;
+      }
+      if (session?.user) {
+        setUser(session.user);
+        const googleToken = session.provider_token || localStorage.getItem('googleAccessToken');
+        setTokens({
+          accessToken: session.access_token,
+          googleAccessToken: googleToken
+        });
+        if (googleToken) {
+          await fetchEvents(session.access_token, googleToken);
+        }
+        await fetchMeetings(session.access_token);
+        await fetchAlerts(session.access_token);
+      } else {
+        const localUser = localStorage.getItem('authUser');
+        if (localUser && localUser.includes("Demo Mode")) {
+          setUser(JSON.parse(localUser));
+        }
+      }
+      setAuthReady(true);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const [alerts, setAlerts] = useState([
@@ -360,13 +393,13 @@ export default function App() {
       const data = await loginWithEmail(email, password);
       setUser(data.user);
       setTokens({
-        firebaseIdToken: data.firebaseIdToken,
+        accessToken: data.accessToken,
         googleAccessToken: null
       });
       localStorage.setItem('authUser', JSON.stringify({
-        displayName: data.user.displayName || email,
-        photoURL: data.user.photoURL || null,
-        email: data.user.email
+        displayName: data.user?.email || email,
+        photoURL: data.user?.user_metadata?.avatar_url || null,
+        email: data.user?.email || email
       }));
       return true;
     } catch (err) {
@@ -382,29 +415,19 @@ export default function App() {
     setApiError(null);
     setAuthErrorModal(null);
     try {
-      const data = await loginWithGoogleAndCalendar();
-      setUser(data.user);
-      setTokens({
-        firebaseIdToken: data.firebaseIdToken,
-        googleAccessToken: data.googleAccessToken
-      });
-      // Store token in localStorage to survive refreshes
-      localStorage.setItem('googleAccessToken', data.googleAccessToken);
-      localStorage.setItem('authUser', JSON.stringify({
-        displayName: data.user.displayName,
-        photoURL: data.user.photoURL,
-        email: data.user.email
-      }));
-      await fetchEvents(data.firebaseIdToken, data.googleAccessToken);
+      // Supabase OAuth redirects — this call returns after redirect
+      // The actual session is picked up by onAuthChange listener
+      await loginWithGoogleAndCalendar();
+      // After redirect, session will be set by the auth state change listener
       return true;
     } catch (err) {
       console.error("Login Error:", err);
-      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.message?.includes('popup-closed-by-user')) {
+      if (err.message?.includes('popup') || err.message?.includes('cancelled')) {
         return false;
-      } else if (err.code === 'auth/operation-not-allowed' || err.message?.includes('operation-not-allowed')) {
+      } else if (err.message?.includes('provider') || err.message?.includes('not enabled')) {
         setAuthErrorModal({
           type: 'operation-not-allowed',
-          message: 'Google Sign-In is not enabled as a sign-in provider in your Firebase project.',
+          message: 'Google Sign-In is not enabled in your Supabase project.',
           detail: err.message
         });
       } else {
@@ -424,7 +447,7 @@ export default function App() {
     };
     setUser(demoUser);
     setTokens({
-      firebaseIdToken: "demo-firebase-id-token",
+      accessToken: "demo-access-token",
       googleAccessToken: "demo-google-access-token"
     });
     localStorage.setItem('authUser', JSON.stringify(demoUser));
@@ -500,8 +523,8 @@ export default function App() {
     setAuthErrorModal(null);
   };
 
-  const handleLogout = () => {
-    auth.signOut();
+  const handleLogout = async () => {
+    try { await supabaseSignOut(); } catch (e) { console.warn('Supabase signOut error:', e); }
     setUser(null);
     setTokens(null);
     setApiError(null);
@@ -578,13 +601,13 @@ export default function App() {
     ]);
   };
 
-  const fetchEvents = async (firebaseToken, googleToken) => {
+  const fetchEvents = async (accessToken, googleToken) => {
     setLoading(true);
     setApiError(null);
     try {
       const response = await fetch(`${API_BASE_URL}/api/calendar/events?google_token=${googleToken}`, {
         headers: {
-          'Authorization': `Bearer ${firebaseToken}`
+          'Authorization': `Bearer ${accessToken}`
         }
       });
       if (!response.ok) {
@@ -689,9 +712,59 @@ export default function App() {
     }
   };
 
+  const fetchMeetings = async (accessToken) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/meetings`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.meetings && data.meetings.length > 0) {
+          const mapped = data.meetings.map((m, idx) => ({
+            id: m.id || idx,
+            title: m.title,
+            duration: m.duration_minutes ? `${Math.floor(m.duration_minutes / 60)}h ${m.duration_minutes % 60}m` : '1h 0m',
+            attendeeCount: Array.isArray(m.attendees) ? m.attendees.length : 0,
+            cost: m.cost || 0,
+            project: m.ai_project || 'Internal Operations',
+            confidence: m.ai_confidence || 0,
+            status: m.requires_human_review ? 'needs_review' : 'approved',
+            time: m.start_time ? new Date(m.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All-day'
+          }));
+          setMeetings(mapped);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch meetings from Supabase, using mock data.');
+    }
+  };
+
+  const fetchAlerts = async (accessToken) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/alerts`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.alerts && data.alerts.length > 0) {
+          const mapped = data.alerts.map((a) => ({
+            id: a.id,
+            type: a.type,
+            title: a.title,
+            desc: a.description,
+            resolved: a.resolved
+          }));
+          setAlerts(mapped);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch alerts from Supabase, using mock data.');
+    }
+  };
+
   const handleSyncClick = async () => {
     if (tokens) {
-      await fetchEvents(tokens.firebaseIdToken, tokens.googleAccessToken);
+      await fetchEvents(tokens.accessToken, tokens.googleAccessToken);
     } else {
       await handleLogin();
     }
@@ -973,10 +1046,9 @@ export default function App() {
                 key={nav.id}
                 className={`mini-nav-item ${isActive ? 'active' : ''}`}
                 onClick={() => {
-                  const firstSubItem = SECONDARY_NAVS[nav.id][0];
-                  if (firstSubItem) {
-                    const path = TAB_PATH_MAP[firstSubItem.id];
-                    if (path) navigate(path);
+                  const firstSubItemWithPath = SECONDARY_NAVS[nav.id].find(sub => !sub.isDivider && !sub.isHeader && TAB_PATH_MAP[sub.id]);
+                  if (firstSubItemWithPath) {
+                    navigate(TAB_PATH_MAP[firstSubItemWithPath.id]);
                   }
                 }}
                 title={nav.id}
@@ -1549,14 +1621,12 @@ export default function App() {
             <EmployeeTemplateBuilder />
           ) : activeTab === 'Team Template' ? (
             <TeamTemplateBuilder />
+          ) : activeTab === 'Email Body' ? (
+            <EmailBodyEditor />
           ) : activeTab === 'Drafts' ? (
             <DraftsView />
-          ) : activeTab === 'Sent Forms' ? (
-            <div style={{ padding: '40px', color: '#64748B', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px' }}>
-              <Send size={48} style={{ color: '#CBD5E1' }} />
-              <h2>Sent Forms</h2>
-              <p>Responses and statuses for your sent forms will appear here.</p>
-            </div>
+          ) : activeTab === 'Active Links' ? (
+            <ActiveLinksView />
           ) : activeTab === 'Projects' ? (
             <ProjectsView meetings={meetings} onUpdateMeetingProject={handleUpdateMeetingProject} />
           ) : activeTab === 'Teams' ? (
@@ -1567,6 +1637,10 @@ export default function App() {
             <ReportsView meetings={meetings} />
           ) : activeTab === 'Sourcing' ? (
             <SourcingView />
+          ) : activeTab === 'Bulk Campaign' ? (
+            <BulkCampaignView />
+          ) : activeTab === 'Roster Studio' ? (
+            <RosterStudioView />
           ) : activeTab === 'Meet' ? (
             <MeetView meetings={meetings} />
           ) : activeTab === 'Export' ? (
@@ -1672,24 +1746,24 @@ export default function App() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px', lineHeight: '1.5' }}>
               <p style={{ color: 'var(--text-primary)', fontWeight: '600' }}>
-                Firebase returned an <code>auth/operation-not-allowed</code> error.
+                Supabase returned an <code>auth/operation-not-allowed</code> error.
               </p>
               <p style={{ color: 'var(--text-secondary)' }}>
-                This means Google Sign-In is not enabled as a sign-in provider in your Firebase project.
+                This means Google Sign-In is not enabled as a sign-in provider in your Supabase project.
               </p>
 
               <div style={{ backgroundColor: 'rgba(244, 63, 94, 0.05)', padding: '12px 16px', borderRadius: '8px', border: '1px solid rgba(244, 63, 94, 0.15)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>How to resolve this in Firebase:</span>
+                <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>How to resolve this in Supabase:</span>
                 <ol style={{ margin: '0', paddingLeft: '20px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <li>Go to your <strong>Firebase Console</strong>.</li>
-                  <li>Click on <strong>Authentication</strong> (in the Build section).</li>
-                  <li>Navigate to the <strong>Sign-in method</strong> tab.</li>
-                  <li>Click <strong>Add new provider</strong>, select <strong>Google</strong>, and toggle it to <strong>Enable</strong>.</li>
+                  <li>Go to your <strong>Supabase Dashboard</strong>.</li>
+                  <li>Click on <strong>Authentication</strong> in the left sidebar.</li>
+                  <li>Navigate to the <strong>Providers</strong> tab.</li>
+                  <li>Find <strong>Google</strong> and toggle it to <strong>Enable</strong>.</li>
                 </ol>
               </div>
 
               <p style={{ color: 'var(--text-muted)' }}>
-                To proceed without configuring Firebase right now, you can enter **Sandbox Demo Mode** to explore the complete dashboard and Recharts integrations.
+                To proceed without configuring Supabase right now, you can enter **Sandbox Demo Mode** to explore the complete dashboard and Recharts integrations.
               </p>
             </div>
 
@@ -1809,6 +1883,10 @@ export default function App() {
     </>
   );
 }
+
+
+
+
 
 
 

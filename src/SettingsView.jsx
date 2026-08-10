@@ -11,7 +11,7 @@ export default function SettingsView({
 }) {
   const [rateInput, setRateInput] = useState(defaultRate);
   const [sliderInput, setSliderInput] = useState(confidenceThreshold);
-  const [firebasePath, setFirebasePath] = useState('serviceAccountKey.json');
+  const [supabaseUrl, setSupabaseUrl] = useState(import.meta.env.VITE_SUPABASE_URL || '');
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('GEMINI_API_KEY') || '');
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
   const [successMsg, setSuccessMsg] = useState('');
@@ -152,12 +152,12 @@ export default function SettingsView({
 
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  Firebase Service Key Path
+                  Supabase URL
                 </label>
                 <input 
                   type="text"
-                  value={firebasePath}
-                  onChange={e => setFirebasePath(e.target.value)}
+                  value={supabaseUrl}
+                  readOnly
                   style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
                 />
               </div>

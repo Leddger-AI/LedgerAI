@@ -60,6 +60,16 @@
   padding: 0;
 }
 
+/* FortuneSheet expects content-box for its internal scroll calculations */
+[class^="fortune-"] *,
+[class^="fortune-"] *::before,
+[class^="fortune-"] *::after,
+[class^="luckysheet-"] *,
+[class^="luckysheet-"] *::before,
+[class^="luckysheet-"] *::after {
+  box-sizing: content-box;
+}
+
 body {
   background-color: #F2E8D5;
   color: var(--text-primary);
@@ -67,25 +77,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-main);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border-hover);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 
 @keyframes pulse-cyan {
@@ -159,18 +150,26 @@ body {
   background: var(--bg-card-hover);
 }
 
-/* Hide scrollbars globally including corners */
-*::-webkit-scrollbar,
-*::-webkit-scrollbar-track,
-*::-webkit-scrollbar-thumb,
-*::-webkit-scrollbar-corner,
-*::-webkit-resizer {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
+/* Hide scrollbars visually but keep scroll functionality */
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 * {
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none;    /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Restore native scrollbars inside FortuneSheet to prevent scroll calculation issues */
+[class^="fortune-"] ::-webkit-scrollbar,
+[class^="luckysheet-"] ::-webkit-scrollbar {
+  width: auto;
+  height: auto;
+}
+
+[class^="fortune-"] *,
+[class^="luckysheet-"] * {
+  -ms-overflow-style: auto;
+  scrollbar-width: auto;
 }
