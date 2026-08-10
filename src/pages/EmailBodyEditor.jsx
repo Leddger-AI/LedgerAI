@@ -56,9 +56,11 @@ export default function EmailBodyEditor() {
   const [cloudSelectedId, setCloudSelectedId] = useState(null);
   const [cloudImporting, setCloudImporting] = useState(false);
   const [importSource, setImportSource] = useState(null);
+  const [dataSourceType, setDataSourceType] = useState('none');
   const [showRosterModal, setShowRosterModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
+  const [savedDraftId, setSavedDraftId] = useState(null);
 
   const [metrics, setMetrics] = useState({
     subjectLength: 0,
@@ -149,6 +151,7 @@ export default function EmailBodyEditor() {
 
     const fileName = file.name.toLowerCase();
     setImportSource(file.name);
+    setDataSourceType('upload');
 
     if (fileName.endsWith('.csv')) {
       Papa.parse(file, {
@@ -223,6 +226,7 @@ export default function EmailBodyEditor() {
       if (data.headers && data.headers.length > 0) {
         addVariablesFromHeaders(data.headers);
         setImportSource(fileName);
+        setDataSourceType('roster_studio');
         setShowRosterModal(false);
       } else {
         setCloudError('No headers found in this spreadsheet.');
@@ -246,23 +250,29 @@ export default function EmailBodyEditor() {
       }
       const subject = subjectRef.current?.innerText || '';
       const bodyHtml = bodyRef.current?.innerHTML || '';
-      const res = await fetch(`${API_BASE_URL}/api/email/drafts`, {
-        method: 'POST',
+      const payload = {
+        subject,
+        bodyHtml,
+        variables,
+        dataSourceType,
+        dataSourceFile: importSource || null,
+      };
+      const url = savedDraftId
+        ? `${API_BASE_URL}/api/email/drafts/${savedDraftId}`
+        : `${API_BASE_URL}/api/email/drafts`;
+      const method = savedDraftId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          subject,
-          bodyHtml,
-          variables,
-          dataSourceType: importSource ? (showRosterModal ? 'roster_studio' : 'upload') : 'none',
-          dataSourceFile: importSource || null,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Failed to save draft');
       const data = await res.json();
-      setSaveStatus({ type: 'success', message: 'Draft saved successfully!' });
+      if (data.draft?._id) setSavedDraftId(data.draft._id);
+      setSaveStatus({ type: 'success', message: savedDraftId ? 'Draft updated successfully!' : 'Draft saved successfully!' });
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
       console.error('Error saving draft:', err);
@@ -370,7 +380,7 @@ export default function EmailBodyEditor() {
                 disabled={saving}
               >
                 {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-                {saving ? 'Saving...' : 'Save Draft'}
+                {saving ? 'Saving...' : savedDraftId ? 'Update Draft' : 'Save Draft'}
               </button>
               <button className="ai-btn">
                 <Sparkles size={16} />
