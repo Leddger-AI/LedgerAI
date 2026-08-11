@@ -73,6 +73,7 @@ import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
 import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
 import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
 import LoginDashboard from './pages/LoginDashboard.jsx';
 import GitHubAuthRedirect from './pages/GitHubAuthRedirect.jsx';
 
@@ -998,8 +999,15 @@ export default function App() {
       <div className="app-container">
         {/* SECONDARY SIDEBAR (LEVEL 2) */}
         <aside className="secondary-sidebar expanded">
-          <div className="secondary-sidebar-header">
+          <div className="secondary-sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="secondary-title">{activePrimaryNav}</h2>
+            <div 
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#6F767E', backgroundColor: '#F4F4F5', padding: '4px 6px', borderRadius: '4px', cursor: 'pointer', border: '1px solid #EFEFEF' }} 
+              title="Press Cmd+K or Ctrl+K to open Command Palette"
+            >
+              <Search size={10} />
+              <span>⌘K</span>
+            </div>
           </div>
           
           <div className="secondary-sidebar-content">
@@ -1812,6 +1820,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <CommandPalette />
     </>
   );
 }
