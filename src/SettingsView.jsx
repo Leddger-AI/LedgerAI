@@ -80,7 +80,7 @@ export default function SettingsView({
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>Human Review Trigger Threshold</span>
                 <strong style={{ color: 'var(--color-cyan)' }}>{sliderInput}%</strong>
               </label>

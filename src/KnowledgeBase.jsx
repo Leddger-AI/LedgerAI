@@ -48,11 +48,6 @@ export default function KnowledgeBase() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Fetch document registry on mount
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
-
   const fetchDocuments = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/kb/documents`);
@@ -77,6 +72,12 @@ export default function KnowledgeBase() {
       ]);
     }
   };
+
+  // Fetch document registry on mount
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
 
   const handleFileChange = (e) => {
     if (e.target.files.length > 0) {

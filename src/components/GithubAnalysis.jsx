@@ -16,7 +16,7 @@ export default function GithubAnalysis({ githubUsername, projectIdea, experience
     let sum = 0;
     for (let i = 0; i < 98; i++) {
       const val = Math.abs((hash + i * 29) % 37);
-      let level = 0;
+      let level;
       if (val < 14) {
         level = 0;
       } else if (val < 24) {
@@ -54,7 +54,7 @@ export default function GithubAnalysis({ githubUsername, projectIdea, experience
     }
 
     let summaryText = `Demonstrates robust code structuring. Excellent directory organization and adherence to ${mainLang} design patterns.`;
-    let concernsText = `No major security flags. Ensure environment keys are externalized.`;
+    let concernsText;
 
     if (repoNames && repoNames.length > 0) {
       summaryText = `Successfully analyzed candidate's public repositories including: ${repoNames.join(', ')}. Strong object-oriented modeling and modular separations observed in ${mainLang}.`;

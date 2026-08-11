@@ -7,14 +7,10 @@ export default function DraftsView() {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDraft, setSelectedDraft] = useState(null);
-  
+
   const [expiryDate, setExpiryDate] = useState('');
   const [expiryTime, setExpiryTime] = useState('');
   const [isActivating, setIsActivating] = useState(false);
-
-  useEffect(() => {
-    fetchDrafts();
-  }, []);
 
   const fetchDrafts = async () => {
     try {
@@ -37,6 +33,10 @@ export default function DraftsView() {
     }
   };
 
+  useEffect(() => {
+    fetchDrafts();
+  }, []);
+
   const handleSelectDraft = (draft) => {
     setSelectedDraft(draft);
     setExpiryDate('');
@@ -54,7 +54,7 @@ export default function DraftsView() {
       // Combine date and time into local ISO
       const dateTimeString = `${expiryDate}T${expiryTime}:00`;
       const dateObj = new Date(dateTimeString);
-      
+
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`http://localhost:5000/api/drafts/${selectedDraft.draftId}/activate`, {
         method: 'PUT',
@@ -64,7 +64,7 @@ export default function DraftsView() {
         },
         body: JSON.stringify({ expiresAt: dateObj.toISOString() })
       });
-      
+
       const data = await res.json();
       if (res.ok) {
         // Update local state
@@ -100,7 +100,7 @@ export default function DraftsView() {
           <h2>Your Saved Drafts</h2>
           <p>Select a draft to schedule its expiration and generate a public link.</p>
         </div>
-        
+
         {loading ? (
           <p style={{ color: '#64748B', fontSize: '13px' }}>Loading drafts...</p>
         ) : drafts.length === 0 ? (
@@ -112,8 +112,8 @@ export default function DraftsView() {
         ) : (
           <div className="draft-list">
             {drafts.map(draft => (
-              <div 
-                key={draft.draftId} 
+              <div
+                key={draft.draftId}
                 className={`draft-card ${selectedDraft?.draftId === draft.draftId ? 'selected' : ''}`}
                 onClick={() => handleSelectDraft(draft)}
               >
@@ -135,32 +135,32 @@ export default function DraftsView() {
         {selectedDraft ? (
           <div className="scheduler-container">
             <h3 className="scheduler-title">{selectedDraft.title}</h3>
-            
+
             {selectedDraft.status === 'draft' ? (
               <div className="scheduler-form">
                 <div className="form-group">
-                  <label><Calendar size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }}/> Expiration Date</label>
-                  <input 
-                    type="date" 
-                    className="scheduler-input" 
-                    value={expiryDate} 
-                    onChange={e => setExpiryDate(e.target.value)} 
+                  <label><Calendar size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> Expiration Date</label>
+                  <input
+                    type="date"
+                    className="scheduler-input"
+                    value={expiryDate}
+                    onChange={e => setExpiryDate(e.target.value)}
                     min={new Date().toISOString().split('T')[0]}
                   />
                 </div>
-                
+
                 <div className="form-group">
-                  <label><Clock size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }}/> Expiration Time</label>
-                  <input 
-                    type="time" 
-                    className="scheduler-input" 
-                    value={expiryTime} 
-                    onChange={e => setExpiryTime(e.target.value)} 
+                  <label><Clock size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> Expiration Time</label>
+                  <input
+                    type="time"
+                    className="scheduler-input"
+                    value={expiryTime}
+                    onChange={e => setExpiryTime(e.target.value)}
                   />
                 </div>
 
-                <button 
-                  className="activate-btn" 
+                <button
+                  className="activate-btn"
                   onClick={handleActivateDraft}
                   disabled={isActivating || !expiryDate || !expiryTime}
                 >
@@ -178,13 +178,13 @@ export default function DraftsView() {
                   Expires at: {new Date(selectedDraft.expiresAt).toLocaleString()}
                 </p>
                 <div className="live-link-box">
-                  <input 
-                    type="text" 
-                    className="live-link-input" 
-                    value={`http://localhost:5173/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`} 
-                    readOnly 
+                  <input
+                    type="text"
+                    className="live-link-input"
+                    value={`http://localhost:5173/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`}
+                    readOnly
                   />
-                  <button 
+                  <button
                     className="copy-btn"
                     onClick={() => navigator.clipboard.writeText(`http://localhost:5173/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)}
                   >

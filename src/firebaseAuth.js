@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword } from "firebase/auth";
 
 // Replace these configuration options with your actual Firebase project settings
 const firebaseConfig = {
@@ -22,24 +22,24 @@ export const auth = getAuth(app);
  */
 export const loginWithGoogleAndCalendar = async () => {
   const provider = new GoogleAuthProvider();
-  
+
   // Request Google Calendar read-only access scope
   provider.addScope("https://www.googleapis.com/auth/calendar.events.readonly");
-  
+
   try {
     const result = await signInWithPopup(auth, provider);
-    
+
     // Capture the Google OAuth credentials
     const credential = GoogleAuthProvider.credentialFromResult(result);
     const googleAccessToken = credential?.accessToken;
-    
+
     if (!googleAccessToken) {
       throw new Error("Failed to retrieve Google Access Token from login credentials.");
     }
-    
+
     // Capture the Firebase ID Token for backend authentication
     const firebaseIdToken = await result.user.getIdToken();
-    
+
     return {
       user: result.user,
       firebaseIdToken,

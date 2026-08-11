@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  Plus, Calendar as CalendarIcon, Link2, FileText, 
+import {
+  Plus, Calendar as CalendarIcon, Link2, FileText,
   Search, ChevronDown, Download, ChevronLeft, ChevronRight,
   MoreHorizontal, Copy, ChevronRight as RightArrow, X
 } from 'lucide-react';
@@ -21,11 +21,12 @@ const pastMeets = [
 export default function WorkspaceMeetView() {
   const [meetings, setMeetings] = useState(initialUpcomingMeets);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // States
   const [viewMode, setViewMode] = useState('upcoming'); // 'upcoming' or 'history'
   const [currentDate, setCurrentDate] = useState(new Date());
-  
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
+
   // Modal states
   const [isScheduling, setIsScheduling] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -48,19 +49,6 @@ export default function WorkspaceMeetView() {
     }
   };
 
-  const handleCreateAndShare = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/meet/instant`, { method: 'POST' });
-      const data = await res.json();
-      if (data.hangoutLink) {
-        navigator.clipboard.writeText(data.hangoutLink);
-        alert(`Meeting link copied to clipboard!\n${data.hangoutLink}`);
-      }
-    } catch (err) {
-      alert("Failed to generate link.");
-    }
-  };
-
   const handleScheduleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -70,7 +58,7 @@ export default function WorkspaceMeetView() {
         body: JSON.stringify({ title: newTitle, teamId: 'Internal', startTime: `${newDate}T${newTime}:00Z` })
       });
       const data = await res.json();
-      
+
       const newMeet = {
         id: Date.now(),
         title: newTitle,
@@ -83,7 +71,7 @@ export default function WorkspaceMeetView() {
         moreCount: 0,
         link: data.hangoutLink ? data.hangoutLink.replace('https://', '') : 'meet.google.com/new-link'
       };
-      
+
       setMeetings([newMeet, ...meetings]);
       setIsScheduling(false);
       setNewTitle('');
@@ -108,7 +96,7 @@ export default function WorkspaceMeetView() {
   // --- Calendar Math ---
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth(); // 0-11
-  
+
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const firstDay = new Date(currentYear, currentMonth, 1).getDay();
   const firstDayIndex = firstDay === 0 ? 6 : firstDay - 1; // Mon=0, Sun=6
@@ -136,16 +124,16 @@ export default function WorkspaceMeetView() {
 
   return (
     <div style={{ backgroundColor: '#F8F9FA', minHeight: '100%', padding: '32px 40px', fontFamily: 'var(--font-body)', position: 'relative' }}>
-      
+
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '600', color: '#1A1D1F', marginBottom: '8px' }}>Meetings</h1>
           <p style={{ fontSize: '14px', color: '#6F767E' }}>Plan meetings, check schedules, and stay connected with your team.</p>
         </div>
-        <button style={{ 
-          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', 
-          backgroundColor: '#FFFFFF', border: '1px solid #EFEFEF', borderRadius: '10px', 
+        <button style={{
+          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px',
+          backgroundColor: '#FFFFFF', border: '1px solid #EFEFEF', borderRadius: '10px',
           color: '#1A1D1F', fontSize: '14px', fontWeight: '500', cursor: 'pointer',
           boxShadow: '0px 2px 4px rgba(0,0,0,0.02)'
         }}>
@@ -156,11 +144,11 @@ export default function WorkspaceMeetView() {
 
       {/* TOP SECTION: Grid & Calendar */}
       <div style={{ display: 'flex', gap: '24px', marginBottom: '40px' }}>
-        
-        {/* Left 2x2 Grid */}
+
+        {/* Left Action Grid */}
         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          
-          <div onClick={handleInstantMeet} style={cardStyle}>
+
+          <div onClick={handleInstantMeet} style={{ ...cardStyle, gridColumn: '1 / -1' }}>
             <div style={iconBadgeStyle}><Plus size={24} color="#FFF" /></div>
             <h3 style={cardTitleStyle}>Start an Instant Meeting</h3>
             <p style={cardDescStyle}>Launch a meeting immediately with your team.</p>
@@ -170,12 +158,6 @@ export default function WorkspaceMeetView() {
             <div style={iconBadgeStyle}><CalendarIcon size={24} color="#FFF" /></div>
             <h3 style={cardTitleStyle}>Set a Scheduled Meeting</h3>
             <p style={cardDescStyle}>Pick a date and time to notify your team in advance.</p>
-          </div>
-
-          <div onClick={handleCreateAndShare} style={cardStyle}>
-            <div style={iconBadgeStyle}><Link2 size={24} color="#FFF" /></div>
-            <h3 style={cardTitleStyle}>Create & Share Later</h3>
-            <p style={cardDescStyle}>Generate a link to use anytime later.</p>
           </div>
 
           <div onClick={toggleHistory} style={{ ...cardStyle, border: viewMode === 'history' ? '2px solid #1A1D1F' : '1px solid #EFEFEF' }}>
@@ -205,19 +187,30 @@ export default function WorkspaceMeetView() {
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
               <div key={day} style={{ fontSize: '12px', color: '#6F767E', fontWeight: '500', marginBottom: '8px' }}>{day}</div>
             ))}
-            
+
             {calendarCells.map((cell, idx) => {
-              // Mock dots logic for visual effect
-              const hasMeeting = cell.isCurrentMonth && (cell.day % 7 === 0);
+              // Check if any meeting exists on this day
+              const cellDateString = new Date(currentYear, currentMonth, cell.day).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+              const hasMeeting = cell.isCurrentMonth && displayedMeetings.some(m => m.date === cellDateString);
               const isToday = cell.isCurrentMonth && cell.day === new Date().getDate() && currentMonth === new Date().getMonth();
-              
+
               return (
-                <div key={idx} style={{
-                  ...dateBoxStyle,
-                  color: cell.isCurrentMonth ? (isToday ? '#FFF' : '#1A1D1F') : '#C4C4C4',
-                  backgroundColor: isToday ? '#1A1D1F' : 'transparent',
-                  borderRadius: isToday ? '50%' : '0'
-                }}>
+                <div 
+                  key={idx} 
+                  onClick={() => {
+                    if (cell.isCurrentMonth) {
+                      setSelectedCalendarDate(selectedCalendarDate === cell.day ? null : cell.day);
+                    }
+                  }}
+                  style={{
+                    ...dateBoxStyle,
+                    color: cell.isCurrentMonth ? (isToday ? '#FFF' : '#1A1D1F') : '#C4C4C4',
+                    backgroundColor: isToday ? '#1A1D1F' : (selectedCalendarDate === cell.day ? '#E8F5FF' : 'transparent'),
+                    borderRadius: isToday || selectedCalendarDate === cell.day ? '50%' : '0',
+                    cursor: cell.isCurrentMonth ? 'pointer' : 'default',
+                    boxShadow: selectedCalendarDate === cell.day && !isToday ? 'inset 0 0 0 1px #00f0ff' : 'none'
+                  }}
+                >
                   {cell.day}
                   {hasMeeting && !isToday && <div style={dotStyle('#DC2626')}></div>}
                 </div>
@@ -230,7 +223,7 @@ export default function WorkspaceMeetView() {
 
       {/* BOTTOM SECTION: Meeting Schedule */}
       <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '24px', border: '1px solid #EFEFEF', boxShadow: '0px 4px 12px rgba(0,0,0,0.03)' }}>
-        
+
         {/* Table Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#1A1D1F' }}>
@@ -239,23 +232,42 @@ export default function WorkspaceMeetView() {
           <div style={{ display: 'flex', gap: '12px' }}>
             <div style={{ position: 'relative' }}>
               <Search size={16} color="#6F767E" style={{ position: 'absolute', left: '12px', top: '10px' }} />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Search meeting..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ padding: '8px 12px 8px 36px', borderRadius: '8px', border: '1px solid #EFEFEF', backgroundColor: '#F8F9FA', fontSize: '14px', outline: 'none' }}
               />
             </div>
-            <button style={filterBtnStyle}>All Teams <ChevronDown size={14}/></button>
+            <button style={filterBtnStyle}>All Teams <ChevronDown size={14} /></button>
             <button style={filterBtnStyle}>Sort by</button>
           </div>
         </div>
 
         {/* Table Content */}
         <div style={{ width: '100%', borderCollapse: 'collapse', display: 'table' }}>
-          {displayedMeetings.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase())).map((m, idx) => (
-            <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1.2fr 1fr 1fr auto', alignItems: 'center', padding: '16px 0', borderTop: idx !== 0 ? '1px solid #EFEFEF' : 'none' }}>
+          {(() => {
+            let filtered = displayedMeetings.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));
+            if (selectedCalendarDate) {
+              const selectedDateString = new Date(currentYear, currentMonth, selectedCalendarDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+              filtered = filtered.filter(m => m.date === selectedDateString);
+            }
+
+            if (filtered.length === 0) {
+              return (
+                <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+                  <div style={{ width: '64px', height: '64px', backgroundColor: '#F8F9FA', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+                    <CalendarIcon size={24} color="#6F767E" />
+                  </div>
+                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#1A1D1F', marginBottom: '8px' }}>No meetings found</h3>
+                  <p style={{ fontSize: '14px', color: '#6F767E' }}>Try adjusting your search or select a different date from the calendar.</p>
+                </div>
+              );
+            }
+
+            return filtered.map((m, idx) => (
+              <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1.2fr 1fr 1fr auto', alignItems: 'center', padding: '16px 0', borderTop: idx !== 0 ? '1px solid #EFEFEF' : 'none' }}>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: '600', color: '#1A1D1F', marginBottom: '4px' }}>{m.title}</div>
                 <div style={{ fontSize: '12px', color: '#6F767E' }}>{m.subtitle}</div>
@@ -293,7 +305,8 @@ export default function WorkspaceMeetView() {
                 <button onClick={() => window.open(`https://${m.link}`, '_blank')} style={{ ...actionIconStyle, backgroundColor: '#F8F9FA', border: '1px solid #EFEFEF' }}><RightArrow size={16} color="#1A1D1F" /></button>
               </div>
             </div>
-          ))}
+            ));
+          })()}
         </div>
       </div>
 
@@ -305,7 +318,7 @@ export default function WorkspaceMeetView() {
               <h3 style={{ fontSize: '18px', fontWeight: '500' }}>Schedule Meeting</h3>
               <X size={20} style={{ cursor: 'pointer', color: '#A0A0A0' }} onClick={() => setIsScheduling(false)} />
             </div>
-            
+
             <form onSubmit={handleScheduleSubmit}>
               {/* Add Title */}
               <div style={{ marginBottom: '20px' }}>

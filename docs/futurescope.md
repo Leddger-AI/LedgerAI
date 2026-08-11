@@ -28,3 +28,6 @@ The Feature: The AI engine continuously monitors these two data streams for exis
 Right now, the GitHub analysis provides absolute metrics (e.g., Code Readability = 85%).
 
 The Feature: Since Ledger AI knows your internal team (via the RAG system and Calendar data), it could ingest your current team's GitHub repositories as a baseline. When a candidate applies, the AI generates a "Culture/Code Fit Score," showing exactly how the candidate's coding style, language breakdown, and commit frequency compare to the existing engineers they would be working with.
+
+AI Meeting Summaries & Action Items (Perfect for "LedgerAI") Since this is an AI-driven platform, you could add an "AI Insights" panel to the Past Meetings view. When a user clicks on a past meeting, a slide-out drawer could display a mock AI-generated summary, a transcript snippet, and automatically extracted action items.
+

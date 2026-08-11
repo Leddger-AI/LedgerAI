@@ -119,7 +119,7 @@ export default function ReportsView({ meetings }) {
       {/* Filter Options */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '20px', alignItems: 'center' }}>
         <div>
-          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Filter size={12} /> Project Taxonomy Code
           </label>
           <select 
@@ -136,7 +136,7 @@ export default function ReportsView({ meetings }) {
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Calendar size={12} /> Date Range Preset
           </label>
           <select 
@@ -151,7 +151,7 @@ export default function ReportsView({ meetings }) {
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between' }}>
             <span>Min AI Confidence</span>
             <strong style={{ color: 'var(--color-cyan)' }}>{minConfidence}%</strong>
           </label>

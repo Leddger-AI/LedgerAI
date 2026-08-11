@@ -41,7 +41,7 @@ export default function StudentPortal() {
   const [isCodeValid, setIsCodeValid] = useState(false);
   const [formConfig, setFormConfig] = useState(DEFAULT_FORM_CONFIG);
   const [formData, setFormData] = useState({ idea: '', procedure: '', experience: '', githubUsername: '', linkedinUsername: '', portfolioUrl: '', manualAvatar: '' });
-  
+
   useEffect(() => {
     // Enable anonymous sign-in for candidates to establish a unique user ID
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -75,11 +75,11 @@ export default function StudentPortal() {
   const handleConnectGitHub = () => {
     const clientId = 'Iv23liDJmyW1k1Xc3aA6';
     const redirectUri = encodeURIComponent('http://localhost:8000/api/github/callback');
-    
+
     // Extract candidate Firebase UID
     const firebaseUid = auth.currentUser ? auth.currentUser.uid : 'anonymous';
     const state = `${Math.random().toString(36).substring(2, 9)}:${firebaseUid}`;
-    
+
     localStorage.setItem('github_oauth_state', state);
     const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=user:email`;
     window.location.href = authUrl;
@@ -112,7 +112,7 @@ export default function StudentPortal() {
     e.preventDefault();
     // Simulate encryption before sending to backend
     // The key is derived from the unique code the recruiter provided.
-    const key = 'secret-key-' + code; 
+    const key = 'secret-key-' + code;
     const payloadString = JSON.stringify({
       idea: formData.idea,
       workingProcedure: formData.procedure,
@@ -146,9 +146,9 @@ export default function StudentPortal() {
           <div style={{ backgroundColor: '#2B2E2E', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 40px rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'center', color: '#ffffff' }}>
             <Lock size={48} color="#D7FEFA" style={{ margin: '0 auto 20px' }} />
             <h2 style={{ fontSize: '24px', marginBottom: '20px', color: '#ffffff' }}>Enter Recruiter Code</h2>
-            <input 
-              type="text" 
-              placeholder="e.g. REC-XYZ123" 
+            <input
+              type="text"
+              placeholder="e.g. REC-XYZ123"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               style={{ width: '100%', maxWidth: '300px', padding: '12px 16px', fontSize: '16px', backgroundColor: '#1A1D1D', color: '#ffffff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', outline: 'none' }}
@@ -163,40 +163,40 @@ export default function StudentPortal() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '30px', color: '#ffffff', fontWeight: '600' }}>
               <FileSignature size={24} /> Secure Application Form
             </div>
-            
+
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>Project Idea</label>
-                <textarea 
+                <textarea
                   required
                   rows={4}
                   style={{ width: '100%', padding: '12px', backgroundColor: '#1A1D1D', color: '#ffffff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', resize: 'vertical', outline: 'none' }}
                   value={formData.idea}
-                  onChange={(e) => setFormData({...formData, idea: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, idea: e.target.value })}
                   placeholder="Describe your core concept..."
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>Working Procedure</label>
-                <textarea 
+                <textarea
                   required
                   rows={4}
                   style={{ width: '100%', padding: '12px', backgroundColor: '#1A1D1D', color: '#ffffff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', resize: 'vertical', outline: 'none' }}
                   value={formData.procedure}
-                  onChange={(e) => setFormData({...formData, procedure: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, procedure: e.target.value })}
                   placeholder="How will you implement this?"
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>Years of Experience (Tech)</label>
-                <input 
+                <input
                   type="number"
                   required
                   style={{ width: '100%', padding: '12px', backgroundColor: '#1A1D1D', color: '#ffffff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', outline: 'none' }}
                   value={formData.experience}
-                  onChange={(e) => setFormData({...formData, experience: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
                   placeholder="e.g. 2"
                 />
               </div>
@@ -211,7 +211,7 @@ export default function StudentPortal() {
                       <PrefixedLinkInput
                         prefix="github.com/"
                         value={formData.githubUsername}
-                        onChange={(e) => setFormData({...formData, githubUsername: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, githubUsername: e.target.value })}
                         placeholder="torvalds"
                       />
                     </div>
@@ -253,7 +253,7 @@ export default function StudentPortal() {
                   <PrefixedLinkInput
                     prefix="linkedin.com/in/"
                     value={formData.linkedinUsername}
-                    onChange={(e) => setFormData({...formData, linkedinUsername: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, linkedinUsername: e.target.value })}
                     placeholder="janedoe"
                   />
                 </div>
@@ -268,7 +268,7 @@ export default function StudentPortal() {
                     type="text"
                     style={{ width: '100%', padding: '12px', backgroundColor: '#1A1D1D', color: '#ffffff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', outline: 'none' }}
                     value={formData.portfolioUrl}
-                    onChange={(e) => setFormData({...formData, portfolioUrl: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })}
                     placeholder="https://myportfolio.dev"
                   />
                 </div>
@@ -276,7 +276,7 @@ export default function StudentPortal() {
 
               <div>
                 <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: 'rgba(255,255,255,0.8)' }}>Profile Picture (Manual Upload)</label>
-                <input 
+                <input
                   type="file"
                   accept="image/*"
                   onChange={handleFileChange}
@@ -284,10 +284,10 @@ export default function StudentPortal() {
                 />
                 {formData.manualAvatar && (
                   <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <img 
-                      src={formData.manualAvatar} 
-                      alt="Preview" 
-                      style={{ width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #D7FEFA' }} 
+                    <img
+                      src={formData.manualAvatar}
+                      alt="Preview"
+                      style={{ width: '50px', height: '50px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #D7FEFA' }}
                     />
                     <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>Manual image selected</span>
                   </div>
@@ -315,7 +315,7 @@ export default function StudentPortal() {
               Your application was AES-encrypted locally and safely delivered to the recruiter.
             </p>
             <div style={{ backgroundColor: '#1A1D1D', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '11px', fontFamily: 'monospace', wordBreak: 'break-all', color: '#ffffff', textAlign: 'left' }}>
-              <strong>ENCRYPTED PAYLOAD:</strong><br/>
+              <strong>ENCRYPTED PAYLOAD:</strong><br />
               {encryptedPayload}
             </div>
           </div>

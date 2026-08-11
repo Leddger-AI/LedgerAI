@@ -295,6 +295,116 @@ export default function App() {
     }
   ]);
 
+  async function fetchEvents(firebaseToken, googleToken) {
+    setLoading(true);
+    setApiError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/calendar/events?google_token=${googleToken}`, {
+        headers: {
+          'Authorization': `Bearer ${firebaseToken}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`Server returned status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.status === 'success' && data.events) {
+        const mapped = data.events.map((evt, idx) => {
+          const hours = Math.floor(evt.durationMinutes / 60);
+          const mins = evt.durationMinutes % 60;
+          const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+          
+          return {
+            id: evt.eventId || idx,
+            title: evt.title,
+            duration: durationStr,
+            attendeeCount: evt.attendees.length,
+            cost: evt.cost || 0,
+            project: evt.aiProject || 'Internal Operations',
+            confidence: evt.aiConfidence || 0,
+            status: evt.requiresHumanReview ? 'needs_review' : 'approved',
+            time: evt.startTime ? new Date(evt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All-day'
+          };
+        });
+        setMeetings(mapped);
+      } else {
+        throw new Error(data.error || 'API returned non-success status');
+      }
+    } catch (err) {
+      console.warn("Syncing calendar failed, falling back to mock data for demo.");
+      setMeetings([
+        {
+          id: 1,
+          title: 'Q3 Product Planning & Roadmap',
+          duration: '2h 30m',
+          attendeeCount: 5,
+          cost: 2850,
+          project: 'Project Phoenix',
+          confidence: 94,
+          status: 'needs_review',
+          time: '10:30 AM'
+        },
+        {
+          id: 2,
+          title: 'Client ABC Sync & Deliverables',
+          duration: '1h 15m',
+          attendeeCount: 3,
+          cost: 1200,
+          project: 'Client ABC Onboarding',
+          confidence: 87,
+          status: 'approved',
+          time: 'Yesterday'
+        },
+        {
+          id: 3,
+          title: 'Weekly Alignment & HR Catchup',
+          duration: '45m',
+          attendeeCount: 6,
+          cost: 950,
+          project: 'Unassigned',
+          confidence: 42,
+          status: 'needs_review',
+          time: 'Yesterday'
+        },
+        {
+          id: 4,
+          title: 'Marketing Campaign Kickoff',
+          duration: '1h 30m',
+          attendeeCount: 4,
+          cost: 1650,
+          project: 'Q4 Marketing Strategy',
+          confidence: 78,
+          status: 'approved',
+          time: '2 days ago'
+        },
+        {
+          id: 5,
+          title: 'Phoenix Tech Architecture Review',
+          duration: '2h 00m',
+          attendeeCount: 3,
+          cost: 3100,
+          project: 'Project Phoenix',
+          confidence: 96,
+          status: 'approved',
+          time: '3 days ago'
+        },
+        {
+          id: 6,
+          title: 'Internal Budget Sync & Forecast',
+          duration: '1h 00m',
+          attendeeCount: 4,
+          cost: 1100,
+          project: 'Q4 Marketing Strategy',
+          confidence: 61,
+          status: 'needs_review',
+          time: '4 days ago'
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // Auth persistence listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -580,116 +690,8 @@ export default function App() {
     ]);
   };
 
-  const fetchEvents = async (firebaseToken, googleToken) => {
-    setLoading(true);
-    setApiError(null);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/calendar/events?google_token=${googleToken}`, {
-        headers: {
-          'Authorization': `Bearer ${firebaseToken}`
-        }
-      });
-      if (!response.ok) {
-        throw new Error(`Server returned status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.status === 'success' && data.events) {
-        const mapped = data.events.map((evt, idx) => {
-          const hours = Math.floor(evt.durationMinutes / 60);
-          const mins = evt.durationMinutes % 60;
-          const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-          
-          return {
-            id: evt.eventId || idx,
-            title: evt.title,
-            duration: durationStr,
-            attendeeCount: evt.attendees.length,
-            cost: evt.cost || 0,
-            project: evt.aiProject || 'Internal Operations',
-            confidence: evt.aiConfidence || 0,
-            status: evt.requiresHumanReview ? 'needs_review' : 'approved',
-            time: evt.startTime ? new Date(evt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All-day'
-          };
-        });
-        setMeetings(mapped);
-      } else {
-        throw new Error(data.error || 'API returned non-success status');
-      }
-    } catch (err) {
-      console.warn("Syncing calendar failed, falling back to mock data for demo.");
-      // Fallback to mock data for demo if backend is missing/failing
-      setMeetings([
-        {
-          id: 1,
-          title: 'Q3 Product Planning & Roadmap',
-          duration: '2h 30m',
-          attendeeCount: 5,
-          cost: 2850,
-          project: 'Project Phoenix',
-          confidence: 94,
-          status: 'needs_review',
-          time: '10:30 AM'
-        },
-        {
-          id: 2,
-          title: 'Client ABC Sync & Deliverables',
-          duration: '1h 15m',
-          attendeeCount: 3,
-          cost: 1200,
-          project: 'Client ABC Onboarding',
-          confidence: 87,
-          status: 'approved',
-          time: 'Yesterday'
-        },
-        {
-          id: 3,
-          title: 'Weekly Alignment & HR Catchup',
-          duration: '45m',
-          attendeeCount: 6,
-          cost: 950,
-          project: 'Unassigned',
-          confidence: 42,
-          status: 'needs_review',
-          time: 'Yesterday'
-        },
-        {
-          id: 4,
-          title: 'Marketing Campaign Kickoff',
-          duration: '1h 30m',
-          attendeeCount: 4,
-          cost: 1650,
-          project: 'Q4 Marketing Strategy',
-          confidence: 78,
-          status: 'approved',
-          time: '2 days ago'
-        },
-        {
-          id: 5,
-          title: 'Phoenix Tech Architecture Review',
-          duration: '2h 00m',
-          attendeeCount: 3,
-          cost: 3100,
-          project: 'Project Phoenix',
-          confidence: 96,
-          status: 'approved',
-          time: '3 days ago'
-        },
-        {
-          id: 6,
-          title: 'Internal Budget Sync & Forecast',
-          duration: '1h 00m',
-          attendeeCount: 4,
-          cost: 1100,
-          project: 'Q4 Marketing Strategy',
-          confidence: 61,
-          status: 'needs_review',
-          time: '4 days ago'
-        }
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+
 
   const handleSyncClick = async () => {
     if (tokens) {
@@ -1601,7 +1603,7 @@ export default function App() {
               <button
                 className="table-action-btn"
                 style={{ padding: '8px 20px', fontSize: '13px' }}
-                onClick={() => setActiveTab('Dashboard')}
+                onClick={() => navigate('/dashboard')}
               >
                 Return to Dashboard
               </button>
