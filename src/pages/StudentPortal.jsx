@@ -69,7 +69,8 @@ export default function StudentPortal() {
 
   const handleConnectGitHub = async () => {
     const clientId = 'Iv23liDJmyW1k1Xc3aA6';
-    const redirectUri = encodeURIComponent('http://localhost:8000/api/github/callback');
+    const rustApiUrl = import.meta.env.VITE_RUST_API_URL || 'http://localhost:8000';
+    const redirectUri = encodeURIComponent(`${rustApiUrl}/api/github/callback`);
     
     // Extract candidate user ID (Supabase)
     const currentUser = await getCurrentUser();

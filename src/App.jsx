@@ -187,10 +187,6 @@ export default function App() {
       { id: 'Alerts', label: 'Alerts', icon: AlertTriangle }
     ],
     Inbox: [
-      { id: 'Assigned', label: 'Assigned to me', icon: Users, count: 50 },
-      { id: 'Unassigned', label: 'Unassigned', icon: FileText, count: 2 },
-      { id: 'AllOpen', label: 'All open', icon: CheckCircle2, count: 2 },
-      { id: 'divider1', isDivider: true },
       { id: 'Email Automation', label: 'Email', icon: Mail, count: 46 },
       { id: 'Email Body', label: 'Body', icon: FileText },
       { id: 'Roster Studio', label: 'Roster Studio', icon: Table2 },

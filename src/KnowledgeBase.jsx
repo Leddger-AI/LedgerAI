@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Upload, FileText, Send, Trash2, Shield, User, HelpCircle, Layers, CheckCircle2, ChevronRight, Eye } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_RUST_API_URL || "http://localhost:8000";
 
 export default function KnowledgeBase() {
   const [activeSubTab, setActiveSubTab] = useState('file'); // 'file' | 'slack'

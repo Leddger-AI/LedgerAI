@@ -26,19 +26,11 @@ dist-ssr
 
 # Env & credentials
 .env
-backend/.env
+server/.env
 *.pem
-*.json
-!eslint.config.js
-!package.json
-!package-lock.json
 __pycache__/
 *.pyc
 
 # Rust build target
 target/
-backend_rs/target/
-
-
-# Private keys
-github.private-key.pem
+synapse/target/
