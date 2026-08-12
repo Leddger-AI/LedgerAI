@@ -39,13 +39,22 @@ export default function WorkspaceMeetView() {
   // --- Actions ---
 
   const handleInstantMeet = async () => {
+    // Open the window immediately in the click handler to bypass popup blockers
+    const meetWindow = window.open('about:blank', '_blank');
+    
     try {
       const res = await fetch(`${API_BASE_URL}/api/meet/instant`, { method: 'POST' });
       const data = await res.json();
-      if (data.hangoutLink) window.open(data.hangoutLink, '_blank');
-      else alert("Could not generate meeting link.");
+      
+      if (data.hangoutLink) {
+        meetWindow.location.href = data.hangoutLink;
+      } else {
+        meetWindow.close();
+        alert("Could not generate meeting link.");
+      }
     } catch (err) {
-      window.open('https://meet.google.com/new', '_blank');
+      // Fallback if API fails
+      meetWindow.location.href = 'https://meet.google.com/new';
     }
   };
 

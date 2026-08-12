@@ -33,9 +33,9 @@ app.post('/api/meet/instant', async (req, res) => {
   try {
     // In a full implementation, you would use googleapis and the Calendar API here.
     // Example: google.calendar('v3').events.insert({ conferenceDataVersion: 1, ... })
-    // For this implementation, we simulate a successful Google Meet generation:
-    const randomId = Math.random().toString(36).substring(2, 11).match(/.{1,3}/g).join('-');
-    res.json({ hangoutLink: `https://meet.google.com/${randomId}` });
+    // Return the official Google Meet shortcut for creating an instant meeting.
+    // This avoids the "invalid video call name" error caused by random string generation.
+    res.json({ hangoutLink: 'https://meet.google.com/new' });
   } catch (error) {
     console.error('Error generating instant meet:', error);
     res.status(500).json({ error: 'Failed to generate meeting link' });
