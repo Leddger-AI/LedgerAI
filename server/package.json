@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "test": "jest --config jest.config.js"
   },
   "keywords": [],
   "author": "",
@@ -21,5 +22,13 @@
     "mongoose": "^9.9.1",
     "nodemailer": "^9.0.5",
     "uuid": "^14.0.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.4",
+    "@babel/preset-env": "^7.28.4",
+    "babel-jest": "^30.0.5",
+    "jest": "^30.0.5",
+    "mongodb-memory-server": "^10.2.3",
+    "supertest": "^7.1.4"
   }
 }

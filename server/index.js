@@ -11,15 +11,29 @@ const EmailCampaign = require('./models/EmailCampaign');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
 const { v4: uuidv4 } = require('uuid');
+const { runStartupChecks } = require('./startupCheck');
 
 const app = express();
-app.use(cors());
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
+  : null;
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!allowedOrigins || !origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose.connect(MONGODB_URI)
+const mongoConnectPromise = mongoose.connect(MONGODB_URI)
 .then(() => console.log('✅ Connected to MongoDB via Mongoose'))
 .catch(err => console.error('❌ Failed to connect to MongoDB', err));
 
@@ -1465,9 +1479,13 @@ app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
-});
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", async () => {
+    await mongoConnectPromise;
+    await runStartupChecks();
+    console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
+  });
+}
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
@@ -1481,4 +1499,6 @@ process.on('SIGINT', async () => {
   await stopAgenda();
   process.exit(0);
 });
+
+module.exports = app;
 
