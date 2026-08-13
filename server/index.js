@@ -1479,11 +1479,13 @@ app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
   }
 });
 
-app.listen(PORT, "0.0.0.0", async () => {
-  await mongoConnectPromise;
-  await runStartupChecks();
-  console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
-});
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", async () => {
+    await mongoConnectPromise;
+    await runStartupChecks();
+    console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
+  });
+}
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
@@ -1497,4 +1499,6 @@ process.on('SIGINT', async () => {
   await stopAgenda();
   process.exit(0);
 });
+
+module.exports = app;
 

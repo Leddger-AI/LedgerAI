@@ -4,8 +4,8 @@ let initialized = false;
 async function getAgenda() {
   if (agenda) return agenda;
 
-  const { Agenda } = await import('agenda');
-  const { MongoBackend } = await import('@agendajs/mongo-backend');
+  const { Agenda } = require('agenda');
+  const { MongoBackend } = require('@agendajs/mongo-backend');
 
   const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/leddgerai';
 

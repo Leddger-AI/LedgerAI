@@ -17,7 +17,7 @@ const EmailCampaignSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'scheduled', 'sending', 'sent', 'paused', 'failed'],
+    enum: ['draft', 'scheduled', 'sending', 'sent', 'paused', 'failed', 'cancelled'],
     default: 'draft',
   },
   recipients: {
