@@ -1,21 +1,7 @@
-const { createClient } = require('@supabase/supabase-js');
+const supabaseAdmin = require('../supabaseClient');
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-let supabaseAdmin = null;
-
-if (supabaseUrl && supabaseServiceRoleKey) {
-  supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-  console.log("✅ Supabase Admin client initialized successfully via .env.");
-} else {
-  console.warn("⚠️ WARNING: Supabase environment variables not found in server/.env. Skipping Supabase Admin initialization.");
-  console.warn("⚠️ WARNING: API requests will bypass authentication. THIS IS FOR LOCAL DEV ONLY.");
+if (!supabaseAdmin) {
+  console.warn('⚠️ WARNING: Supabase env vars not set. API requests will bypass authentication. THIS IS FOR LOCAL DEV ONLY.');
 }
 
 const verifyToken = async (req, res, next) => {

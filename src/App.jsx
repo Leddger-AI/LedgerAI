@@ -38,7 +38,13 @@ import {
   File,
   Trash2,
   ChevronUp,
-  FolderOpen
+  FolderOpen,
+  User,
+  Building2,
+  Shield,
+  Plug,
+  Palette,
+  Lock
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -143,7 +149,13 @@ export default function App() {
     '/dashboard/schedule': 'Schedule',
     '/dashboard/analysis': 'Analysis',
     '/dashboard/alerts': 'Alerts',
-    '/dashboard/settings': 'Settings',
+    '/dashboard/settings/profile': 'SettingsProfile',
+    '/dashboard/settings/departments': 'SettingsDepartments',
+    '/dashboard/settings/email': 'SettingsEmail',
+    '/dashboard/settings/ai': 'SettingsAI',
+    '/dashboard/settings/integrations': 'SettingsIntegrations',
+    '/dashboard/settings/appearance': 'SettingsAppearance',
+    '/dashboard/settings/security': 'SettingsSecurity',
     '/dashboard/knowledge-base': 'Knowledge Base',
     '/dashboard/templates/drafts': 'Drafts',
     '/dashboard/templates/active': 'Active Links',
@@ -163,7 +175,7 @@ export default function App() {
     if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Bulk Campaign'].includes(tab)) return 'Workspace';
     if (['Analysis', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
-    if (['Settings'].includes(tab)) return 'Settings';
+    if (['SettingsProfile', 'SettingsDepartments', 'SettingsEmail', 'SettingsAI', 'SettingsIntegrations', 'SettingsAppearance', 'SettingsSecurity'].includes(tab)) return 'Settings';
     if (['Email Automation', 'Email Body', 'Roster Studio', 'Sent', 'Schedule', 'Files'].includes(tab)) return 'Inbox';
     return 'Home'; 
   };
@@ -224,7 +236,14 @@ export default function App() {
       { id: 'Knowledge Base', label: 'Knowledge Base', icon: Sparkles }
     ],
     Settings: [
-      { id: 'Settings', label: 'General Settings', icon: Settings }
+      { id: 'SettingsProfile', label: 'Profile & Account', icon: User },
+      { id: 'SettingsDepartments', label: 'Departments', icon: Building2 },
+      { id: 'SettingsEmail', label: 'Email Configuration', icon: Mail },
+      { id: 'SettingsAI', label: 'AI & GenAI Keys', icon: Shield },
+      { id: 'SettingsIntegrations', label: 'Integrations', icon: Plug },
+      { id: 'divider_settings', isDivider: true },
+      { id: 'SettingsAppearance', label: 'Appearance', icon: Palette },
+      { id: 'SettingsSecurity', label: 'Account & Security', icon: Lock }
     ]
   };
 
@@ -1305,16 +1324,20 @@ export default function App() {
             <AnalysisView meetings={meetings} />
           ) : activeTab === 'Alerts' ? (
             <AlertsView alerts={alerts} onResolveAlert={handleResolveAlert} />
-          ) : activeTab === 'Settings' ? (
-            <SettingsView 
-              defaultRate={defaultRate}
-              confidenceThreshold={confidenceThreshold}
-              onUpdateSettings={handleUpdateSettings}
-              onResetData={handleResetData}
-              onToggleDemo={handleToggleDemo}
-              demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))}
-              onLogout={handleLogout}
-            />
+          ) : activeTab === 'SettingsProfile' ? (
+            <SettingsView section="profile" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
+          ) : activeTab === 'SettingsDepartments' ? (
+            <SettingsView section="departments" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
+          ) : activeTab === 'SettingsEmail' ? (
+            <SettingsView section="email" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
+          ) : activeTab === 'SettingsAI' ? (
+            <SettingsView section="ai" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
+          ) : activeTab === 'SettingsIntegrations' ? (
+            <SettingsView section="integrations" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
+          ) : activeTab === 'SettingsAppearance' ? (
+            <SettingsView section="appearance" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
+          ) : activeTab === 'SettingsSecurity' ? (
+            <SettingsView section="security" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
           ) : (
             // Simple mockup tabs for navigation
             <div style={{ textAlign: 'center', padding: '80px 20px' }} className="glass-panel">

@@ -137,3 +137,26 @@ export const onAuthChange = (callback) => {
   const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
   return subscription;
 };
+
+/**
+ * Get the current user's linked OAuth identities.
+ * @returns {Promise<Array>} Array of identity objects with provider info
+ */
+export const getUserIdentities = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.identities || [];
+};
+
+/**
+ * Unlink an OAuth provider from the current user.
+ * @param {string} provider - e.g. 'github', 'google'
+ * @returns {Promise<{error: string|null}>}
+ */
+export const unlinkProvider = async (provider) => {
+  const { error } = await supabase.auth.unlinkIdentity({ provider });
+  if (error) {
+    console.error(`Failed to unlink ${provider}:`, error);
+    return { error: error.message };
+  }
+  return { error: null };
+};
