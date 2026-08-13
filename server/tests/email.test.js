@@ -113,6 +113,8 @@ beforeEach(async () => {
 const EmailDraft = require('../models/EmailDraft');
 const EmailConfig = require('../models/EmailConfig');
 const EmailCampaign = require('../models/EmailCampaign');
+const EmailAccount = require('../models/EmailAccount');
+const { encrypt } = require('../utils/crypto');
 
 const createDraft = async (ownerUid = 'test-user-uid', overrides = {}) => {
   return EmailDraft.create({
@@ -125,6 +127,21 @@ const createDraft = async (ownerUid = 'test-user-uid', overrides = {}) => {
   });
 };
 
+const createAccount = async (ownerUid = 'test-user-uid', overrides = {}) => {
+  return EmailAccount.create({
+    ownerUid,
+    email: 'test@gmail.com',
+    label: 'Test',
+    authMethod: 'app_password',
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: 587,
+    appPassword: encrypt('testpassword'),
+    isDefault: true,
+    ...overrides,
+  });
+};
+
+// Legacy helper — still used for migration tests
 const createConfig = async (ownerUid = 'test-user-uid', overrides = {}) => {
   return EmailConfig.create({
     ownerUid,
@@ -231,100 +248,103 @@ describe('Email Drafts CRUD', () => {
 });
 
 // ==========================================
-// EMAIL CONFIG
+// EMAIL ACCOUNTS (Multi-Account, Encrypted)
 // ==========================================
 
-describe('Email Config', () => {
-  test('E9: GET /api/email/config returns null when no config', async () => {
+describe('Email Accounts', () => {
+  test('E9: GET /api/email/accounts returns empty array when no accounts', async () => {
     const res = await request(app)
-      .get('/api/email/config')
+      .get('/api/email/accounts')
       .set('x-test-uid', 'test-user-uid');
 
     expect(res.status).toBe(200);
-    expect(res.body.config).toBeNull();
+    expect(res.body.accounts).toEqual([]);
   });
 
-  test('E10: GET returns config with masked fields', async () => {
-    await createConfig();
+  test('E10: GET returns accounts with masked fields', async () => {
+    await createAccount();
 
     const res = await request(app)
-      .get('/api/email/config')
+      .get('/api/email/accounts')
       .set('x-test-uid', 'test-user-uid');
 
     expect(res.status).toBe(200);
-    expect(res.body.config).toBeDefined();
-    expect(res.body.config.email).toBe('test@gmail.com');
-    expect(res.body.config.authMethod).toBe('app_password');
-    expect(res.body.config.hasAppPassword).toBe(true);
-    expect(res.body.config.appPassword).toBeUndefined();
+    expect(res.body.accounts).toHaveLength(1);
+    expect(res.body.accounts[0].email).toBe('test@gmail.com');
+    expect(res.body.accounts[0].authMethod).toBe('app_password');
+    expect(res.body.accounts[0].hasAppPassword).toBe(true);
+    expect(res.body.accounts[0].appPassword).toBeUndefined();
+    expect(res.body.accounts[0].isDefault).toBe(true);
   });
 
   test('E11: GET returns clientId and hasClientSecret for OAuth2', async () => {
-    await createConfig('test-user-uid', {
+    await createAccount('test-user-uid', {
       authMethod: 'oauth2',
       appPassword: null,
-      refreshToken: 'refresh-token-123',
+      refreshToken: encrypt('refresh-token-123'),
       clientId: 'client-id-123',
-      clientSecret: 'client-secret-123',
+      clientSecret: encrypt('client-secret-123'),
     });
 
     const res = await request(app)
-      .get('/api/email/config')
+      .get('/api/email/accounts')
       .set('x-test-uid', 'test-user-uid');
 
     expect(res.status).toBe(200);
-    expect(res.body.config.clientId).toBe('client-id-123');
-    expect(res.body.config.hasClientSecret).toBe(true);
-    expect(res.body.config.hasRefreshToken).toBe(true);
-    expect(res.body.config.clientSecret).toBeUndefined();
+    expect(res.body.accounts[0].clientId).toBe('client-id-123');
+    expect(res.body.accounts[0].hasClientSecret).toBe(true);
+    expect(res.body.accounts[0].hasRefreshToken).toBe(true);
+    expect(res.body.accounts[0].clientSecret).toBeUndefined();
   });
 
-  test('E12: PUT /api/email/config upserts config', async () => {
+  test('E12: POST /api/email/accounts creates account', async () => {
     const res = await request(app)
-      .put('/api/email/config')
+      .post('/api/email/accounts')
       .set('x-test-uid', 'test-user-uid')
       .send({
         email: 'new@gmail.com',
+        label: 'Work',
         authMethod: 'app_password',
         smtpHost: 'smtp.gmail.com',
         smtpPort: 587,
         appPassword: 'newpassword',
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body.config.email).toBe('new@gmail.com');
-    expect(res.body.config.hasAppPassword).toBe(true);
+    expect(res.status).toBe(201);
+    expect(res.body.account.email).toBe('new@gmail.com');
+    expect(res.body.account.hasAppPassword).toBe(true);
+    expect(res.body.account.isDefault).toBe(true);
   });
 
-  test('E13: PUT returns 400 when email is missing', async () => {
+  test('E13: POST returns 400 when email is missing', async () => {
     const res = await request(app)
-      .put('/api/email/config')
+      .post('/api/email/accounts')
       .set('x-test-uid', 'test-user-uid')
       .send({ authMethod: 'app_password' });
 
     expect(res.status).toBe(400);
   });
 
-  test('E14: PUT returns 400 when authMethod is missing', async () => {
+  test('E14: POST returns 400 when authMethod is missing', async () => {
     const res = await request(app)
-      .put('/api/email/config')
+      .post('/api/email/accounts')
       .set('x-test-uid', 'test-user-uid')
       .send({ email: 'test@gmail.com' });
 
     expect(res.status).toBe(400);
   });
 
-  test('E15: DELETE /api/email/config removes config', async () => {
-    await createConfig();
+  test('E15: DELETE /api/email/accounts/:id removes account', async () => {
+    const account = await createAccount();
 
     const res = await request(app)
-      .delete('/api/email/config')
+      .delete(`/api/email/accounts/${account._id}`)
       .set('x-test-uid', 'test-user-uid');
 
     expect(res.status).toBe(200);
     expect(res.body.message).toContain('deleted');
 
-    const stillExists = await EmailConfig.findOne({ ownerUid: 'test-user-uid' });
+    const stillExists = await EmailAccount.findById(account._id);
     expect(stillExists).toBeNull();
   });
 });
@@ -336,7 +356,7 @@ describe('Email Config', () => {
 describe('Email Campaign Send', () => {
   test('E16: POST /api/email/send sends campaign with variable substitution', async () => {
     const draft = await createDraft();
-    await createConfig();
+    await createAccount();
 
     const res = await request(app)
       .post('/api/email/send')
@@ -391,7 +411,7 @@ describe('Email Campaign Send', () => {
     expect(res.status).toBe(404);
   });
 
-  test('E20: POST /api/email/send returns 400 when no email config', async () => {
+  test('E20: POST /api/email/send returns 400 when no email account', async () => {
     const draft = await createDraft();
 
     const res = await request(app)
@@ -400,12 +420,12 @@ describe('Email Campaign Send', () => {
       .send({ draftId: draft._id.toString(), recipients: [{ email: 'a@b.com' }] });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('email config');
+    expect(res.body.error).toContain('email account');
   });
 
   test('E21: POST /api/email/send tracks failed sends', async () => {
     const draft = await createDraft();
-    await createConfig();
+    await createAccount();
 
     mockSendMail
       .mockResolvedValueOnce({ messageId: 'ok' })
@@ -429,7 +449,7 @@ describe('Email Campaign Send', () => {
 
   test('E22: POST /api/email/send inserts into Supabase email_send_log', async () => {
     const draft = await createDraft();
-    await createConfig();
+    await createAccount();
 
     await request(app)
       .post('/api/email/send')
@@ -450,7 +470,7 @@ describe('Email Campaign Send', () => {
 describe('Email Scheduling', () => {
   test('E23: POST /api/email/schedule schedules campaign', async () => {
     const draft = await createDraft();
-    await createConfig();
+    await createAccount();
 
     const futureDate = new Date(Date.now() + 3600000).toISOString();
 
@@ -681,7 +701,7 @@ describe('Email Send Log & Campaigns', () => {
 
 describe('Email Test Send', () => {
   test('E36: POST /api/email/test sends test email', async () => {
-    await createConfig();
+    await createAccount();
 
     const res = await request(app)
       .post('/api/email/test')
@@ -692,13 +712,13 @@ describe('Email Test Send', () => {
     expect(mockSendMail).toHaveBeenCalledTimes(1);
   });
 
-  test('E37: POST /api/email/test returns 400 when no config', async () => {
+  test('E37: POST /api/email/test returns 400 when no account', async () => {
     const res = await request(app)
       .post('/api/email/test')
       .set('x-test-uid', 'test-user-uid');
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('No email config');
+    expect(res.body.error).toContain('email account');
   });
 });
 

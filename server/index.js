@@ -1381,7 +1381,7 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
       campaign_id: campaign._id.toString(),
       draft_id: draftId,
       draft_title: draft.subject || 'Untitled',
-      sender_email: config.email,
+      sender_email: account.email,
       recipient_count: recipients.length,
       sent_count: sentCount,
       failed_count: failedCount,
