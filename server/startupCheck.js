@@ -5,7 +5,7 @@ async function checkMongoDB() {
   try {
     if (mongoose.connection.readyState === 1) {
       const dbName = mongoose.connection.db?.databaseName || 'unknown';
-      return { ok: true, msg: `Connected (${dbName})` };
+      return { ok: true, msg: `Health check passed (ping ok, db: ${dbName})` };
     }
     return { ok: false, msg: 'Not connected (readyState: ' + mongoose.connection.readyState + ')' };
   } catch (e) {
@@ -22,7 +22,7 @@ async function checkSupabase() {
     if (error) {
       return { ok: false, msg: 'Query failed: ' + error.message };
     }
-    return { ok: true, msg: 'Connected (profiles table accessible)' };
+    return { ok: true, msg: 'Health check passed (profiles table accessible)' };
   } catch (e) {
     return { ok: false, msg: e.message };
   }
