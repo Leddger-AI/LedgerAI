@@ -1486,11 +1486,25 @@ app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// CLOUDINARY ENDPOINTS
+// CLOUDINARY + IMAGE PROCESSING ENDPOINTS
 // ==========================================
 
 const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const sharp = require('sharp');
+
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.'), false);
+    }
+  },
+});
 
 function getCloudinary() {
   try {
@@ -1500,96 +1514,202 @@ function getCloudinary() {
   }
 }
 
+function configureCloudinary() {
+  const cloudinary = getCloudinary();
+  if (!cloudinary) return null;
+
+  const cloudName = process.env.CLOUDINARY_CLOUDNAME || process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECREAT || process.env.CLOUDINARY_API_SECRET;
+
+  if (!cloudName || !apiKey || !apiSecret) return null;
+
+  cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+  return cloudinary;
+}
+
+/**
+ * Compress image buffer to WebP format under target file size.
+ * Uses iterative quality reduction (brute-force) since Sharp has no
+ * built-in target-size option. Starts at quality 80, steps down by 10.
+ *
+ * @param {Buffer} buffer - Raw image buffer from Multer
+ * @param {number} maxBytes - Target max file size in bytes (default: 50KB)
+ * @param {number} dimension - Square output dimension (default: 256px)
+ * @returns {Promise<Buffer>} Compressed WebP image buffer
+ */
+async function compressToTargetSize(buffer, maxBytes = 50 * 1024, dimension = 256) {
+  let quality = 80;
+  let output = buffer;
+
+  while (quality >= 20) {
+    output = await sharp(buffer)
+      .resize(dimension, dimension, { fit: 'cover', position: 'center' })
+      .webp({ quality, effort: 4 })
+      .toBuffer();
+
+    if (output.length <= maxBytes) break;
+    quality -= 10;
+  }
+
+  return output;
+}
+
+// GET /api/cloudinary/status — check if Cloudinary is configured
 app.get('/api/cloudinary/status', verifyToken, async (req, res) => {
   try {
-    const cloudinary = getCloudinary();
+    const cloudinary = configureCloudinary();
     if (!cloudinary) {
-      return res.json({ configured: false, message: 'cloudinary module not installed' });
+      return res.json({ configured: false, message: 'Cloudinary not installed or env vars not set' });
     }
 
     const cloudName = process.env.CLOUDINARY_CLOUDNAME || process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECREAT || process.env.CLOUDINARY_API_SECRET;
-
-    if (!cloudName || !apiKey || !apiSecret) {
-      return res.json({ configured: false, message: 'Cloudinary env vars not set' });
-    }
-
-    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
     const result = await cloudinary.api.ping();
-
     res.json({ configured: true, cloudName, status: result.status });
   } catch (error) {
     res.json({ configured: false, message: error.message });
   }
 });
 
-app.post('/api/cloudinary/upload', verifyToken, upload.single('file'), async (req, res) => {
+// POST /api/cloudinary/avatar — upload user avatar with Sharp + WebP compression
+app.post('/api/cloudinary/avatar', verifyToken, upload.single('file'), async (req, res) => {
   try {
-    const cloudinary = getCloudinary();
+    const cloudinary = configureCloudinary();
     if (!cloudinary) {
-      return res.status(500).json({ error: 'Cloudinary not installed on server' });
+      return res.status(500).json({ error: 'Cloudinary not configured. Set CLOUDINARY_CLOUDNAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECREAT env vars.' });
     }
 
-    const cloudName = process.env.CLOUDINARY_CLOUDNAME || process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECREAT || process.env.CLOUDINARY_API_SECRET;
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
 
-    if (!cloudName || !apiKey || !apiSecret) {
+    const userId = req.user.uid;
+    const publicId = `avatars/${userId}`;
+
+    // Compress image to WebP, 256x256, under 50KB
+    const compressedBuffer = await compressToTargetSize(req.file.buffer, 50 * 1024, 256);
+    const sizeKb = Math.ceil(compressedBuffer.length / 1024);
+
+    // Upload to Cloudinary with user-scoped public_id (overwrite: true replaces old avatar)
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          public_id: publicId,
+          overwrite: true,
+          resource_type: 'image',
+          format: 'webp',
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(compressedBuffer);
+    });
+
+    // Update Supabase profiles table with new avatar_url
+    try {
+      await supabase
+        .from('profiles')
+        .update({ avatar_url: uploadResult.secure_url, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+    } catch (supabaseErr) {
+      console.warn('Failed to update profile avatar_url in Supabase:', supabaseErr.message);
+    }
+
+    res.json({
+      secure_url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+      format: 'webp',
+      size_kb: sizeKb,
+      width: 256,
+      height: 256,
+    });
+  } catch (error) {
+    console.error('Avatar upload error:', error);
+    res.status(500).json({ error: 'Failed to upload avatar: ' + error.message });
+  }
+});
+
+// DELETE /api/cloudinary/avatar — remove user avatar from Cloudinary + Supabase
+app.delete('/api/cloudinary/avatar', verifyToken, async (req, res) => {
+  try {
+    const cloudinary = configureCloudinary();
+    if (!cloudinary) {
       return res.status(500).json({ error: 'Cloudinary not configured' });
     }
 
-    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+    const userId = req.user.uid;
+    const publicId = `avatars/${userId}`;
+
+    const destroyResult = await cloudinary.uploader.destroy(publicId);
+
+    // Clear avatar_url in Supabase
+    try {
+      await supabase
+        .from('profiles')
+        .update({ avatar_url: null, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+    } catch (supabaseErr) {
+      console.warn('Failed to clear profile avatar_url in Supabase:', supabaseErr.message);
+    }
+
+    res.json({ result: destroyResult.result, publicId });
+  } catch (error) {
+    console.error('Avatar delete error:', error);
+    res.status(500).json({ error: 'Failed to delete avatar' });
+  }
+});
+
+// POST /api/cloudinary/upload — generic file upload (non-avatar)
+app.post('/api/cloudinary/upload', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    const cloudinary = configureCloudinary();
+    if (!cloudinary) {
+      return res.status(500).json({ error: 'Cloudinary not configured' });
+    }
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }
 
     const folder = req.body.folder || 'leddger-ai';
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'auto',
-        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
-      },
-      (error, result) => {
-        if (error) {
-          return res.status(500).json({ error: 'Upload failed: ' + error.message });
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          resource_type: 'auto',
+          transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
         }
-        res.json({
-          secure_url: result.secure_url,
-          public_id: result.public_id,
-          format: result.format,
-          width: result.width,
-          height: result.height,
-          bytes: result.bytes,
-        });
-      }
-    );
+      );
+      uploadStream.end(req.file.buffer);
+    });
 
-    uploadStream.end(req.file.buffer);
+    res.json({
+      secure_url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+      format: uploadResult.format,
+      width: uploadResult.width,
+      height: uploadResult.height,
+      bytes: uploadResult.bytes,
+    });
   } catch (error) {
     console.error('Cloudinary upload error:', error);
     res.status(500).json({ error: 'Failed to upload file' });
   }
 });
 
+// DELETE /api/cloudinary/:publicId — generic asset delete
 app.delete('/api/cloudinary/:publicId', verifyToken, async (req, res) => {
   try {
-    const cloudinary = getCloudinary();
+    const cloudinary = configureCloudinary();
     if (!cloudinary) {
-      return res.status(500).json({ error: 'Cloudinary not installed' });
-    }
-
-    const cloudName = process.env.CLOUDINARY_CLOUDNAME || process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECREAT || process.env.CLOUDINARY_API_SECRET;
-
-    if (!cloudName || !apiKey || !apiSecret) {
       return res.status(500).json({ error: 'Cloudinary not configured' });
     }
-
-    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
 
     const publicId = decodeURIComponent(req.params.publicId);
     const result = await cloudinary.uploader.destroy(publicId);
@@ -1597,6 +1717,63 @@ app.delete('/api/cloudinary/:publicId', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Cloudinary delete error:', error);
     res.status(500).json({ error: 'Failed to delete asset' });
+  }
+});
+
+// ==========================================
+// USER PROFILE ENDPOINTS
+// ==========================================
+
+// GET /api/user/profile — fetch current user's profile from Supabase
+app.get('/api/user/profile', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const profile = await getOrCreateUser(userId, req.user.email);
+
+    res.json({
+      id: profile?.id || userId,
+      email: profile?.email || req.user.email || '',
+      display_name: profile?.display_name || '',
+      avatar_url: profile?.avatar_url || null,
+      departments: profile?.departments || [],
+    });
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// PUT /api/user/profile — update display name and/or avatar_url
+app.put('/api/user/profile', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { display_name, avatar_url } = req.body || {};
+
+    const updates = { updated_at: new Date().toISOString() };
+    if (display_name !== undefined) updates.display_name = display_name;
+    if (avatar_url !== undefined) updates.avatar_url = avatar_url;
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (error) {
+      return res.status(400).json({ error: 'Failed to update profile: ' + error.message });
+    }
+
+    res.json({
+      id: data.id,
+      email: data.email,
+      display_name: data.display_name,
+      avatar_url: data.avatar_url,
+      departments: data.departments || [],
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
   }
 });
 
