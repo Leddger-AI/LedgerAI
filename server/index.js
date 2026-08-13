@@ -14,6 +14,8 @@ const Spreadsheet = require('./models/Spreadsheet');
 const EmailDraft = require('./models/EmailDraft');
 const EmailConfig = require('./models/EmailConfig');
 const EmailCampaign = require('./models/EmailCampaign');
+const EmailAccount = require('./models/EmailAccount');
+const { encrypt, decrypt } = require('./utils/crypto');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
 const { v4: uuidv4 } = require('uuid');
@@ -1030,148 +1032,252 @@ app.delete('/api/email/drafts/:id', verifyToken, async (req, res) => {
   }
 });
 
-// --- Email Config (SMTP / OAuth2) ---
+// --- Email Accounts (Multi-Account, Encrypted) ---
 
-app.get('/api/email/config', verifyToken, async (req, res) => {
-  try {
-    const config = await EmailConfig.findOne({ ownerUid: req.user.uid });
-    if (!config) {
-      return res.json({ config: null });
-    }
-    res.json({
-      config: {
-        email: config.email,
-        authMethod: config.authMethod,
-        smtpHost: config.smtpHost,
-        smtpPort: config.smtpPort,
-        clientId: config.clientId || '',
-        isActive: config.isActive,
-        hasAppPassword: !!config.appPassword,
-        hasRefreshToken: !!config.refreshToken,
-        hasClientSecret: !!config.clientSecret,
+async function buildTransporterFromAccount(account) {
+  const nodemailer = require('nodemailer');
+  if (account.authMethod === 'oauth2') {
+    const { google } = require('googleapis');
+    const OAuth2 = google.auth.OAuth2;
+    const oauth2Client = new OAuth2(
+      account.clientId,
+      decrypt(account.clientSecret),
+      'https://developers.google.com/oauthplayground'
+    );
+    oauth2Client.setCredentials({ refresh_token: decrypt(account.refreshToken) });
+    const accessToken = await new Promise((resolve, reject) => {
+      oauth2Client.getAccessToken((err, token) => {
+        if (err) reject(err);
+        resolve(token);
+      });
+    });
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        type: 'OAuth2',
+        user: account.email,
+        accessToken,
+        clientId: account.clientId,
+        clientSecret: decrypt(account.clientSecret),
+        refreshToken: decrypt(account.refreshToken),
       },
     });
+  } else {
+    return nodemailer.createTransport({
+      host: account.smtpHost,
+      port: account.smtpPort,
+      secure: account.smtpPort === 465,
+      auth: {
+        user: account.email,
+        pass: decrypt(account.appPassword),
+      },
+    });
+  }
+}
+
+async function migrateLegacyEmailConfig(userId) {
+  const existing = await EmailAccount.findOne({ ownerUid: userId });
+  if (existing) return;
+  const legacy = await EmailConfig.findOne({ ownerUid: userId });
+  if (!legacy) return;
+  await EmailAccount.create({
+    ownerUid: userId,
+    email: legacy.email,
+    label: 'Migrated',
+    authMethod: legacy.authMethod,
+    smtpHost: legacy.smtpHost,
+    smtpPort: legacy.smtpPort,
+    appPassword: legacy.appPassword ? encrypt(legacy.appPassword) : null,
+    refreshToken: legacy.refreshToken ? encrypt(legacy.refreshToken) : null,
+    clientId: legacy.clientId || null,
+    clientSecret: legacy.clientSecret ? encrypt(legacy.clientSecret) : null,
+    isDefault: true,
+    isActive: legacy.isActive,
+  });
+}
+
+function formatAccountResponse(account) {
+  return {
+    id: account._id,
+    email: account.email,
+    label: account.label || '',
+    authMethod: account.authMethod,
+    smtpHost: account.smtpHost,
+    smtpPort: account.smtpPort,
+    clientId: account.clientId || '',
+    isDefault: account.isDefault,
+    isActive: account.isActive,
+    hasAppPassword: !!account.appPassword,
+    hasRefreshToken: !!account.refreshToken,
+    hasClientSecret: !!account.clientSecret,
+  };
+}
+
+app.get('/api/email/accounts', verifyToken, async (req, res) => {
+  try {
+    await migrateLegacyEmailConfig(req.user.uid);
+    const accounts = await EmailAccount.find({ ownerUid: req.user.uid }).sort({ isDefault: -1, createdAt: 1 });
+    res.json({ accounts: accounts.map(formatAccountResponse) });
   } catch (error) {
-    console.error('Error fetching email config:', error);
-    res.status(500).json({ error: 'Failed to fetch email config' });
+    console.error('Error fetching email accounts:', error);
+    res.status(500).json({ error: 'Failed to fetch email accounts' });
   }
 });
 
-app.put('/api/email/config', verifyToken, async (req, res) => {
+app.post('/api/email/accounts', verifyToken, async (req, res) => {
   try {
-    const { email, authMethod, smtpHost, smtpPort, appPassword, refreshToken, clientId, clientSecret } = req.body;
+    const { email, label, authMethod, smtpHost, smtpPort, appPassword, refreshToken, clientId, clientSecret } = req.body;
 
     if (!email || !authMethod) {
       return res.status(400).json({ error: 'email and authMethod are required' });
     }
 
-    const updateData = {
+    const existing = await EmailAccount.findOne({ ownerUid: req.user.uid, email });
+    if (existing) {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    const count = await EmailAccount.countDocuments({ ownerUid: req.user.uid });
+
+    const accountData = {
+      ownerUid: req.user.uid,
       email,
+      label: label || '',
       authMethod,
-      updatedAt: new Date(),
+      smtpHost: smtpHost || 'smtp.gmail.com',
+      smtpPort: smtpPort || 587,
+      isDefault: count === 0,
     };
 
     if (authMethod === 'app_password') {
-      if (smtpHost) updateData.smtpHost = smtpHost;
-      if (smtpPort) updateData.smtpPort = smtpPort;
-      if (appPassword) updateData.appPassword = appPassword;
+      if (!appPassword) return res.status(400).json({ error: 'appPassword is required for app_password auth' });
+      accountData.appPassword = encrypt(appPassword);
     } else if (authMethod === 'oauth2') {
-      if (refreshToken) updateData.refreshToken = refreshToken;
-      if (clientId) updateData.clientId = clientId;
-      if (clientSecret) updateData.clientSecret = clientSecret;
+      if (!refreshToken || !clientId || !clientSecret) {
+        return res.status(400).json({ error: 'refreshToken, clientId, and clientSecret are required for oauth2 auth' });
+      }
+      accountData.refreshToken = encrypt(refreshToken);
+      accountData.clientId = clientId;
+      accountData.clientSecret = encrypt(clientSecret);
     }
 
-    const config = await EmailConfig.findOneAndUpdate(
-      { ownerUid: req.user.uid },
-      { $set: updateData },
-      { upsert: true, new: true }
-    );
-
-    res.json({
-      message: 'Email config saved',
-      config: {
-        email: config.email,
-        authMethod: config.authMethod,
-        smtpHost: config.smtpHost,
-        smtpPort: config.smtpPort,
-        clientId: config.clientId || '',
-        isActive: config.isActive,
-        hasAppPassword: !!config.appPassword,
-        hasRefreshToken: !!config.refreshToken,
-        hasClientSecret: !!config.clientSecret,
-      },
-    });
+    const account = await EmailAccount.create(accountData);
+    res.status(201).json({ account: formatAccountResponse(account) });
   } catch (error) {
-    console.error('Error saving email config:', error);
-    res.status(500).json({ error: 'Failed to save email config' });
+    console.error('Error creating email account:', error);
+    res.status(500).json({ error: 'Failed to create email account' });
   }
 });
 
-app.delete('/api/email/config', verifyToken, async (req, res) => {
+app.put('/api/email/accounts/:id', verifyToken, async (req, res) => {
   try {
-    await EmailConfig.deleteOne({ ownerUid: req.user.uid });
-    res.json({ message: 'Email config deleted' });
+    const { label, smtpHost, smtpPort, appPassword, refreshToken, clientId, clientSecret } = req.body;
+
+    const account = await EmailAccount.findOne({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!account) {
+      return res.status(404).json({ error: 'Email account not found' });
+    }
+
+    if (label !== undefined) account.label = label;
+    if (smtpHost) account.smtpHost = smtpHost;
+    if (smtpPort) account.smtpPort = smtpPort;
+    if (appPassword) account.appPassword = encrypt(appPassword);
+    if (refreshToken) account.refreshToken = encrypt(refreshToken);
+    if (clientId) account.clientId = clientId;
+    if (clientSecret) account.clientSecret = encrypt(clientSecret);
+    account.updatedAt = new Date();
+
+    await account.save();
+    res.json({ account: formatAccountResponse(account) });
   } catch (error) {
-    console.error('Error deleting email config:', error);
-    res.status(500).json({ error: 'Failed to delete email config' });
+    console.error('Error updating email account:', error);
+    res.status(500).json({ error: 'Failed to update email account' });
   }
 });
 
-// --- Email Test Send ---
+app.delete('/api/email/accounts/:id', verifyToken, async (req, res) => {
+  try {
+    const account = await EmailAccount.findOneAndDelete({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!account) {
+      return res.status(404).json({ error: 'Email account not found' });
+    }
+
+    if (account.isDefault) {
+      const next = await EmailAccount.findOne({ ownerUid: req.user.uid }).sort({ createdAt: 1 });
+      if (next) {
+        next.isDefault = true;
+        await next.save();
+      }
+    }
+
+    res.json({ message: 'Email account deleted' });
+  } catch (error) {
+    console.error('Error deleting email account:', error);
+    res.status(500).json({ error: 'Failed to delete email account' });
+  }
+});
+
+app.put('/api/email/accounts/:id/default', verifyToken, async (req, res) => {
+  try {
+    await EmailAccount.updateMany({ ownerUid: req.user.uid }, { isDefault: false });
+    const account = await EmailAccount.findOneAndUpdate(
+      { _id: req.params.id, ownerUid: req.user.uid },
+      { isDefault: true, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!account) {
+      return res.status(404).json({ error: 'Email account not found' });
+    }
+    res.json({ account: formatAccountResponse(account) });
+  } catch (error) {
+    console.error('Error setting default email account:', error);
+    res.status(500).json({ error: 'Failed to set default account' });
+  }
+});
+
+app.post('/api/email/accounts/:id/test', verifyToken, async (req, res) => {
+  try {
+    const account = await EmailAccount.findOne({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!account) {
+      return res.status(404).json({ error: 'Email account not found' });
+    }
+
+    const transporter = await buildTransporterFromAccount(account);
+    await transporter.sendMail({
+      from: account.email,
+      to: account.email,
+      subject: 'LedgerAI — Test Email',
+      html: '<p>This is a test email from LedgerAI. Your email account configuration is working correctly!</p>',
+    });
+
+    res.json({ message: 'Test email sent successfully' });
+  } catch (error) {
+    console.error('Error sending test email:', error);
+    res.status(500).json({ error: 'Failed to send test email: ' + error.message });
+  }
+});
+
+// --- Email Test Send (legacy, uses default account) ---
 
 app.post('/api/email/test', verifyToken, async (req, res) => {
   try {
-    const config = await EmailConfig.findOne({ ownerUid: req.user.uid });
-    if (!config) {
-      return res.status(400).json({ error: 'No email config found. Please configure your email settings first.' });
-    }
-
-    const nodemailer = require('nodemailer');
-    let transporter;
-
-    if (config.authMethod === 'oauth2') {
-      const { google } = require('googleapis');
-      const OAuth2 = google.auth.OAuth2;
-      const oauth2Client = new OAuth2(
-        config.clientId,
-        config.clientSecret,
-        'https://developers.google.com/oauthplayground'
-      );
-      oauth2Client.setCredentials({ refresh_token: config.refreshToken });
-
-      const accessToken = await new Promise((resolve, reject) => {
-        oauth2Client.getAccessToken((err, token) => {
-          if (err) reject(err);
-          resolve(token);
-        });
-      });
-
-      transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          type: 'OAuth2',
-          user: config.email,
-          accessToken,
-          clientId: config.clientId,
-          clientSecret: config.clientSecret,
-          refreshToken: config.refreshToken,
-        },
-      });
+    await migrateLegacyEmailConfig(req.user.uid);
+    const { accountId } = req.body || {};
+    let account;
+    if (accountId) {
+      account = await EmailAccount.findOne({ _id: accountId, ownerUid: req.user.uid });
     } else {
-      transporter = nodemailer.createTransport({
-        host: config.smtpHost,
-        port: config.smtpPort,
-        secure: config.smtpPort === 465,
-        auth: {
-          user: config.email,
-          pass: config.appPassword,
-        },
-      });
+      account = await EmailAccount.findOne({ ownerUid: req.user.uid, isDefault: true })
+        || await EmailAccount.findOne({ ownerUid: req.user.uid }).sort({ createdAt: 1 });
+    }
+    if (!account) {
+      return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
     }
 
+    const transporter = await buildTransporterFromAccount(account);
     await transporter.sendMail({
-      from: config.email,
-      to: config.email,
+      from: account.email,
+      to: account.email,
       subject: 'LedgerAI — Test Email',
       html: '<p>This is a test email from LedgerAI Email Automation. Your email configuration is working correctly!</p>',
     });
@@ -1187,7 +1293,7 @@ app.post('/api/email/test', verifyToken, async (req, res) => {
 
 app.post('/api/email/send', verifyToken, async (req, res) => {
   try {
-    const { draftId, recipients, campaignName } = req.body;
+    const { draftId, recipients, campaignName, accountId } = req.body;
 
     if (!draftId) {
       return res.status(400).json({ error: 'draftId is required' });
@@ -1201,9 +1307,16 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Draft not found' });
     }
 
-    const config = await EmailConfig.findOne({ ownerUid: req.user.uid });
-    if (!config) {
-      return res.status(400).json({ error: 'No email config found. Please configure your email settings first.' });
+    await migrateLegacyEmailConfig(req.user.uid);
+    let account;
+    if (accountId) {
+      account = await EmailAccount.findOne({ _id: accountId, ownerUid: req.user.uid });
+    } else {
+      account = await EmailAccount.findOne({ ownerUid: req.user.uid, isDefault: true })
+        || await EmailAccount.findOne({ ownerUid: req.user.uid }).sort({ createdAt: 1 });
+    }
+    if (!account) {
+      return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
     }
 
     // Create campaign
@@ -1220,49 +1333,8 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
       })),
     });
 
-    // Build transporter
-    const nodemailer = require('nodemailer');
-    let transporter;
-
-    if (config.authMethod === 'oauth2') {
-      const { google } = require('googleapis');
-      const OAuth2 = google.auth.OAuth2;
-      const oauth2Client = new OAuth2(
-        config.clientId,
-        config.clientSecret,
-        'https://developers.google.com/oauthplayground'
-      );
-      oauth2Client.setCredentials({ refresh_token: config.refreshToken });
-
-      const accessToken = await new Promise((resolve, reject) => {
-        oauth2Client.getAccessToken((err, token) => {
-          if (err) reject(err);
-          resolve(token);
-        });
-      });
-
-      transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          type: 'OAuth2',
-          user: config.email,
-          accessToken,
-          clientId: config.clientId,
-          clientSecret: config.clientSecret,
-          refreshToken: config.refreshToken,
-        },
-      });
-    } else {
-      transporter = nodemailer.createTransport({
-        host: config.smtpHost,
-        port: config.smtpPort,
-        secure: config.smtpPort === 465,
-        auth: {
-          user: config.email,
-          pass: config.appPassword,
-        },
-      });
-    }
+    // Build transporter from selected account
+    const transporter = await buildTransporterFromAccount(account);
 
     // Send emails
     let sentCount = 0;
@@ -1281,7 +1353,7 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
         }
 
         await transporter.sendMail({
-          from: config.email,
+          from: account.email,
           to: recipient.email,
           subject,
           html: bodyHtml,
@@ -1396,7 +1468,7 @@ app.get('/api/email/campaigns/:id', verifyToken, async (req, res) => {
 
 app.post('/api/email/schedule', verifyToken, async (req, res) => {
   try {
-    const { draftId, recipients, campaignName, scheduledAt } = req.body;
+    const { draftId, recipients, campaignName, scheduledAt, accountId } = req.body;
 
     if (!draftId) return res.status(400).json({ error: 'draftId is required' });
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -1415,9 +1487,16 @@ app.post('/api/email/schedule', verifyToken, async (req, res) => {
     const draft = await EmailDraft.findOne({ _id: draftId, ownerUid: req.user.uid });
     if (!draft) return res.status(404).json({ error: 'Draft not found' });
 
-    const config = await EmailConfig.findOne({ ownerUid: req.user.uid });
-    if (!config) {
-      return res.status(400).json({ error: 'No email config found. Please configure your email settings first.' });
+    await migrateLegacyEmailConfig(req.user.uid);
+    let account;
+    if (accountId) {
+      account = await EmailAccount.findOne({ _id: accountId, ownerUid: req.user.uid });
+    } else {
+      account = await EmailAccount.findOne({ ownerUid: req.user.uid, isDefault: true })
+        || await EmailAccount.findOne({ ownerUid: req.user.uid }).sort({ createdAt: 1 });
+    }
+    if (!account) {
+      return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
     }
 
     const campaign = await EmailCampaign.create({
@@ -1774,6 +1853,135 @@ app.put('/api/user/profile', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error updating profile:', error);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// DELETE /api/user/data — wipe all user data from Supabase + MongoDB + Cloudinary (keeps auth account)
+app.delete('/api/user/data', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { confirmEmail } = req.body || {};
+
+    if (!confirmEmail || confirmEmail !== req.user.email) {
+      return res.status(400).json({ error: 'Email confirmation does not match your account email.' });
+    }
+
+    const deleted = { supabase: [], mongodb: [], cloudinary: [] };
+
+    // --- Supabase deletions ---
+    const supabaseTables = ['form_drafts', 'form_submissions', 'meetings', 'alerts', 'candidates', 'email_send_log'];
+    for (const table of supabaseTables) {
+      const { error } = await supabase.from(table).delete().eq('user_id', userId);
+      if (!error) deleted.supabase.push(table);
+    }
+
+    // Reset profile (keep row, clear data)
+    await supabase.from('profiles').update({
+      display_name: null,
+      avatar_url: null,
+      departments: [],
+      updated_at: new Date().toISOString(),
+    }).eq('id', userId);
+    deleted.supabase.push('profiles (reset)');
+
+    // --- MongoDB deletions ---
+    const mongoModels = [
+      { name: 'EmailAccount', model: EmailAccount },
+      { name: 'EmailConfig', model: EmailConfig },
+      { name: 'EmailDraft', model: EmailDraft },
+      { name: 'EmailCampaign', model: EmailCampaign },
+      { name: 'Spreadsheet', model: Spreadsheet },
+    ];
+    for (const { name, model } of mongoModels) {
+      const result = await model.deleteMany({ ownerUid: userId });
+      deleted.mongodb.push(`${name} (${result.deletedCount})`);
+    }
+
+    // User model uses firebaseUid
+    const User = require('./models/User');
+    const userResult = await User.deleteMany({ firebaseUid: userId });
+    deleted.mongodb.push(`User (${userResult.deletedCount})`);
+
+    // --- Cloudinary avatar deletion ---
+    try {
+      const cloudinary = configureCloudinary();
+      if (cloudinary) {
+        await cloudinary.uploader.destroy(`avatars/${userId}`);
+        deleted.cloudinary.push('avatars/' + userId);
+      }
+    } catch (cloudinaryErr) {
+      // Non-fatal if Cloudinary fails
+    }
+
+    res.json({ success: true, deleted });
+  } catch (error) {
+    console.error('Error deleting user data:', error);
+    res.status(500).json({ error: 'Failed to delete user data: ' + error.message });
+  }
+});
+
+// DELETE /api/user/account — permanently delete user account + all data
+app.delete('/api/user/account', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { confirmEmail } = req.body || {};
+
+    if (!confirmEmail || confirmEmail !== req.user.email) {
+      return res.status(400).json({ error: 'Email confirmation does not match your account email.' });
+    }
+
+    // First, wipe all user data (same as DELETE /api/user/data)
+    const deleted = { supabase: [], mongodb: [], cloudinary: [] };
+
+    const supabaseTables = ['form_drafts', 'form_submissions', 'meetings', 'alerts', 'candidates', 'email_send_log'];
+    for (const table of supabaseTables) {
+      const { error } = await supabase.from(table).delete().eq('user_id', userId);
+      if (!error) deleted.supabase.push(table);
+    }
+
+    await supabase.from('profiles').delete().eq('id', userId);
+    deleted.supabase.push('profiles (deleted)');
+
+    const mongoModels = [
+      { name: 'EmailAccount', model: EmailAccount },
+      { name: 'EmailConfig', model: EmailConfig },
+      { name: 'EmailDraft', model: EmailDraft },
+      { name: 'EmailCampaign', model: EmailCampaign },
+      { name: 'Spreadsheet', model: Spreadsheet },
+    ];
+    for (const { name, model } of mongoModels) {
+      const result = await model.deleteMany({ ownerUid: userId });
+      deleted.mongodb.push(`${name} (${result.deletedCount})`);
+    }
+
+    const User = require('./models/User');
+    const userResult = await User.deleteMany({ firebaseUid: userId });
+    deleted.mongodb.push(`User (${userResult.deletedCount})`);
+
+    try {
+      const cloudinary = configureCloudinary();
+      if (cloudinary) {
+        await cloudinary.uploader.destroy(`avatars/${userId}`);
+        deleted.cloudinary.push('avatars/' + userId);
+      }
+    } catch (cloudinaryErr) {
+      // Non-fatal
+    }
+
+    // Delete the auth account from Supabase
+    const { error: authDeleteError } = await supabase.auth.admin.deleteUser(userId);
+    if (authDeleteError) {
+      console.error('Failed to delete auth account:', authDeleteError);
+      return res.status(500).json({
+        error: 'User data was deleted but failed to delete auth account: ' + authDeleteError.message,
+        deleted,
+      });
+    }
+
+    res.json({ success: true, accountDeleted: true, deleted });
+  } catch (error) {
+    console.error('Error deleting user account:', error);
+    res.status(500).json({ error: 'Failed to delete account: ' + error.message });
   }
 });
 
