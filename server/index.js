@@ -1,4 +1,10 @@
 require('dotenv').config();
+
+const initBorder = '='.repeat(55);
+console.log('\n' + initBorder);
+console.log('  MODULE INITIALIZATION');
+console.log(initBorder);
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -32,11 +38,6 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
-
-const initBorder = '='.repeat(55);
-console.log('\n' + initBorder);
-console.log('  MODULE INITIALIZATION');
-console.log(initBorder);
 
 const mongoConnectPromise = mongoose.connect(MONGODB_URI)
 .then(() => console.log('✅ MongoDB connection established via Mongoose'))
