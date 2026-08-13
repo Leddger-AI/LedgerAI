@@ -9,11 +9,11 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [deletingData, setDeletingData] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
-  const [showDeleteDataModal, setShowDeleteDataModal] = useState(false);
-  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [confirmEmailData, setConfirmEmailData] = useState('');
   const [confirmEmailAccount, setConfirmEmailAccount] = useState('');
-  const [acknowledgeIrreversible, setAcknowledgeIrreversible] = useState(false);
+  const [ackReset, setAckReset] = useState(false);
+  const [ackDeleteData, setAckDeleteData] = useState(false);
+  const [ackDeleteAccount, setAckDeleteAccount] = useState(false);
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
@@ -28,10 +28,9 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
   };
 
   const handleReset = () => {
-    if (confirm('Reset all state and clear cached meetings? This cannot be undone.')) {
-      onResetData();
-      showSuccess('Ledger registry completely reset.');
-    }
+    onResetData();
+    showSuccess('Ledger registry completely reset.');
+    setAckReset(false);
   };
 
   const handleDeleteData = async () => {
@@ -46,10 +45,9 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
       });
 
       if (res.ok) {
-        const data = await res.json();
         showSuccess('All your data has been deleted. Your account remains active.');
-        setShowDeleteDataModal(false);
         setConfirmEmailData('');
+        setAckDeleteData(false);
         setTimeout(() => onLogout(), 2000);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -75,9 +73,8 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
 
       if (res.ok) {
         showSuccess('Your account has been permanently deleted.');
-        setShowDeleteAccountModal(false);
         setConfirmEmailAccount('');
-        setAcknowledgeIrreversible(false);
+        setAckDeleteAccount(false);
         setTimeout(() => onLogout(), 2000);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -91,6 +88,10 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
   };
 
   const userEmail = user?.email || '';
+
+  const dividerStyle = { borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '16px' };
+  const checkboxLabelStyle = { display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' };
+  const checkboxStyle = { marginTop: '2px', cursor: 'pointer' };
 
   return (
     <div>
@@ -144,74 +145,39 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
           Irreversible and destructive actions. Proceed with caution.
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
-              Reset App Registry
-            </div>
-            <div className="settings-hint" style={{ marginTop: '2px' }}>
-              Wipe all alerts, meeting caches, and project cost logs from your browser.
-            </div>
+        {/* Reset App Registry */}
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+            Reset App Registry
           </div>
-          <button type="button" className="settings-btn settings-btn-danger" onClick={handleReset}>
+          <div className="settings-hint" style={{ marginTop: '2px', marginBottom: '12px' }}>
+            Wipe all alerts, meeting caches, and project cost logs from your browser.
+          </div>
+          <label style={checkboxLabelStyle}>
+            <input type="checkbox" checked={ackReset} onChange={(e) => setAckReset(e.target.checked)} style={checkboxStyle} />
+            <span>I understand this will clear all local cached data from my browser.</span>
+          </label>
+          <button type="button" className="settings-btn settings-btn-danger" onClick={handleReset} disabled={!ackReset}>
             <RefreshCw size={14} />
             Format Cache
           </button>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
-              Delete All Data
-            </div>
-            <div className="settings-hint" style={{ marginTop: '2px' }}>
-              Permanently delete all your data from Supabase, MongoDB, and Cloudinary. Your login account remains active.
-            </div>
+        {/* Delete All Data */}
+        <div style={dividerStyle}>
+          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+            Delete All Data
           </div>
-          <button type="button" className="settings-btn settings-btn-danger" onClick={() => setShowDeleteDataModal(true)}>
-            <Trash2 size={14} />
-            Delete Data
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--color-danger)' }}>
-              Delete Account
-            </div>
-            <div className="settings-hint" style={{ marginTop: '2px' }}>
-              Permanently delete your account and ALL associated data. This is irreversible — you will not be able to log in again.
-            </div>
+          <div className="settings-hint" style={{ marginTop: '2px', marginBottom: '12px' }}>
+            Permanently delete all your data from Supabase, MongoDB, and Cloudinary. Your login account remains active.
           </div>
-          <button type="button" className="settings-btn settings-btn-danger" onClick={() => setShowDeleteAccountModal(true)}>
-            <UserX size={14} />
-            Delete Account
-          </button>
-        </div>
-      </div>
-
-      {showDeleteDataModal && (
-        <div className="modal-overlay" onClick={() => !deletingData && setShowDeleteDataModal(false)}>
-          <div className="glass-panel modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Delete All Data</h3>
-              {!deletingData && <button className="modal-close-btn" onClick={() => setShowDeleteDataModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><RefreshCw size={16} /></button>}
-            </div>
-
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              This will permanently delete <strong style={{ color: 'var(--text-primary)' }}>all your data</strong> across Supabase, MongoDB, and Cloudinary, including:
-              <ul style={{ margin: '8px 0', paddingLeft: '20px', color: 'var(--text-muted)', fontSize: '12px' }}>
-                <li>Profile info, avatar, departments</li>
-                <li>All form drafts and submissions</li>
-                <li>All meetings, alerts, candidates</li>
-                <li>All email accounts, drafts, campaigns</li>
-                <li>All email send logs</li>
-              </ul>
-              Your <strong style={{ color: 'var(--text-primary)' }}>login account will remain active</strong> — you can log back in with a fresh workspace.
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Type your email to confirm: <strong style={{ color: 'var(--text-primary)' }}>{userEmail}</strong></label>
+          <label style={checkboxLabelStyle}>
+            <input type="checkbox" checked={ackDeleteData} onChange={(e) => setAckDeleteData(e.target.checked)} disabled={deletingData} style={checkboxStyle} />
+            <span>I understand this will permanently delete all my data across all services. My login account will remain active.</span>
+          </label>
+          {ackDeleteData && (
+            <div className="settings-field" style={{ marginBottom: '12px' }}>
+              <label className="settings-label">Type your email to confirm: <strong style={{ color: 'var(--text-primary)' }}>{userEmail}</strong></label>
               <input
                 type="email"
                 className="settings-input"
@@ -221,38 +187,32 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
                 disabled={deletingData}
               />
             </div>
-
-            <div className="modal-footer">
-              <button className="settings-btn" onClick={() => setShowDeleteDataModal(false)} disabled={deletingData}>
-                Cancel
-              </button>
-              <button
-                className="settings-btn settings-btn-danger"
-                onClick={handleDeleteData}
-                disabled={deletingData || confirmEmailData !== userEmail}
-              >
-                {deletingData ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><Trash2 size={14} /> Delete All Data</>}
-              </button>
-            </div>
-          </div>
+          )}
+          <button
+            type="button"
+            className="settings-btn settings-btn-danger"
+            onClick={handleDeleteData}
+            disabled={deletingData || !ackDeleteData || confirmEmailData !== userEmail}
+          >
+            {deletingData ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><Trash2 size={14} /> Delete All Data</>}
+          </button>
         </div>
-      )}
 
-      {showDeleteAccountModal && (
-        <div className="modal-overlay" onClick={() => !deletingAccount && setShowDeleteAccountModal(false)}>
-          <div className="glass-panel modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ color: 'var(--color-danger)' }}>Delete Account Permanently</h3>
-              {!deletingAccount && <button className="modal-close-btn" onClick={() => setShowDeleteAccountModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><RefreshCw size={16} /></button>}
-            </div>
-
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              <AlertTriangle size={16} style={{ color: 'var(--color-danger)', marginBottom: '4px' }} />
-              This will <strong style={{ color: 'var(--color-danger)' }}>permanently delete your account</strong> and ALL associated data. You will <strong>never be able to log in again</strong> with this email. This action is <strong>irreversible</strong>.
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Type your email to confirm: <strong style={{ color: 'var(--text-primary)' }}>{userEmail}</strong></label>
+        {/* Delete Account */}
+        <div style={dividerStyle}>
+          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--color-danger)' }}>
+            Delete Account
+          </div>
+          <div className="settings-hint" style={{ marginTop: '2px', marginBottom: '12px' }}>
+            Permanently delete your account and ALL associated data. This is irreversible — you will not be able to log in again.
+          </div>
+          <label style={checkboxLabelStyle}>
+            <input type="checkbox" checked={ackDeleteAccount} onChange={(e) => setAckDeleteAccount(e.target.checked)} disabled={deletingAccount} style={checkboxStyle} />
+            <span>I understand this action is irreversible and will permanently delete my account and all data.</span>
+          </label>
+          {ackDeleteAccount && (
+            <div className="settings-field" style={{ marginBottom: '12px' }}>
+              <label className="settings-label">Type your email to confirm: <strong style={{ color: 'var(--text-primary)' }}>{userEmail}</strong></label>
               <input
                 type="email"
                 className="settings-input"
@@ -262,34 +222,17 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
                 disabled={deletingAccount}
               />
             </div>
-
-            <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                <input
-                  type="checkbox"
-                  checked={acknowledgeIrreversible}
-                  onChange={(e) => setAcknowledgeIrreversible(e.target.checked)}
-                  disabled={deletingAccount}
-                />
-                I understand this action is irreversible and will permanently delete my account and all data.
-              </label>
-            </div>
-
-            <div className="modal-footer">
-              <button className="settings-btn" onClick={() => setShowDeleteAccountModal(false)} disabled={deletingAccount}>
-                Cancel
-              </button>
-              <button
-                className="settings-btn settings-btn-danger"
-                onClick={handleDeleteAccount}
-                disabled={deletingAccount || confirmEmailAccount !== userEmail || !acknowledgeIrreversible}
-              >
-                {deletingAccount ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><UserX size={14} /> Delete Account Permanently</>}
-              </button>
-            </div>
-          </div>
+          )}
+          <button
+            type="button"
+            className="settings-btn settings-btn-danger"
+            onClick={handleDeleteAccount}
+            disabled={deletingAccount || !ackDeleteAccount || confirmEmailAccount !== userEmail}
+          >
+            {deletingAccount ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><UserX size={14} /> Delete Account Permanently</>}
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
