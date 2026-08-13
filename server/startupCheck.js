@@ -35,7 +35,10 @@ async function checkRedis() {
     if (!redisUrl) {
       return { ok: false, msg: 'REDIS_URL not set' };
     }
-    const redis = require('redis');
+    let redis;
+    try { redis = require('redis'); } catch (_) {
+      return { ok: false, msg: 'redis module not installed' };
+    }
     client = redis.createClient({ url: redisUrl });
     client.on('error', (err) => {});
     await client.connect();
@@ -56,7 +59,10 @@ async function checkCloudinary() {
     if (!cloudName || !apiKey || !apiSecret) {
       return { ok: false, msg: 'Missing CLOUDINARY_CLOUDNAME/API_KEY/API_SECREAT env vars' };
     }
-    const cloudinary = require('cloudinary').v2;
+    let cloudinary;
+    try { cloudinary = require('cloudinary').v2; } catch (_) {
+      return { ok: false, msg: 'cloudinary module not installed' };
+    }
     cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
     const result = await cloudinary.api.ping();
     return { ok: true, msg: `Connected (cloud: ${cloudName}, status: ${result.status})` };

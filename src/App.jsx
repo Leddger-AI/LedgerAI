@@ -1307,6 +1307,7 @@ export default function App() {
             <AlertsView alerts={alerts} onResolveAlert={handleResolveAlert} />
           ) : activeTab === 'Settings' ? (
             <SettingsView 
+              user={user}
               defaultRate={defaultRate}
               confidenceThreshold={confidenceThreshold}
               onUpdateSettings={handleUpdateSettings}

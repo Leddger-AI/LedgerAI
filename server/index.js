@@ -1479,6 +1479,121 @@ app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
   }
 });
 
+// ==========================================
+// CLOUDINARY ENDPOINTS
+// ==========================================
+
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+function getCloudinary() {
+  try {
+    return require('cloudinary').v2;
+  } catch (_) {
+    return null;
+  }
+}
+
+app.get('/api/cloudinary/status', verifyToken, async (req, res) => {
+  try {
+    const cloudinary = getCloudinary();
+    if (!cloudinary) {
+      return res.json({ configured: false, message: 'cloudinary module not installed' });
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUDNAME || process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECREAT || process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      return res.json({ configured: false, message: 'Cloudinary env vars not set' });
+    }
+
+    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+    const result = await cloudinary.api.ping();
+
+    res.json({ configured: true, cloudName, status: result.status });
+  } catch (error) {
+    res.json({ configured: false, message: error.message });
+  }
+});
+
+app.post('/api/cloudinary/upload', verifyToken, upload.single('file'), async (req, res) => {
+  try {
+    const cloudinary = getCloudinary();
+    if (!cloudinary) {
+      return res.status(500).json({ error: 'Cloudinary not installed on server' });
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUDNAME || process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECREAT || process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      return res.status(500).json({ error: 'Cloudinary not configured' });
+    }
+
+    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const folder = req.body.folder || 'leddger-ai';
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: 'auto',
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+      },
+      (error, result) => {
+        if (error) {
+          return res.status(500).json({ error: 'Upload failed: ' + error.message });
+        }
+        res.json({
+          secure_url: result.secure_url,
+          public_id: result.public_id,
+          format: result.format,
+          width: result.width,
+          height: result.height,
+          bytes: result.bytes,
+        });
+      }
+    );
+
+    uploadStream.end(req.file.buffer);
+  } catch (error) {
+    console.error('Cloudinary upload error:', error);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+app.delete('/api/cloudinary/:publicId', verifyToken, async (req, res) => {
+  try {
+    const cloudinary = getCloudinary();
+    if (!cloudinary) {
+      return res.status(500).json({ error: 'Cloudinary not installed' });
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUDNAME || process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECREAT || process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      return res.status(500).json({ error: 'Cloudinary not configured' });
+    }
+
+    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+
+    const publicId = decodeURIComponent(req.params.publicId);
+    const result = await cloudinary.uploader.destroy(publicId);
+    res.json({ result: result.result, publicId });
+  } catch (error) {
+    console.error('Cloudinary delete error:', error);
+    res.status(500).json({ error: 'Failed to delete asset' });
+  }
+});
+
 if (require.main === module) {
   app.listen(PORT, "0.0.0.0", async () => {
     await mongoConnectPromise;
