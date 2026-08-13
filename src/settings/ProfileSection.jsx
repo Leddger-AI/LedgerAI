@@ -1,59 +1,167 @@
-import { useState, useRef } from 'react';
-import { User, Upload, CheckCircle2, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { User, Upload, CheckCircle2, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { getCurrentSession } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 export default function ProfileSection({ user }) {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [email, setEmail] = useState(user?.email || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.photoURL || '');
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const fileInputRef = useRef(null);
+
+  const showSuccess = (msg) => {
+    setSuccessMsg(msg);
+    setErrorMsg('');
+    setTimeout(() => setSuccessMsg(''), 3000);
+  };
+
+  const showError = (msg) => {
+    setErrorMsg(msg);
+    setSuccessMsg('');
+    setTimeout(() => setErrorMsg(''), 4000);
+  };
+
+  // Fetch profile from backend on mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const session = await getCurrentSession();
+        const token = session?.access_token;
+        if (!token) { setLoading(false); return; }
+
+        const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.display_name) setDisplayName(data.display_name);
+          if (data.email) setEmail(data.email);
+          if (data.avatar_url) setAvatarUrl(data.avatar_url);
+        }
+      } catch (err) {
+        // Fall back to user prop data
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  const validateFile = (file) => {
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      showError('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.');
+      return false;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      showError('File too large. Maximum size is 5MB.');
+      return false;
+    }
+    return true;
+  };
 
   const handleAvatarUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!validateFile(file)) return;
 
     setUploading(true);
+    setErrorMsg('');
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folder', 'avatars');
-
       const session = await getCurrentSession();
       const token = session?.access_token;
+      if (!token) {
+        showError('Not authenticated. Please log in again.');
+        return;
+      }
 
-      const res = await fetch(`${API_BASE_URL}/api/cloudinary/upload`, {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`${API_BASE_URL}/api/cloudinary/avatar`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
       if (res.ok) {
         const data = await res.json();
         setAvatarUrl(data.secure_url);
-        setSuccessMsg('Avatar uploaded successfully!');
-        setTimeout(() => setSuccessMsg(''), 3000);
+        showSuccess(`Avatar uploaded! (${data.size_kb}KB, WebP ${data.width}x${data.height})`);
       } else {
-        setSuccessMsg('Upload failed. Check your Cloudinary configuration.');
-        setTimeout(() => setSuccessMsg(''), 3000);
+        const data = await res.json().catch(() => ({}));
+        showError(data.error || 'Upload failed. Check Cloudinary configuration.');
       }
     } catch (err) {
-      setSuccessMsg('Upload failed. Please try again.');
-      setTimeout(() => setSuccessMsg(''), 3000);
+      showError('Network error. Please try again.');
     } finally {
       setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleSave = (e) => {
+  const handleAvatarRemove = async () => {
+    setRemoving(true);
+    setErrorMsg('');
+    try {
+      const session = await getCurrentSession();
+      const token = session?.access_token;
+
+      const res = await fetch(`${API_BASE_URL}/api/cloudinary/avatar`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        setAvatarUrl('');
+        showSuccess('Avatar removed.');
+      } else {
+        showError('Failed to remove avatar.');
+      }
+    } catch (err) {
+      showError('Network error. Please try again.');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
-    setSuccessMsg('Profile saved successfully!');
-    setTimeout(() => setSuccessMsg(''), 3000);
+    setSaving(true);
+    setErrorMsg('');
+    try {
+      const session = await getCurrentSession();
+      const token = session?.access_token;
+
+      const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ display_name: displayName }),
+      });
+
+      if (res.ok) {
+        showSuccess('Profile saved successfully!');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showError(data.error || 'Failed to save profile.');
+      }
+    } catch (err) {
+      showError('Network error. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const initials = (displayName || email || 'U')
@@ -62,6 +170,15 @@ export default function ProfileSection({ user }) {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>
+        <Loader2 size={16} className="spin" />
+        Loading profile...
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -72,6 +189,13 @@ export default function ProfileSection({ user }) {
         </div>
       )}
 
+      {errorMsg && (
+        <div className="settings-success" style={{ background: 'var(--color-danger-glow)', borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
+          <AlertCircle size={16} />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
       <form onSubmit={handleSave}>
         <div className="settings-card">
           <div className="settings-card-title">
@@ -79,7 +203,7 @@ export default function ProfileSection({ user }) {
             Profile Picture
           </div>
           <div className="settings-card-desc">
-            Upload a profile photo. Images are stored securely via Cloudinary.
+            Upload a profile photo. Images are automatically compressed to WebP format (under 50KB) and stored securely via Cloudinary. Re-uploading replaces your existing photo.
           </div>
 
           <div className="settings-avatar-container">
@@ -92,7 +216,7 @@ export default function ProfileSection({ user }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/gif"
                 style={{ display: 'none' }}
                 onChange={handleAvatarUpload}
               />
@@ -110,7 +234,7 @@ export default function ProfileSection({ user }) {
                 ) : (
                   <>
                     <Upload size={14} />
-                    Upload Photo
+                    {avatarUrl ? 'Change Photo' : 'Upload Photo'}
                   </>
                 )}
               </button>
@@ -119,12 +243,26 @@ export default function ProfileSection({ user }) {
                   type="button"
                   className="settings-btn settings-btn-danger"
                   style={{ marginLeft: '8px' }}
-                  onClick={() => setAvatarUrl('')}
+                  onClick={handleAvatarRemove}
+                  disabled={removing}
                 >
-                  Remove
+                  {removing ? (
+                    <>
+                      <Loader2 size={14} className="spin" />
+                      Removing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} />
+                      Remove
+                    </>
+                  )}
                 </button>
               )}
             </div>
+          </div>
+          <div className="settings-hint" style={{ marginTop: '12px' }}>
+            Accepted formats: JPEG, PNG, WebP, GIF. Max size: 5MB. Auto-converted to WebP at 256x256.
           </div>
         </div>
 
@@ -180,8 +318,15 @@ export default function ProfileSection({ user }) {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="submit" className="settings-btn settings-btn-primary">
-            Save Changes
+          <button type="submit" className="settings-btn settings-btn-primary" disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 size={14} className="spin" />
+                Saving...
+              </>
+            ) : (
+              'Save Changes'
+            )}
           </button>
         </div>
       </form>
