@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Cloud, CheckCircle2, Loader2, AlertCircle, Github } from 'lucide-react';
+import { Cloud, CheckCircle2, Loader2, RefreshCw, AlertCircle, GitBranch, Plug } from 'lucide-react';
 import { getUserIdentities, unlinkProvider, loginWithGitHub, loginWithGoogleAndCalendar } from '../supabaseAuth';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function IntegrationsSection() {
   const [identities, setIdentities] = useState([]);
@@ -8,6 +10,8 @@ export default function IntegrationsSection() {
   const [actionLoading, setActionLoading] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [cloudinaryStatus, setCloudinaryStatus] = useState(null);
+  const [cloudinaryChecking, setCloudinaryChecking] = useState(false);
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
@@ -33,8 +37,22 @@ export default function IntegrationsSection() {
     }
   };
 
+  const checkCloudinaryStatus = async () => {
+    setCloudinaryChecking(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/cloudinary/status`);
+      const data = await res.json();
+      setCloudinaryStatus(data);
+    } catch (err) {
+      setCloudinaryStatus({ configured: false, message: 'Unable to reach server' });
+    } finally {
+      setCloudinaryChecking(false);
+    }
+  };
+
   useEffect(() => {
     fetchIdentities();
+    checkCloudinaryStatus();
   }, []);
 
   const hasProvider = (provider) => identities.some((id) => id.provider === provider);
@@ -107,7 +125,7 @@ export default function IntegrationsSection() {
       <div className="settings-card">
         <div className="settings-card-title" style={{ justifyContent: 'space-between', display: 'flex' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Github size={18} style={{ color: 'var(--text-primary)' }} />
+            <GitBranch size={18} style={{ color: 'var(--text-primary)' }} />
             GitHub
           </div>
           <span className={`settings-status-badge ${hasProvider('github') ? 'connected' : 'disconnected'}`}>
@@ -182,6 +200,63 @@ export default function IntegrationsSection() {
               {actionLoading === 'google-connect' ? <><Loader2 size={14} className="spin" /> Connecting...</> : 'Connect Google'}
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Cloudinary — server-managed, read-only */}
+      <div className="settings-card">
+        <div className="settings-card-title" style={{ justifyContent: 'space-between', display: 'flex' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Cloud size={18} style={{ color: 'var(--color-cyan)' }} />
+            Cloudinary
+          </div>
+          {cloudinaryStatus && (
+            <span className={`settings-status-badge ${cloudinaryStatus.configured ? 'connected' : 'disconnected'}`}>
+              {cloudinaryStatus.configured ? (
+                <><CheckCircle2 size={12} /> Connected</>
+              ) : (
+                <><AlertCircle size={12} /> Not Configured</>
+              )}
+            </span>
+          )}
+        </div>
+        <div className="settings-card-desc">
+          Image storage for avatars and file attachments. Managed by the server administrator via environment variables.
+        </div>
+        {cloudinaryStatus && !cloudinaryStatus.configured && (
+          <div className="settings-hint" style={{ marginTop: '8px' }}>
+            Avatar uploads and file attachments are unavailable until Cloudinary is configured on the server.
+          </div>
+        )}
+        <div style={{ marginTop: '12px' }}>
+          <button
+            type="button"
+            className="settings-btn"
+            onClick={checkCloudinaryStatus}
+            disabled={cloudinaryChecking}
+          >
+            {cloudinaryChecking ? (
+              <><Loader2 size={14} className="spin" /> Checking...</>
+            ) : (
+              <><RefreshCw size={14} /> Check Status</>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* More Integrations — placeholder */}
+      <div className="settings-card" style={{ opacity: 0.6 }}>
+        <div className="settings-card-title" style={{ justifyContent: 'space-between', display: 'flex' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Plug size={18} style={{ color: 'var(--text-muted)' }} />
+            More Integrations
+          </div>
+          <span className="settings-status-badge disconnected">
+            Coming Soon
+          </span>
+        </div>
+        <div className="settings-card-desc">
+          Slack, Zapier, and additional integrations will appear here as they become available.
         </div>
       </div>
     </div>
