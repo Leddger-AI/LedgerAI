@@ -22,16 +22,24 @@ The Settings page has been redesigned from a single-page form into a modular, si
 ## Architecture Overview
 
 ```
-App.jsx
-  └── SettingsView.jsx (entry point — passes props from App state)
-        └── SettingsLayout.jsx (shell — sidebar nav + content area)
-              ├── ProfileSection.jsx        → Cloudinary avatar + Supabase profile
-              ├── DepartmentsSection.jsx    → Department CRUD (MongoDB)
-              ├── EmailSection.jsx          → SMTP/OAuth2 email config
-              ├── AISection.jsx             → Gemini API key + confidence threshold
-              ├── IntegrationsSection.jsx   → Cloudinary status + config
-              ├── AppearanceSection.jsx     → Demo mode + billing rate
-              └── SecuritySection.jsx       → Sign out + danger zone
+App.jsx (main app with 2-level sidebar navigation)
+  ├── Level 1: Mini Sidebar (icon rail) — Settings gear icon
+  ├── Level 2: Secondary Sidebar (text nav) — 7 settings sub-items
+  │     ├── Profile & Account      → /dashboard/settings/profile
+  │     ├── Departments            → /dashboard/settings/departments
+  │     ├── Email Configuration    → /dashboard/settings/email
+  │     ├── AI & GenAI Keys        → /dashboard/settings/ai
+  │     ├── Integrations           → /dashboard/settings/integrations
+  │     ├── Appearance             → /dashboard/settings/appearance
+  │     └── Account & Security     → /dashboard/settings/security
+  └── Content Area: SettingsView.jsx (receives 'section' prop, renders section component)
+        ├── ProfileSection.jsx        → Cloudinary avatar + Supabase profile
+        ├── DepartmentsSection.jsx    → Department CRUD (MongoDB)
+        ├── EmailSection.jsx          → SMTP/OAuth2 email config
+        ├── AISection.jsx             → Gemini API key + confidence threshold
+        ├── IntegrationsSection.jsx   → Cloudinary status + config
+        ├── AppearanceSection.jsx     → Demo mode + billing rate
+        └── SecuritySection.jsx       → Sign out + danger zone
 ```
 
 ### Design Principles
@@ -47,10 +55,9 @@ App.jsx
 
 ```
 src/
-├── SettingsView.jsx              # Entry point — routes to sections via switch/case
+├── SettingsView.jsx              # Entry point — switch/case on 'section' prop
 ├── settings/
-│   ├── SettingsLayout.jsx        # Shell with sidebar nav + content area
-│   ├── settings.css              # All settings-specific styles
+│   ├── settings.css              # All settings-specific styles (content only, no sidebar)
 │   ├── ProfileSection.jsx        # Avatar upload + account info
 │   ├── DepartmentsSection.jsx    # Department tag management
 │   ├── EmailSection.jsx          # Email SMTP/OAuth2 configuration
@@ -64,36 +71,37 @@ src/
 
 ## Settings Layout & Navigation
 
-### SettingsLayout.jsx
+### Integration with App Sidebar
 
-The layout shell uses a **state-driven section switcher** (not React Router nested routes) because the parent `App.jsx` uses a path-to-tab mapping system rather than true nested routing.
+The settings sections are **integrated directly into the app's existing 2-level sidebar navigation** — no separate settings sidebar is created.
 
-**Navigation Structure:**
+**App.jsx Navigation Structure:**
 
-| Section ID | Label | Icon | Divider Before |
-|------------|-------|------|----------------|
-| `profile` | Profile & Account | `User` | No |
-| `departments` | Departments | `Building2` | No |
-| `email` | Email Configuration | `Mail` | No |
-| `ai` | AI & GenAI Keys | `Shield` | No |
-| `integrations` | Integrations | `Plug` | No |
-| `appearance` | Appearance & Preferences | `Palette` | Yes (visual separator) |
-| `security` | Account & Security | `Lock` | No |
+| Level | Component | Purpose |
+|-------|-----------|---------|
+| Level 1 | Mini Sidebar (icon rail) | Primary nav categories (Home, Inbox, Workspace, Templates, Analytics, Intelligence, Settings) |
+| Level 2 | Secondary Sidebar (text nav) | Sub-items for the active primary nav. Settings has 7 sub-items. |
+| Content | Main workspace area | Renders the active section component via `SettingsView` |
 
-**Render Prop Pattern:**
+**Settings Secondary Nav Items:**
+
+| Tab ID | Label | Icon | Route Path |
+|--------|-------|------|------------|
+| `SettingsProfile` | Profile & Account | `User` | `/dashboard/settings/profile` |
+| `SettingsDepartments` | Departments | `Building2` | `/dashboard/settings/departments` |
+| `SettingsEmail` | Email Configuration | `Mail` | `/dashboard/settings/email` |
+| `SettingsAI` | AI & GenAI Keys | `Shield` | `/dashboard/settings/ai` |
+| `SettingsIntegrations` | Integrations | `Plug` | `/dashboard/settings/integrations` |
+| `SettingsAppearance` | Appearance | `Palette` | `/dashboard/settings/appearance` |
+| `SettingsSecurity` | Account & Security | `Lock` | `/dashboard/settings/security` |
+
+### SettingsView.jsx
+
+`SettingsView` receives a `section` prop from `App.jsx` and renders the corresponding section component via a simple switch/case. No layout wrapper — the app's existing sidebar handles navigation.
 
 ```jsx
-<SettingsLayout user={user}>
-  {(activeSection) => {
-    switch (activeSection) {
-      case 'profile': return <ProfileSection user={user} />;
-      // ...
-    }
-  }}
-</SettingsLayout>
+<SettingsView section="profile" user={user} ... />
 ```
-
-The layout calls `children(activeSection, setActiveSection)`, passing the current section ID down. This keeps section routing logic in `SettingsView.jsx` while the layout handles only the sidebar + content shell.
 
 ---
 
