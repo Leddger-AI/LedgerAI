@@ -47,6 +47,7 @@ export default function SettingsView({
     case 'security':
       return (
         <SecuritySection
+          user={user}
           onLogout={onLogout}
           onResetData={onResetData}
         />
