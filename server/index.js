@@ -25,6 +25,7 @@ const {
   getSubmissionTrends,
   getTemplateTypeDistribution,
 } = require('./utils/analyticsUtils');
+const { analyzeTemplateGitHub } = require('./utils/githubAnalyzer');
 const { encrypt, decrypt } = require('./utils/crypto');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
@@ -2179,6 +2180,20 @@ app.get('/api/analytics/templates/:draftId/field-analysis', verifyToken, async (
   } catch (error) {
     console.error('Error fetching field analysis:', error);
     res.status(500).json({ error: 'Failed to fetch field analysis' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates/:draftId/github
+ * Get GitHub role & tech stack analysis for a template
+ */
+app.get('/api/analytics/templates/:draftId/github', verifyToken, async (req, res) => {
+  try {
+    const result = await analyzeTemplateGitHub(req.user.uid, req.params.draftId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching GitHub analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch GitHub analytics' });
   }
 });
 

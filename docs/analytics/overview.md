@@ -5,6 +5,7 @@
 - [Phase 1: Backend MongoDB Models & API Endpoints](./phase1-backend-mongodb-models-api.md)
 - [Phase 2: Frontend Analytics Page](./phase2-frontend-analytics-page.md)
 - [Phase 3: GitHub Role & Tech Stack Analysis](./phase3-github-role-techstack-analysis.md)
+- [Phase 4: Testing & Polish](./phase4-testing-and-polish.md)
 
 ## Architecture Summary
 
@@ -88,8 +89,8 @@ The **Analytics** primary nav group contains:
 | [#26](https://github.com/Leddger-AI/LedgerAI/pull/26) | `feature/analytics-phase1` | 1 | Merged |
 | [#27](https://github.com/Leddger-AI/LedgerAI/pull/27) | `feature/analytics-phase2` | 2 | Merged |
 | [#28](https://github.com/Leddger-AI/LedgerAI/pull/28) | `feature/analytics-phase3` | 3 | Open |
+| [#29](https://github.com/Leddger-AI/LedgerAI/pull/29) | `feature/analytics-docs` | Docs + 4 | Open |
 
 ### Future Phases
 
-- **Phase 4:** Testing & polish — unit tests for analytics endpoints, sync logic, and GitHub analyzer
 - **Phase 5:** Export & reporting — CSV/PDF export of analytics data, scheduled reports
