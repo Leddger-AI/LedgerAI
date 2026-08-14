@@ -78,7 +78,6 @@ import MeetView from './MeetView.jsx';
 import ExportView from './ExportView.jsx';
 import EmailAutomationView from './EmailAutomationView.jsx';
 import AnalysisView from './AnalysisView.jsx';
-import AnalyticsPage from './pages/AnalyticsPage.jsx';
 import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
 import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
 import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
@@ -114,6 +113,7 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
 const PublicFormView = lazy(() => import('./pages/PublicFormView.jsx'));
 const DraftsView = lazy(() => import('./pages/DraftsView.jsx'));
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage.jsx'));
 
 
 // Pre-defined avatars from public sources
