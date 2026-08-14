@@ -26,6 +26,13 @@ const {
   getTemplateTypeDistribution,
 } = require('./utils/analyticsUtils');
 const { analyzeTemplateGitHub } = require('./utils/githubAnalyzer');
+const {
+  exportOverviewCSV,
+  exportOverviewJSON,
+  exportTemplateDetailCSV,
+  exportTemplateDetailJSON,
+  exportAllSubmissionsCSV,
+} = require('./utils/exportUtils');
 const { encrypt, decrypt } = require('./utils/crypto');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
@@ -2211,6 +2218,92 @@ app.get('/api/analytics/trends', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching analytics trends:', error);
     res.status(500).json({ error: 'Failed to fetch trends' });
+  }
+});
+
+// ==========================================
+// ANALYTICS EXPORT ENDPOINTS
+// ==========================================
+
+/**
+ * GET /api/analytics/export/overview.csv
+ * Export overview analytics as CSV
+ */
+app.get('/api/analytics/export/overview.csv', verifyToken, async (req, res) => {
+  try {
+    const csv = await exportOverviewCSV(req.user.uid);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="analytics-overview-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting overview CSV:', error);
+    res.status(500).json({ error: 'Failed to export CSV' });
+  }
+});
+
+/**
+ * GET /api/analytics/export/overview.json
+ * Export overview analytics as JSON
+ */
+app.get('/api/analytics/export/overview.json', verifyToken, async (req, res) => {
+  try {
+    const json = await exportOverviewJSON(req.user.uid);
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="analytics-overview-${Date.now()}.json"`);
+    res.send(json);
+  } catch (error) {
+    console.error('Error exporting overview JSON:', error);
+    res.status(500).json({ error: 'Failed to export JSON' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates/:draftId/export.csv
+ * Export template detail analytics as CSV
+ */
+app.get('/api/analytics/templates/:draftId/export.csv', verifyToken, async (req, res) => {
+  try {
+    const csv = await exportTemplateDetailCSV(req.user.uid, req.params.draftId);
+    if (!csv) return res.status(404).json({ error: 'Template not found' });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="template-${req.params.draftId}-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting template CSV:', error);
+    res.status(500).json({ error: 'Failed to export CSV' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates/:draftId/export.json
+ * Export template detail analytics as JSON
+ */
+app.get('/api/analytics/templates/:draftId/export.json', verifyToken, async (req, res) => {
+  try {
+    const json = await exportTemplateDetailJSON(req.user.uid, req.params.draftId);
+    if (!json) return res.status(404).json({ error: 'Template not found' });
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="template-${req.params.draftId}-${Date.now()}.json"`);
+    res.send(json);
+  } catch (error) {
+    console.error('Error exporting template JSON:', error);
+    res.status(500).json({ error: 'Failed to export JSON' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates/:draftId/submissions/export.csv
+ * Export all submissions for a template as CSV
+ */
+app.get('/api/analytics/templates/:draftId/submissions/export.csv', verifyToken, async (req, res) => {
+  try {
+    const csv = await exportAllSubmissionsCSV(req.user.uid, req.params.draftId);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="submissions-${req.params.draftId}-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting submissions CSV:', error);
+    res.status(500).json({ error: 'Failed to export submissions' });
   }
 });
 
