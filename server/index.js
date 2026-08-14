@@ -15,6 +15,16 @@ const EmailDraft = require('./models/EmailDraft');
 const EmailConfig = require('./models/EmailConfig');
 const EmailCampaign = require('./models/EmailCampaign');
 const EmailAccount = require('./models/EmailAccount');
+const TemplateData = require('./models/TemplateData');
+const TemplateSubmission = require('./models/TemplateSubmission');
+const {
+  getOverviewStats,
+  getTemplatesWithStats,
+  getTemplateDetail,
+  getTemplateSubmissions,
+  getSubmissionTrends,
+  getTemplateTypeDistribution,
+} = require('./utils/analyticsUtils');
 const { encrypt, decrypt } = require('./utils/crypto');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
@@ -1982,6 +1992,104 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error deleting user account:', error);
     res.status(500).json({ error: 'Failed to delete account: ' + error.message });
+  }
+});
+
+// ==========================================
+// ANALYTICS API ENDPOINTS
+// ==========================================
+
+/**
+ * GET /api/analytics/overview
+ * Get KPI summary across all user templates
+ */
+app.get('/api/analytics/overview', verifyToken, async (req, res) => {
+  try {
+    const stats = await getOverviewStats(req.user.uid);
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching analytics overview:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics overview' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates
+ * List all user templates with submission counts
+ */
+app.get('/api/analytics/templates', verifyToken, async (req, res) => {
+  try {
+    const templates = await getTemplatesWithStats(req.user.uid);
+    res.json({ templates });
+  } catch (error) {
+    console.error('Error fetching analytics templates:', error);
+    res.status(500).json({ error: 'Failed to fetch templates' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates/:draftId
+ * Get detailed analytics for a specific template
+ */
+app.get('/api/analytics/templates/:draftId', verifyToken, async (req, res) => {
+  try {
+    const detail = await getTemplateDetail(req.user.uid, req.params.draftId);
+    if (!detail) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    res.json(detail);
+  } catch (error) {
+    console.error('Error fetching template detail:', error);
+    res.status(500).json({ error: 'Failed to fetch template detail' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates/:draftId/submissions
+ * Get paginated raw submissions for a template
+ */
+app.get('/api/analytics/templates/:draftId/submissions', verifyToken, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const result = await getTemplateSubmissions(req.user.uid, req.params.draftId, page, limit);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching template submissions:', error);
+    res.status(500).json({ error: 'Failed to fetch submissions' });
+  }
+});
+
+/**
+ * GET /api/analytics/templates/:draftId/field-analysis
+ * Get per-field analysis for a template (rating distributions, completion rates)
+ */
+app.get('/api/analytics/templates/:draftId/field-analysis', verifyToken, async (req, res) => {
+  try {
+    const detail = await getTemplateDetail(req.user.uid, req.params.draftId);
+    if (!detail) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    res.json({ fieldStats: detail.fieldStats, enabledFields: detail.enabledFields });
+  } catch (error) {
+    console.error('Error fetching field analysis:', error);
+    res.status(500).json({ error: 'Failed to fetch field analysis' });
+  }
+});
+
+/**
+ * GET /api/analytics/trends
+ * Get submission trends over time (default: last 30 days)
+ */
+app.get('/api/analytics/trends', verifyToken, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const trends = await getSubmissionTrends(req.user.uid, days);
+    const typeDistribution = await getTemplateTypeDistribution(req.user.uid);
+    res.json({ trends, typeDistribution });
+  } catch (error) {
+    console.error('Error fetching analytics trends:', error);
+    res.status(500).json({ error: 'Failed to fetch trends' });
   }
 });
 
