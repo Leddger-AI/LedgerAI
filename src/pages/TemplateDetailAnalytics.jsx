@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Loader2, AlertCircle, FileText, Users, Clock,
-  BarChart3, ChevronLeft, ChevronRight, Github, Star, GitBranch,
+  BarChart3, ChevronLeft, ChevronRight, GitBranch, Star,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -288,12 +288,12 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
       <div className="glass-panel analytics-github-panel">
         <div className="analytics-github-header">
           <h3 className="analytics-chart-title">
-            <Github size={16} />
+            <GitBranch size={16} />
             GitHub Role & Tech Stack Analysis
           </h3>
           {!githubData && !githubLoading && (
             <button className="analytics-github-load-btn" onClick={fetchGithubAnalytics}>
-              <Github size={14} /> Load Analysis
+              <GitBranch size={14} /> Load Analysis
             </button>
           )}
         </div>
@@ -316,7 +316,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
           <>
             {!githubData.hasGithubData ? (
               <div className="analytics-empty-table">
-                <Github size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
+                <GitBranch size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
                 <p>No GitHub usernames found in submissions for this template.</p>
               </div>
             ) : (
