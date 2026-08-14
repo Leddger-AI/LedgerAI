@@ -2186,6 +2186,7 @@ app.get('/api/analytics/templates/:draftId/field-analysis', verifyToken, async (
 /**
  * GET /api/analytics/templates/:draftId/github
  * Get GitHub role & tech stack analysis for a template
+ * Analyzes GitHub profiles from form submissions
  */
 app.get('/api/analytics/templates/:draftId/github', verifyToken, async (req, res) => {
   try {

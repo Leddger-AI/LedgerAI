@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Loader2, AlertCircle, FileText, Users, Clock,
-  BarChart3, ChevronLeft, ChevronRight,
+  BarChart3, ChevronLeft, ChevronRight, GitBranch, Star,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -22,6 +22,9 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
   const [submissionsTotalPages, setSubmissionsTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [githubData, setGithubData] = useState(null);
+  const [githubLoading, setGithubLoading] = useState(false);
+  const [githubError, setGithubError] = useState(null);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -54,6 +57,25 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
       setSubmissionsTotalPages(data.totalPages);
     } catch (err) {
       console.error('Submissions fetch error:', err);
+    }
+  }, [draftId]);
+
+  const fetchGithubAnalytics = useCallback(async () => {
+    setGithubLoading(true);
+    setGithubError(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/analytics/templates/${draftId}/github`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch GitHub analytics');
+      const data = await res.json();
+      setGithubData(data);
+    } catch (err) {
+      setGithubError(err.message);
+    } finally {
+      setGithubLoading(false);
     }
   }, [draftId]);
 
@@ -261,6 +283,145 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
           })}
         </div>
       )}
+
+      {/* GitHub Role & Tech Stack Analysis */}
+      <div className="glass-panel analytics-github-panel">
+        <div className="analytics-github-header">
+          <h3 className="analytics-chart-title">
+            <GitBranch size={16} />
+            GitHub Role & Tech Stack Analysis
+          </h3>
+          {!githubData && !githubLoading && (
+            <button className="analytics-github-load-btn" onClick={fetchGithubAnalytics}>
+              <GitBranch size={14} /> Load Analysis
+            </button>
+          )}
+        </div>
+
+        {githubLoading && (
+          <div className="analytics-loading" style={{ padding: '40px 0' }}>
+            <Loader2 size={20} className="spin" />
+            <span>Analyzing GitHub profiles...</span>
+          </div>
+        )}
+
+        {githubError && (
+          <div className="analytics-error-banner">
+            <AlertCircle size={16} />
+            {githubError}
+          </div>
+        )}
+
+        {githubData && !githubLoading && (
+          <>
+            {!githubData.hasGithubData ? (
+              <div className="analytics-empty-table">
+                <GitBranch size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
+                <p>No GitHub usernames found in submissions for this template.</p>
+              </div>
+            ) : (
+              <>
+                {/* Role Distribution */}
+                <div className="analytics-github-section">
+                  <h4 className="analytics-github-subtitle">Role Distribution ({githubData.totalProfiles} profiles)</h4>
+                  <div className="analytics-github-roles">
+                    {githubData.roleDistribution.map((r) => (
+                      <div key={r.role} className="analytics-github-role-item">
+                        <span className={`analytics-type-badge ${r.role.toLowerCase()}`}>
+                          {r.role}
+                        </span>
+                        <span className="analytics-github-role-count">{r.count}</span>
+                        <div className="analytics-github-role-bar">
+                          <div
+                            className="analytics-github-role-bar-fill"
+                            style={{
+                              width: `${(r.count / githubData.totalProfiles) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Top Languages */}
+                {githubData.topLanguages.length > 0 && (
+                  <div className="analytics-github-section">
+                    <h4 className="analytics-github-subtitle">Top Languages</h4>
+                    <div className="analytics-github-languages">
+                      {githubData.topLanguages.map((lang, i) => (
+                        <div key={lang.name} className="analytics-github-lang-item">
+                          <span className="analytics-github-lang-rank">#{i + 1}</span>
+                          <span className="analytics-github-lang-name">{lang.name}</span>
+                          <span className="analytics-github-lang-count">{lang.count} repos</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top Topics */}
+                {githubData.topTopics.length > 0 && (
+                  <div className="analytics-github-section">
+                    <h4 className="analytics-github-subtitle">Top Topics & Technologies</h4>
+                    <div className="analytics-github-topics">
+                      {githubData.topTopics.map((topic) => (
+                        <span key={topic.name} className="analytics-github-topic-tag">
+                          {topic.name} ({topic.count})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-profile breakdown */}
+                <div className="analytics-github-section">
+                  <h4 className="analytics-github-subtitle">Profile Breakdown</h4>
+                  <div className="analytics-table-wrapper">
+                    <table className="analytics-table">
+                      <thead>
+                        <tr>
+                          <th>Username</th>
+                          <th>Role</th>
+                          <th>Repos</th>
+                          <th>Top Language</th>
+                          <th>Stars</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {githubData.profiles.map((p) => (
+                          <tr key={p.username}>
+                            <td className="analytics-github-username">
+                              <GitBranch size={12} />
+                              {p.username}
+                            </td>
+                            <td>
+                              {p.error ? (
+                                <span className="analytics-status-badge expired">{p.error}</span>
+                              ) : (
+                                <span className={`analytics-type-badge ${p.role.toLowerCase()}`}>
+                                  {p.role}
+                                </span>
+                              )}
+                            </td>
+                            <td>{p.repoCount ?? '—'}</td>
+                            <td>{p.topLanguage ?? '—'}</td>
+                            <td>
+                              {p.stars != null ? (
+                                <span><Star size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {p.stars}</span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Raw Submissions Table */}
       <div className="glass-panel analytics-table-panel">

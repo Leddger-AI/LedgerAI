@@ -117,7 +117,7 @@ function extractTechStack(repos) {
 
 async function fetchGitHubRepos(username) {
   const cached = getCached(`repos:${username}`);
-  if (cached) return { repos: cached };
+  if (cached) return cached;
 
   const response = await fetch(
     `https://api.github.com/users/${username}/repos?per_page=30&sort=updated`,
