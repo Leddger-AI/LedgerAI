@@ -2037,6 +2037,74 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
 // ==========================================
 
 /**
+ * POST /api/analytics/sync
+ * Backfill existing Supabase templates and submissions to MongoDB
+ * Called once by the user to migrate historical data
+ */
+app.post('/api/analytics/sync', verifyToken, async (req, res) => {
+  try {
+    const { data: drafts, error: draftsError } = await supabase
+      .from('form_drafts')
+      .select('*')
+      .eq('user_id', req.user.uid);
+
+    if (draftsError) throw draftsError;
+
+    let templatesSynced = 0;
+    for (const draft of (drafts || [])) {
+      await TemplateData.findOneAndUpdate(
+        { draftId: draft.draft_id },
+        {
+          ownerUid: req.user.uid,
+          title: draft.title,
+          templateType: draft.template_type || 'unknown',
+          config: draft.config,
+          status: draft.status || 'draft',
+          source: 'created',
+          expiresAt: draft.expires_at,
+          createdAt: draft.created_at,
+        },
+        { upsert: true, new: true }
+      );
+      templatesSynced++;
+    }
+
+    const { data: submissions, error: subError } = await supabase
+      .from('form_submissions')
+      .select('*')
+      .eq('user_id', req.user.uid);
+
+    if (subError) throw subError;
+
+    let submissionsSynced = 0;
+    for (const sub of (submissions || [])) {
+      const exists = await TemplateSubmission.findOne({ submissionId: sub.submission_id });
+      if (!exists) {
+        await TemplateSubmission.create({
+          submissionId: sub.submission_id,
+          draftId: sub.draft_id,
+          ownerUid: req.user.uid,
+          templateType: sub.template_type || 'unknown',
+          title: sub.title,
+          submittedData: sub.submitted_data,
+          submittedAt: sub.submitted_at,
+        });
+        submissionsSynced++;
+      }
+    }
+
+    res.json({
+      message: 'Sync complete',
+      templatesSynced,
+      submissionsSynced,
+    });
+  } catch (error) {
+    console.error('Error during analytics sync:', error);
+    res.status(500).json({ error: 'Failed to sync analytics data' });
+  }
+});
+
+/**
  * GET /api/analytics/overview
  * Get KPI summary across all user templates
  */
