@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Loader2, AlertCircle, FileText, Users, Clock,
-  BarChart3, ChevronLeft, ChevronRight, GitBranch, Star,
+  BarChart3, ChevronLeft, ChevronRight, GitBranch, Star, Download,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -25,6 +25,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
   const [githubData, setGithubData] = useState(null);
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -57,6 +58,31 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
       setSubmissionsTotalPages(data.totalPages);
     } catch (err) {
       console.error('Submissions fetch error:', err);
+    }
+  }, [draftId]);
+
+  const handleExport = useCallback(async (format) => {
+    setExporting(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/analytics/templates/${draftId}/export.${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `template-${draftId}-${Date.now()}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
     }
   }, [draftId]);
 
@@ -153,6 +179,24 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
               <Clock size={14} /> Created {new Date(detail.createdAt).toLocaleDateString()}
             </span>
           </div>
+        </div>
+        <div className="analytics-export-group">
+          <button
+            className="analytics-export-btn"
+            onClick={() => handleExport('csv')}
+            disabled={exporting}
+          >
+            {exporting ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+            CSV
+          </button>
+          <button
+            className="analytics-export-btn"
+            onClick={() => handleExport('json')}
+            disabled={exporting}
+          >
+            {exporting ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+            JSON
+          </button>
         </div>
       </div>
 

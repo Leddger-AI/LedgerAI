@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   BarChart3, TrendingUp, Users, FileText, RefreshCw, ChevronDown,
-  Loader2, AlertCircle, ArrowLeft, Clock, CheckCircle2, Eye,
+  Loader2, AlertCircle, ArrowLeft, Clock, CheckCircle2, Eye, Download,
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -110,6 +110,33 @@ export default function AnalyticsPage({ user }) {
     }
   };
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async (format) => {
+    setExporting(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/analytics/export/overview.${format}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `analytics-overview-${Date.now()}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (selectedDraftId) {
     return (
       <TemplateDetailAnalytics
@@ -161,6 +188,24 @@ export default function AnalyticsPage({ user }) {
             {syncing ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
             {syncing ? 'Syncing...' : 'Sync Data'}
           </button>
+          <div className="analytics-export-group">
+            <button
+              className="analytics-export-btn"
+              onClick={() => handleExport('csv')}
+              disabled={exporting}
+            >
+              {exporting ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+              CSV
+            </button>
+            <button
+              className="analytics-export-btn"
+              onClick={() => handleExport('json')}
+              disabled={exporting}
+            >
+              {exporting ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+              JSON
+            </button>
+          </div>
         </div>
       </div>
 
