@@ -582,3 +582,43 @@
 .analytics-type-badge.data { background: rgba(34, 197, 94, 0.15); color: #22C55E; }
 .analytics-type-badge.mobile { background: rgba(99, 102, 241, 0.15); color: #6366F1; }
 .analytics-type-badge.unknown { background: rgba(128, 128, 128, 0.15); color: #888; }
+
+/* ===== Export Buttons ===== */
+.analytics-export-group {
+  display: flex;
+  gap: 6px;
+}
+
+.analytics-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary, #a8b3cf);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.analytics-export-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3B82F6;
+}
+
+.analytics-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.analytics-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
