@@ -78,6 +78,7 @@ import MeetView from './MeetView.jsx';
 import ExportView from './ExportView.jsx';
 import EmailAutomationView from './EmailAutomationView.jsx';
 import AnalysisView from './AnalysisView.jsx';
+import AnalyticsPage from './pages/AnalyticsPage.jsx';
 import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
 import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
 import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
@@ -148,6 +149,7 @@ export default function App() {
     '/dashboard/sent': 'Sent',
     '/dashboard/schedule': 'Schedule',
     '/dashboard/analysis': 'Analysis',
+    '/dashboard/template-analytics': 'Template Analytics',
     '/dashboard/alerts': 'Alerts',
     '/dashboard/settings/profile': 'SettingsProfile',
     '/dashboard/settings/departments': 'SettingsDepartments',
@@ -173,7 +175,7 @@ export default function App() {
     if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
     if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Active Links', 'Scheduled Forms'].includes(tab)) return 'Templates';
     if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Bulk Campaign'].includes(tab)) return 'Workspace';
-    if (['Analysis', 'Reports', 'Export'].includes(tab)) return 'Analytics';
+    if (['Analysis', 'Template Analytics', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
     if (['SettingsProfile', 'SettingsDepartments', 'SettingsEmail', 'SettingsAI', 'SettingsIntegrations', 'SettingsAppearance', 'SettingsSecurity'].includes(tab)) return 'Settings';
     if (['Email Automation', 'Email Body', 'Roster Studio', 'Sent', 'Schedule', 'Files'].includes(tab)) return 'Inbox';
@@ -228,7 +230,8 @@ export default function App() {
       { id: 'Scheduled Forms', label: 'Schedule', icon: Clock }
     ],
     Analytics: [
-      { id: 'Analysis', label: 'Analysis', icon: BarChart3 },
+      { id: 'Template Analytics', label: 'Template Analytics', icon: BarChart3 },
+      { id: 'Analysis', label: 'Recruiting Analysis', icon: TrendingUp },
       { id: 'Reports', label: 'Reports', icon: FileText },
       { id: 'Export', label: 'Export', icon: Download }
     ],
@@ -1320,6 +1323,8 @@ export default function App() {
             <SentView />
           ) : activeTab === 'Schedule' ? (
             <ScheduleView />
+          ) : activeTab === 'Template Analytics' ? (
+            <AnalyticsPage user={user} />
           ) : activeTab === 'Analysis' ? (
             <AnalysisView meetings={meetings} />
           ) : activeTab === 'Alerts' ? (
