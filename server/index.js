@@ -60,6 +60,21 @@ const mongoConnectPromise = mongoose.connect(MONGODB_URI)
 // API ENDPOINTS
 // ==========================================
 
+// Health & memory monitoring (for Render 512MB plan)
+app.get('/api/health', (req, res) => {
+  const mem = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    memory: {
+      rss: `${Math.round(mem.rss / 1024 / 1024)}MB`,
+      heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
+      heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)}MB`,
+      external: `${Math.round(mem.external / 1024 / 1024)}MB`,
+    },
+  });
+});
+
 // Helper: Ensure user profile exists in Supabase
 const getOrCreateUser = async (userId, email) => {
   const { data: existing } = await supabase
@@ -1945,11 +1960,6 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
       deleted.mongodb.push(`${name} (${result.deletedCount})`);
     }
 
-    // User model uses firebaseUid
-    const User = require('./models/User');
-    const userResult = await User.deleteMany({ firebaseUid: userId });
-    deleted.mongodb.push(`User (${userResult.deletedCount})`);
-
     // --- Cloudinary avatar deletion ---
     try {
       const cloudinary = configureCloudinary();
@@ -2001,10 +2011,6 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
       const result = await model.deleteMany({ ownerUid: userId });
       deleted.mongodb.push(`${name} (${result.deletedCount})`);
     }
-
-    const User = require('./models/User');
-    const userResult = await User.deleteMany({ firebaseUid: userId });
-    deleted.mongodb.push(`User (${userResult.deletedCount})`);
 
     try {
       const cloudinary = configureCloudinary();

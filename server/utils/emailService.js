@@ -1,10 +1,14 @@
 const nodemailer = require('nodemailer');
-const { google } = require('googleapis');
-const OAuth2 = google.auth.OAuth2;
+
+function getOAuth2Client() {
+  const { google } = require('googleapis');
+  return google.auth.OAuth2;
+}
 
 const createTransporter = async (emailConfig = null) => {
   if (emailConfig) {
     if (emailConfig.authMethod === 'oauth2') {
+      const OAuth2 = getOAuth2Client();
       const oauth2Client = new OAuth2(
         emailConfig.clientId,
         emailConfig.clientSecret,
@@ -50,6 +54,7 @@ const createTransporter = async (emailConfig = null) => {
   }
 
   // Fallback to env vars
+  const OAuth2 = getOAuth2Client();
   const oauth2Client = new OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
