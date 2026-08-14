@@ -151,6 +151,21 @@ app.post('/api/drafts', verifyToken, async (req, res) => {
 
     if (draftError) throw draftError;
 
+    // Sync to MongoDB TemplateData (only created templates, not imported)
+    await TemplateData.findOneAndUpdate(
+      { draftId: newDraft.draft_id },
+      {
+        ownerUid: req.user.uid,
+        title,
+        templateType: templateType || 'unknown',
+        config,
+        status: 'draft',
+        source: 'created',
+        expiresAt: null,
+      },
+      { upsert: true, new: true }
+    ).catch(err => console.error('MongoDB sync error (TemplateData):', err));
+
     res.json({ message: 'Draft created', draftId: newDraft.draft_id });
   } catch (error) {
     console.error('Error creating draft:', error);
@@ -206,6 +221,12 @@ app.delete('/api/drafts/:draftId', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Draft not found or unauthorized' });
     }
 
+    // Sync deletion to MongoDB
+    await TemplateData.deleteOne({ draftId: req.params.draftId })
+      .catch(err => console.error('MongoDB sync error (delete):', err));
+    await TemplateSubmission.deleteMany({ draftId: req.params.draftId })
+      .catch(err => console.error('MongoDB sync error (delete submissions):', err));
+
     res.json({ message: 'Draft deleted successfully' });
   } catch (error) {
     console.error('Error deleting draft:', error);
@@ -248,6 +269,12 @@ app.put('/api/drafts/:draftId/activate', verifyToken, async (req, res) => {
       .single();
 
     if (updateError) throw updateError;
+
+    // Sync status to MongoDB TemplateData
+    await TemplateData.findOneAndUpdate(
+      { draftId: req.params.draftId },
+      { status: 'active', expiresAt: new Date(expiresAt) }
+    ).catch(err => console.error('MongoDB sync error (activate):', err));
 
     res.json({ 
       message: 'Draft activated', 
@@ -499,6 +526,16 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
       });
 
     if (submitError) throw submitError;
+
+    // Sync to MongoDB TemplateSubmission for analytics
+    await TemplateSubmission.create({
+      submissionId,
+      draftId: draft.draft_id,
+      ownerUid: draft.user_id,
+      templateType: draft.template_type || 'unknown',
+      title: draft.title,
+      submittedData,
+    }).catch(err => console.error('MongoDB sync error (TemplateSubmission):', err));
 
     // Fire and forget email (don't await so user gets fast response)
     const ownerConfig = await EmailConfig.findOne({ ownerUid: draft.user_id }).catch(() => null);
