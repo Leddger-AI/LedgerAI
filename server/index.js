@@ -37,7 +37,7 @@ const {
 const { uploadCSVToDrive, uploadJSONToDrive } = require('./utils/googleDriveUpload');
 const { encrypt } = require('./utils/crypto');
 const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
-const { sendFormSubmissionEmail } = require('./utils/emailService');
+const { sendFormSubmissionEmail, buildSubmissionEmailHtml } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
 const { v4: uuidv4 } = require('uuid');
 const { runStartupChecks } = require('./startupCheck');
@@ -549,8 +549,20 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
     }).catch(err => console.error('MongoDB sync error (TemplateSubmission):', err));
 
     // Fire and forget email (don't await so user gets fast response)
-    const ownerConfig = await EmailConfig.findOne({ ownerUid: draft.user_id }).catch(() => null);
-    sendFormSubmissionEmail(draft.title, submittedData, ownerConfig?.email || null, ownerConfig);
+    const ownerAccount = await resolveEmailAccount(EmailAccount, draft.user_id, null).catch(() => null);
+    if (ownerAccount) {
+      buildTransporterFromAccount(ownerAccount)
+        .then(transporter => transporter.sendMail({
+          from: ownerAccount.email,
+          to: ownerAccount.email,
+          subject: `New Form Submission: ${draft.title}`,
+          html: buildSubmissionEmailHtml(draft.title, submittedData),
+        }))
+        .then(() => console.log('✅ Submission email sent!'))
+        .catch(err => console.error('❌ Error sending submission email', err));
+    } else {
+      sendFormSubmissionEmail(draft.title, submittedData, null, null);
+    }
 
     res.json({ message: 'Form submitted successfully!' });
   } catch (error) {

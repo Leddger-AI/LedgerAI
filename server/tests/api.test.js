@@ -59,11 +59,21 @@ jest.mock('../scheduler', () => ({
 // Mock emailService
 jest.mock('../utils/emailService', () => ({
   sendFormSubmissionEmail: jest.fn(() => Promise.resolve()),
+  buildSubmissionEmailHtml: jest.fn((formTitle) => `<p>${formTitle}</p>`),
 }));
 
 // Mock startupCheck
 jest.mock('../startupCheck', () => ({
   runStartupChecks: jest.fn(() => Promise.resolve([])),
+}));
+
+// Mock nodemailer — used by buildTransporterFromAccount() when a form-owner's
+// EmailAccount is found (issue #18: form submission notifications)
+const mockSendMail = jest.fn().mockResolvedValue({ messageId: 'test' });
+jest.mock('nodemailer', () => ({
+  createTransport: jest.fn(() => ({
+    sendMail: (...args) => mockSendMail(...args),
+  })),
 }));
 
 let mongoServer;
@@ -103,6 +113,8 @@ const Spreadsheet = require('../models/Spreadsheet');
 const EmailDraft = require('../models/EmailDraft');
 const EmailConfig = require('../models/EmailConfig');
 const EmailCampaign = require('../models/EmailCampaign');
+const EmailAccount = require('../models/EmailAccount');
+const { encrypt } = require('../utils/crypto');
 
 const createSpreadsheet = async (ownerUid = 'test-user-uid', name = 'Test Sheet', sheets = []) => {
   return Spreadsheet.create({ ownerUid, name, sheets });
@@ -127,6 +139,21 @@ const createEmailConfig = async (ownerUid = 'test-user-uid', overrides = {}) => 
     smtpHost: 'smtp.gmail.com',
     smtpPort: 587,
     appPassword: 'testpassword',
+    ...overrides,
+  });
+};
+
+const createEmailAccount = async (ownerUid = 'test-user-uid', overrides = {}) => {
+  return EmailAccount.create({
+    ownerUid,
+    email: 'recruiter@gmail.com',
+    label: 'Primary',
+    authMethod: 'app_password',
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: 587,
+    appPassword: encrypt('app-password-secret'),
+    isDefault: true,
+    isActive: true,
     ...overrides,
   });
 };
@@ -536,6 +563,56 @@ describe('Forms & Submissions API', () => {
         .send({ submittedData: {} });
 
       expect(res.status).toBe(404);
+    });
+
+    test('F10: sends notification via the form owner\'s EmailAccount when one exists (issue #18)', async () => {
+      await createEmailAccount('test-user-uid');
+      const futureExpiry = new Date(Date.now() + 86400000).toISOString();
+      mockSupabaseQuery.data = {
+        draft_id: 'd1',
+        user_id: 'test-user-uid',
+        title: 'Active Form',
+        status: 'active',
+        expires_at: futureExpiry,
+      };
+      mockSupabaseQuery.error = null;
+
+      const res = await request(app)
+        .post('/api/forms/d1/submit')
+        .send({ submittedData: { name: 'John' } });
+
+      expect(res.status).toBe(200);
+
+      // Email send is fire-and-forget (not awaited by the endpoint) — flush microtasks
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ from: 'recruiter@gmail.com', to: 'recruiter@gmail.com' })
+      );
+      const { sendFormSubmissionEmail } = require('../utils/emailService');
+      expect(sendFormSubmissionEmail).not.toHaveBeenCalled();
+    });
+
+    test('F11: falls back to legacy sendFormSubmissionEmail path when the form owner has no EmailAccount (issue #18)', async () => {
+      const futureExpiry = new Date(Date.now() + 86400000).toISOString();
+      mockSupabaseQuery.data = {
+        draft_id: 'd1',
+        user_id: 'test-user-uid',
+        title: 'Active Form',
+        status: 'active',
+        expires_at: futureExpiry,
+      };
+      mockSupabaseQuery.error = null;
+
+      const res = await request(app)
+        .post('/api/forms/d1/submit')
+        .send({ submittedData: { name: 'John' } });
+
+      expect(res.status).toBe(200);
+
+      const { sendFormSubmissionEmail } = require('../utils/emailService');
+      expect(sendFormSubmissionEmail).toHaveBeenCalledWith('Active Form', { name: 'John' }, null, null);
+      expect(mockSendMail).not.toHaveBeenCalled();
     });
   });
 
