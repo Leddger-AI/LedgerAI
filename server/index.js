@@ -561,7 +561,7 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
         .then(() => console.log('✅ Submission email sent!'))
         .catch(err => console.error('❌ Error sending submission email', err));
     } else {
-      sendFormSubmissionEmail(draft.title, submittedData, null, null);
+      sendFormSubmissionEmail(draft.title, submittedData);
     }
 
     res.json({ message: 'Form submitted successfully!' });

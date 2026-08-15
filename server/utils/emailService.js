@@ -14,56 +14,10 @@ function getNodemailer() {
   return _nodemailer;
 }
 
-const createTransporter = async (emailConfig = null) => {
+const createTransporter = async () => {
   const OAuth2 = getOAuth2();
   const nodemailer = getNodemailer();
-  if (emailConfig) {
-    if (emailConfig.authMethod === 'oauth2') {
-      const oauth2Client = new OAuth2(
-        emailConfig.clientId,
-        emailConfig.clientSecret,
-        "https://developers.google.com/oauthplayground"
-      );
 
-      oauth2Client.setCredentials({
-        refresh_token: emailConfig.refreshToken
-      });
-
-      const accessToken = await new Promise((resolve, reject) => {
-        oauth2Client.getAccessToken((err, token) => {
-          if (err) {
-            console.error('Failed to create access token', err);
-            reject("Failed to create access token: " + err);
-          }
-          resolve(token);
-        });
-      });
-
-      return nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          type: "OAuth2",
-          user: emailConfig.email,
-          accessToken,
-          clientId: emailConfig.clientId,
-          clientSecret: emailConfig.clientSecret,
-          refreshToken: emailConfig.refreshToken
-        }
-      });
-    } else {
-      return nodemailer.createTransport({
-        host: emailConfig.smtpHost,
-        port: emailConfig.smtpPort,
-        secure: emailConfig.smtpPort === 465,
-        auth: {
-          user: emailConfig.email,
-          pass: emailConfig.appPassword,
-        },
-      });
-    }
-  }
-
-  // Fallback to env vars
   const oauth2Client = new OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -111,16 +65,13 @@ const buildSubmissionEmailHtml = (formTitle, submittedData) => {
   `;
 };
 
-const sendFormSubmissionEmail = async (formTitle, submittedData, recruiterEmail = null, emailConfig = null) => {
+const sendFormSubmissionEmail = async (formTitle, submittedData) => {
   try {
-    const transporter = await createTransporter(emailConfig);
-
-    const fromEmail = emailConfig?.email || process.env.GOOGLE_EMAIL;
-    const toEmail = recruiterEmail || emailConfig?.email || process.env.GOOGLE_EMAIL;
+    const transporter = await createTransporter();
 
     const mailOptions = {
-      from: fromEmail,
-      to: toEmail,
+      from: process.env.GOOGLE_EMAIL,
+      to: process.env.GOOGLE_EMAIL,
       subject: `New Form Submission: ${formTitle}`,
       html: buildSubmissionEmailHtml(formTitle, submittedData),
     };
