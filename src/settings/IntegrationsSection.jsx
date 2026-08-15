@@ -117,6 +117,17 @@ export default function IntegrationsSection() {
     fetchIdentities();
     checkCloudinaryStatus();
     checkDriveStatus();
+
+    const params = new URLSearchParams(window.location.search);
+    const driveParam = params.get('drive');
+    if (driveParam === 'connected') {
+      showSuccess('Google Drive connected successfully!');
+    } else if (driveParam === 'error') {
+      showError('Failed to connect Google Drive. Please try again.');
+    }
+    if (driveParam) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const hasProvider = (provider) => identities.some((id) => id.provider === provider);

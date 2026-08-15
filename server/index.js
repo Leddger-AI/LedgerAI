@@ -2257,11 +2257,11 @@ app.get('/api/google-drive/callback', async (req, res) => {
     await storeTokens(state, tokens);
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/dashboard/settings?drive=connected`);
+    res.redirect(`${frontendUrl}/dashboard/settings/integrations?drive=connected`);
   } catch (error) {
     console.error('Error in Google Drive callback:', error);
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/dashboard/settings?drive=error`);
+    res.redirect(`${frontendUrl}/dashboard/settings/integrations?drive=error`);
   }
 });
 
