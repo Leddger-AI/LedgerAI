@@ -1,5 +1,9 @@
+const fs = require('fs');
+const path = require('path');
+
 let _nodemailer = null;
 let _OAuth2 = null;
+let _otpTemplate = null;
 
 function getOAuth2() {
   if (!_OAuth2) {
@@ -83,7 +87,33 @@ const sendFormSubmissionEmail = async (formTitle, submittedData) => {
   }
 };
 
+function getOtpTemplate() {
+  if (!_otpTemplate) {
+    _otpTemplate = fs.readFileSync(path.join(__dirname, 'emailTemplates', 'otp.html'), 'utf8');
+  }
+  return _otpTemplate;
+}
+
+// Unlike sendFormSubmissionEmail (fire-and-forget), this throws on failure —
+// the send-otp endpoint needs to know the send failed so it can report an
+// error instead of claiming success for a code the user will never receive.
+const sendOtpEmail = async (toEmail, otpCode, actionLabel) => {
+  const transporter = await createTransporter();
+
+  const html = getOtpTemplate()
+    .replaceAll('{{OTP_CODE}}', otpCode)
+    .replaceAll('{{ACTION_LABEL}}', actionLabel);
+
+  await transporter.sendMail({
+    from: process.env.GOOGLE_EMAIL,
+    to: toEmail,
+    subject: `Leddger-AI Security Verification — ${actionLabel}`,
+    html,
+  });
+};
+
 module.exports = {
   sendFormSubmissionEmail,
   buildSubmissionEmailHtml,
+  sendOtpEmail,
 };

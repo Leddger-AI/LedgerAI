@@ -96,6 +96,23 @@ CREATE TABLE IF NOT EXISTS email_send_log (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- OTP Challenges table — short-lived verification codes gating destructive
+-- actions (Delete Data / Delete Account). One row per (user_id, action);
+-- upserted on resend, deleted on successful verification or expiry check.
+-- No TTL/cron cleanup needed: the unique constraint means this table can
+-- never grow past 2 rows per user regardless of how many codes they request.
+CREATE TABLE IF NOT EXISTS otp_challenges (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('delete_data', 'delete_account')),
+  otp_hash TEXT NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  last_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  locked_until TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  UNIQUE (user_id, action)
+);
+
 -- ============================================
 -- Row Level Security (RLS)
 -- ============================================
@@ -107,6 +124,7 @@ ALTER TABLE form_submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE otp_challenges ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: users can manage their own profile
 CREATE POLICY "Users manage own profile" ON profiles
@@ -139,6 +157,12 @@ CREATE POLICY "Users manage own candidates" ON candidates
 CREATE POLICY "Users view own email send log" ON email_send_log
   FOR ALL USING (auth.uid() = user_id);
 
+-- OTP Challenges: users manage their own (backend uses the service role
+-- key and bypasses this anyway — kept for defense-in-depth consistency
+-- with every other per-user table)
+CREATE POLICY "Users manage own otp challenges" ON otp_challenges
+  FOR ALL USING (auth.uid() = user_id);
+
 -- ============================================
 -- Indexes
 -- ============================================
@@ -151,6 +175,7 @@ CREATE INDEX IF NOT EXISTS idx_meetings_user_id ON meetings(user_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_user_id ON alerts(user_id);
 CREATE INDEX IF NOT EXISTS idx_candidates_user_id ON candidates(user_id);
 CREATE INDEX IF NOT EXISTS idx_email_send_log_user_id ON email_send_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_otp_challenges_user_action ON otp_challenges(user_id, action);
 CREATE INDEX IF NOT EXISTS idx_email_send_log_sent_at ON email_send_log(sent_at DESC);
 
 -- ============================================

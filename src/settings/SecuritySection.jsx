@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Lock, LogOut, RefreshCw, AlertTriangle, CheckCircle2, Loader2, Trash2, UserX } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Lock, LogOut, RefreshCw, AlertTriangle, CheckCircle2, Loader2, Trash2, UserX, ShieldCheck, KeyRound } from 'lucide-react';
 import { getCurrentSession } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const OTP_COOLDOWN_SECONDS = 60;
+const OTP_INITIAL_STATE = { sending: false, sent: false, code: '', cooldownUntil: 0 };
 
 export default function SecuritySection({ onLogout, onResetData, user }) {
   const [successMsg, setSuccessMsg] = useState('');
@@ -14,6 +16,25 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
   const [ackReset, setAckReset] = useState(false);
   const [ackDeleteData, setAckDeleteData] = useState(false);
   const [ackDeleteAccount, setAckDeleteAccount] = useState(false);
+  const [otpData, setOtpData] = useState(OTP_INITIAL_STATE);
+  const [otpAccount, setOtpAccount] = useState(OTP_INITIAL_STATE);
+
+  // Tick every second while either action has an active resend cooldown, so
+  // "Resend OTP (Ns)" counts down live. Date.now() is read inside the effect
+  // (a side-effect, run post-render) and stored as state — never called
+  // directly during render, which React's purity rules disallow.
+  const [dataCooldownLeft, setDataCooldownLeft] = useState(0);
+  const [accountCooldownLeft, setAccountCooldownLeft] = useState(0);
+  useEffect(() => {
+    const tick = () => {
+      setDataCooldownLeft(Math.max(0, Math.ceil((otpData.cooldownUntil - Date.now()) / 1000)));
+      setAccountCooldownLeft(Math.max(0, Math.ceil((otpAccount.cooldownUntil - Date.now()) / 1000)));
+    };
+    tick();
+    if (otpData.cooldownUntil <= Date.now() && otpAccount.cooldownUntil <= Date.now()) return undefined;
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [otpData.cooldownUntil, otpAccount.cooldownUntil]);
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
@@ -33,6 +54,31 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
     setAckReset(false);
   };
 
+  const sendOtp = async (action, setOtpState) => {
+    setOtpState((s) => ({ ...s, sending: true }));
+    try {
+      const session = await getCurrentSession();
+      const res = await fetch(`${API_BASE_URL}/api/user/send-otp`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        showSuccess(data.message || 'Verification code sent.');
+        setOtpState((s) => ({ ...s, sending: false, sent: true, code: '', cooldownUntil: Date.now() + OTP_COOLDOWN_SECONDS * 1000 }));
+      } else {
+        showError(data.error || 'Failed to send verification code.');
+        const retrySeconds = data.retryAfterSeconds || OTP_COOLDOWN_SECONDS;
+        setOtpState((s) => ({ ...s, sending: false, cooldownUntil: Date.now() + retrySeconds * 1000 }));
+      }
+    } catch {
+      showError('Network error. Please try again.');
+      setOtpState((s) => ({ ...s, sending: false }));
+    }
+  };
+
   const handleDeleteData = async () => {
     setDeletingData(true);
     setErrorMsg('');
@@ -41,19 +87,20 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
       const res = await fetch(`${API_BASE_URL}/api/user/data`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${session.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmEmail: confirmEmailData }),
+        body: JSON.stringify({ confirmEmail: confirmEmailData, otp: otpData.code }),
       });
 
       if (res.ok) {
         showSuccess('All your data has been deleted. Your account remains active.');
         setConfirmEmailData('');
         setAckDeleteData(false);
+        setOtpData(OTP_INITIAL_STATE);
         setTimeout(() => onLogout(), 2000);
       } else {
         const data = await res.json().catch(() => ({}));
         showError(data.error || 'Failed to delete data.');
       }
-    } catch (err) {
+    } catch {
       showError('Network error. Please try again.');
     } finally {
       setDeletingData(false);
@@ -68,19 +115,20 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
       const res = await fetch(`${API_BASE_URL}/api/user/account`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${session.accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmEmail: confirmEmailAccount }),
+        body: JSON.stringify({ confirmEmail: confirmEmailAccount, otp: otpAccount.code }),
       });
 
       if (res.ok) {
         showSuccess('Your account has been permanently deleted.');
         setConfirmEmailAccount('');
         setAckDeleteAccount(false);
+        setOtpAccount(OTP_INITIAL_STATE);
         setTimeout(() => onLogout(), 2000);
       } else {
         const data = await res.json().catch(() => ({}));
         showError(data.error || 'Failed to delete account.');
       }
-    } catch (err) {
+    } catch {
       showError('Network error. Please try again.');
     } finally {
       setDeletingAccount(false);
@@ -188,14 +236,52 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
               />
             </div>
           )}
-          <button
-            type="button"
-            className="settings-btn settings-btn-danger"
-            onClick={handleDeleteData}
-            disabled={deletingData || !ackDeleteData || confirmEmailData !== userEmail}
-          >
-            {deletingData ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><Trash2 size={14} /> Delete All Data</>}
-          </button>
+
+          {ackDeleteData && confirmEmailData === userEmail && (
+            otpData.sent ? (
+              <>
+                <div className="settings-field" style={{ marginBottom: '12px' }}>
+                  <label className="settings-label"><KeyRound size={12} style={{ display: "inline", verticalAlign: "-2px", marginRight: "4px" }} />Enter the 6-digit code sent to your email:</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="settings-input"
+                    value={otpData.code}
+                    onChange={(e) => setOtpData((s) => ({ ...s, code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                    placeholder="000000"
+                    disabled={deletingData}
+                  />
+                  <button
+                    type="button"
+                    className="settings-hint"
+                    style={{ background: 'none', border: 'none', padding: 0, marginTop: '6px', textDecoration: 'underline', cursor: otpData.sending || dataCooldownLeft > 0 ? 'not-allowed' : 'pointer' }}
+                    onClick={() => sendOtp('delete_data', setOtpData)}
+                    disabled={otpData.sending || dataCooldownLeft > 0}
+                  >
+                    {dataCooldownLeft > 0 ? `Resend OTP (${dataCooldownLeft}s)` : 'Resend OTP'}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="settings-btn settings-btn-danger"
+                  onClick={handleDeleteData}
+                  disabled={deletingData || otpData.code.length !== 6}
+                >
+                  {deletingData ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><Trash2 size={14} /> Verify &amp; Delete All Data</>}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="settings-btn settings-btn-primary"
+                onClick={() => sendOtp('delete_data', setOtpData)}
+                disabled={otpData.sending}
+              >
+                {otpData.sending ? <><Loader2 size={14} className="spin" /> Sending...</> : <><ShieldCheck size={14} /> Send OTP to {userEmail}</>}
+              </button>
+            )
+          )}
         </div>
 
         {/* Delete Account */}
@@ -223,14 +309,52 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
               />
             </div>
           )}
-          <button
-            type="button"
-            className="settings-btn settings-btn-danger"
-            onClick={handleDeleteAccount}
-            disabled={deletingAccount || !ackDeleteAccount || confirmEmailAccount !== userEmail}
-          >
-            {deletingAccount ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><UserX size={14} /> Delete Account Permanently</>}
-          </button>
+
+          {ackDeleteAccount && confirmEmailAccount === userEmail && (
+            otpAccount.sent ? (
+              <>
+                <div className="settings-field" style={{ marginBottom: '12px' }}>
+                  <label className="settings-label"><KeyRound size={12} style={{ display: "inline", verticalAlign: "-2px", marginRight: "4px" }} />Enter the 6-digit code sent to your email:</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="settings-input"
+                    value={otpAccount.code}
+                    onChange={(e) => setOtpAccount((s) => ({ ...s, code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                    placeholder="000000"
+                    disabled={deletingAccount}
+                  />
+                  <button
+                    type="button"
+                    className="settings-hint"
+                    style={{ background: 'none', border: 'none', padding: 0, marginTop: '6px', textDecoration: 'underline', cursor: otpAccount.sending || accountCooldownLeft > 0 ? 'not-allowed' : 'pointer' }}
+                    onClick={() => sendOtp('delete_account', setOtpAccount)}
+                    disabled={otpAccount.sending || accountCooldownLeft > 0}
+                  >
+                    {accountCooldownLeft > 0 ? `Resend OTP (${accountCooldownLeft}s)` : 'Resend OTP'}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="settings-btn settings-btn-danger"
+                  onClick={handleDeleteAccount}
+                  disabled={deletingAccount || otpAccount.code.length !== 6}
+                >
+                  {deletingAccount ? <><Loader2 size={14} className="spin" /> Deleting...</> : <><UserX size={14} /> Verify &amp; Delete Account Permanently</>}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="settings-btn settings-btn-primary"
+                onClick={() => sendOtp('delete_account', setOtpAccount)}
+                disabled={otpAccount.sending}
+              >
+                {otpAccount.sending ? <><Loader2 size={14} className="spin" /> Sending...</> : <><ShieldCheck size={14} /> Send OTP to {userEmail}</>}
+              </button>
+            )
+          )}
         </div>
       </div>
     </div>

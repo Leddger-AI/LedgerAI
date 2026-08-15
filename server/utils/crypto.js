@@ -38,4 +38,12 @@ function decrypt(data) {
   return decrypted;
 }
 
-module.exports = { encrypt, decrypt };
+// One-way hash for values that only ever need comparison, never recovery
+// (e.g. OTP codes) — unlike encrypt()/decrypt() above, which are for
+// at-rest data that must be read back in plain form.
+function hmacHash(text) {
+  const key = getKey();
+  return crypto.createHmac('sha256', key).update(String(text)).digest('hex');
+}
+
+module.exports = { encrypt, decrypt, hmacHash };
