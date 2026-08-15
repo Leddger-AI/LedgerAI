@@ -37,7 +37,8 @@ const {
 const { uploadCSVToDrive, uploadJSONToDrive } = require('./utils/googleDriveUpload');
 const { encrypt } = require('./utils/crypto');
 const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
-const { sendFormSubmissionEmail, buildSubmissionEmailHtml } = require('./utils/emailService');
+const { sendFormSubmissionEmail, buildSubmissionEmailHtml, sendOtpEmail } = require('./utils/emailService');
+const { createOtpChallenge, verifyOtpChallenge } = require('./utils/otp');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
 const { v4: uuidv4 } = require('uuid');
 const { runStartupChecks } = require('./startupCheck');
@@ -1872,14 +1873,58 @@ app.put('/api/user/profile', verifyToken, async (req, res) => {
   }
 });
 
+const OTP_ACTION_LABELS = {
+  delete_data: 'Delete All Data',
+  delete_account: 'Delete Account',
+};
+
+// POST /api/user/send-otp — issues a one-time verification code, required
+// before DELETE /api/user/data or DELETE /api/user/account will proceed.
+app.post('/api/user/send-otp', verifyToken, async (req, res) => {
+  try {
+    const { action } = req.body || {};
+    const actionLabel = OTP_ACTION_LABELS[action];
+    if (!actionLabel) {
+      return res.status(400).json({ error: 'Invalid action. Must be "delete_data" or "delete_account".' });
+    }
+
+    const result = await createOtpChallenge(req.user.uid, action);
+
+    if (result.locked || result.rateLimited) {
+      return res.status(429).json({
+        error: result.locked
+          ? 'Too many failed attempts. Please try again later.'
+          : 'Please wait before requesting another code.',
+        retryAfterSeconds: Math.ceil(result.retryAfterMs / 1000),
+      });
+    }
+
+    await sendOtpEmail(req.user.email, result.otp, actionLabel);
+
+    res.json({ success: true, message: `OTP sent to ${req.user.email}` });
+  } catch (error) {
+    console.error('Error sending OTP:', error.message);
+    res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+  }
+});
+
 // DELETE /api/user/data — wipe all user data from Supabase + MongoDB + Cloudinary (keeps auth account)
 app.delete('/api/user/data', verifyToken, async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { confirmEmail } = req.body || {};
+    const { confirmEmail, otp } = req.body || {};
 
     if (!confirmEmail || confirmEmail !== req.user.email) {
       return res.status(400).json({ error: 'Email confirmation does not match your account email.' });
+    }
+
+    const otpResult = await verifyOtpChallenge(userId, 'delete_data', otp);
+    if (!otpResult.valid) {
+      const status = otpResult.reason === 'locked' ? 429 : 400;
+      const error = otpResult.reason === 'locked'
+        ? 'Too many failed verification attempts. Please try again later.'
+        : 'Invalid or expired OTP. Please request a new one.';
+      return res.status(status).json({ error });
     }
 
     const deleted = { supabase: [], mongodb: [], cloudinary: [] };
@@ -1943,10 +1988,19 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
 app.delete('/api/user/account', verifyToken, async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { confirmEmail } = req.body || {};
+    const { confirmEmail, otp } = req.body || {};
 
     if (!confirmEmail || confirmEmail !== req.user.email) {
       return res.status(400).json({ error: 'Email confirmation does not match your account email.' });
+    }
+
+    const otpResult = await verifyOtpChallenge(userId, 'delete_account', otp);
+    if (!otpResult.valid) {
+      const status = otpResult.reason === 'locked' ? 429 : 400;
+      const error = otpResult.reason === 'locked'
+        ? 'Too many failed verification attempts. Please try again later.'
+        : 'Invalid or expired OTP. Please request a new one.';
+      return res.status(status).json({ error });
     }
 
     // First, wipe all user data (same as DELETE /api/user/data)
