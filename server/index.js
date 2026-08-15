@@ -35,7 +35,8 @@ const {
   getDriveStatus,
 } = require('./utils/googleDriveOAuth');
 const { uploadCSVToDrive, uploadJSONToDrive } = require('./utils/googleDriveUpload');
-const { encrypt, decrypt } = require('./utils/crypto');
+const { encrypt } = require('./utils/crypto');
+const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
 const { v4: uuidv4 } = require('uuid');
@@ -1091,47 +1092,6 @@ app.delete('/api/email/drafts/:id', verifyToken, async (req, res) => {
 
 // --- Email Accounts (Multi-Account, Encrypted) ---
 
-async function buildTransporterFromAccount(account) {
-  const nodemailer = require('nodemailer');
-  if (account.authMethod === 'oauth2') {
-    const { google } = require('googleapis');
-    const OAuth2 = google.auth.OAuth2;
-    const oauth2Client = new OAuth2(
-      account.clientId,
-      decrypt(account.clientSecret),
-      'https://developers.google.com/oauthplayground'
-    );
-    oauth2Client.setCredentials({ refresh_token: decrypt(account.refreshToken) });
-    const accessToken = await new Promise((resolve, reject) => {
-      oauth2Client.getAccessToken((err, token) => {
-        if (err) reject(err);
-        resolve(token);
-      });
-    });
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        type: 'OAuth2',
-        user: account.email,
-        accessToken,
-        clientId: account.clientId,
-        clientSecret: decrypt(account.clientSecret),
-        refreshToken: decrypt(account.refreshToken),
-      },
-    });
-  } else {
-    return nodemailer.createTransport({
-      host: account.smtpHost,
-      port: account.smtpPort,
-      secure: account.smtpPort === 465,
-      auth: {
-        user: account.email,
-        pass: decrypt(account.appPassword),
-      },
-    });
-  }
-}
-
 async function migrateLegacyEmailConfig(userId) {
   const existing = await EmailAccount.findOne({ ownerUid: userId });
   if (existing) return;
@@ -1320,13 +1280,7 @@ app.post('/api/email/test', verifyToken, async (req, res) => {
   try {
     await migrateLegacyEmailConfig(req.user.uid);
     const { accountId } = req.body || {};
-    let account;
-    if (accountId) {
-      account = await EmailAccount.findOne({ _id: accountId, ownerUid: req.user.uid });
-    } else {
-      account = await EmailAccount.findOne({ ownerUid: req.user.uid, isDefault: true })
-        || await EmailAccount.findOne({ ownerUid: req.user.uid }).sort({ createdAt: 1 });
-    }
+    const account = await resolveEmailAccount(EmailAccount, req.user.uid, accountId);
     if (!account) {
       return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
     }
@@ -1365,13 +1319,7 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
     }
 
     await migrateLegacyEmailConfig(req.user.uid);
-    let account;
-    if (accountId) {
-      account = await EmailAccount.findOne({ _id: accountId, ownerUid: req.user.uid });
-    } else {
-      account = await EmailAccount.findOne({ ownerUid: req.user.uid, isDefault: true })
-        || await EmailAccount.findOne({ ownerUid: req.user.uid }).sort({ createdAt: 1 });
-    }
+    const account = await resolveEmailAccount(EmailAccount, req.user.uid, accountId);
     if (!account) {
       return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
     }
@@ -1545,13 +1493,7 @@ app.post('/api/email/schedule', verifyToken, async (req, res) => {
     if (!draft) return res.status(404).json({ error: 'Draft not found' });
 
     await migrateLegacyEmailConfig(req.user.uid);
-    let account;
-    if (accountId) {
-      account = await EmailAccount.findOne({ _id: accountId, ownerUid: req.user.uid });
-    } else {
-      account = await EmailAccount.findOne({ ownerUid: req.user.uid, isDefault: true })
-        || await EmailAccount.findOne({ ownerUid: req.user.uid }).sort({ createdAt: 1 });
-    }
+    const account = await resolveEmailAccount(EmailAccount, req.user.uid, accountId);
     if (!account) {
       return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
     }
@@ -1560,6 +1502,7 @@ app.post('/api/email/schedule', verifyToken, async (req, res) => {
       ownerUid: req.user.uid,
       name: campaignName || `Scheduled Campaign ${sendDate.toLocaleDateString()}`,
       draftId,
+      accountId: account._id,
       status: 'scheduled',
       scheduledAt: sendDate,
       recipients: recipients.map(r => ({

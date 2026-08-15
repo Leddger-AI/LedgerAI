@@ -15,6 +15,11 @@ const EmailCampaignSchema = new mongoose.Schema({
     ref: 'EmailDraft',
     required: true,
   },
+  accountId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'EmailAccount',
+    default: null,
+  },
   status: {
     type: String,
     enum: ['draft', 'scheduled', 'sending', 'sent', 'paused', 'failed', 'cancelled'],

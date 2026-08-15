@@ -26,14 +26,15 @@ jest.mock('../models/EmailCampaign', () => ({
 jest.mock('../models/EmailDraft', () => ({
   findById: jest.fn(),
 }));
-jest.mock('../models/EmailConfig', () => ({
+jest.mock('../models/EmailAccount', () => ({
   findOne: jest.fn(),
 }));
 
 // Mock supabase
+const mockSupabaseInsert = jest.fn().mockResolvedValue({ error: null });
 jest.mock('../supabaseClient', () => ({
   from: jest.fn(() => ({
-    insert: jest.fn().mockResolvedValue({ error: null }),
+    insert: (...args) => mockSupabaseInsert(...args),
     update: jest.fn().mockReturnThis(),
     eq: jest.fn().mockResolvedValue({ error: null }),
   })),
@@ -56,6 +57,14 @@ jest.mock('googleapis', () => ({
       })),
     },
   },
+}));
+
+// Mock the shared email-account helpers used by both index.js and scheduler.js
+const mockBuildTransporterFromAccount = jest.fn();
+const mockResolveEmailAccount = jest.fn();
+jest.mock('../utils/emailAccount', () => ({
+  buildTransporterFromAccount: (...args) => mockBuildTransporterFromAccount(...args),
+  resolveEmailAccount: (...args) => mockResolveEmailAccount(...args),
 }));
 
 describe('Scheduler', () => {
@@ -146,5 +155,98 @@ describe('Scheduler', () => {
 
   test('SC8: agenda starts after initialization', async () => {
     expect(mockAgendaInstance.start).toHaveBeenCalled();
+  });
+
+  describe('"send email campaign" job handler (issue #17 regression)', () => {
+    let EmailCampaign, EmailDraft, EmailAccount;
+    let runJob;
+    let mockTransporter;
+
+    beforeAll(() => {
+      EmailCampaign = require('../models/EmailCampaign');
+      EmailDraft = require('../models/EmailDraft');
+      EmailAccount = require('../models/EmailAccount');
+
+      const defineCall = mockAgendaInstance.define.mock.calls.find(
+        (call) => call[0] === 'send email campaign'
+      );
+      const handler = defineCall[2];
+      runJob = (campaignId) => handler({ attrs: { data: { campaignId } } });
+    });
+
+    const baseCampaign = (overrides = {}) => ({
+      _id: { toString: () => 'campaign-1' },
+      ownerUid: 'user-1',
+      draftId: { toString: () => 'draft-1' },
+      accountId: null,
+      status: 'scheduled',
+      recipients: [{ email: 'a@example.com', variables: {}, status: 'pending' }],
+      save: jest.fn().mockResolvedValue(undefined),
+      ...overrides,
+    });
+
+    const baseDraft = { subject: 'Hi', bodyHtml: '<p>Hi</p>' };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockTransporter = { sendMail: jest.fn().mockResolvedValue({ messageId: 'test' }) };
+      mockBuildTransporterFromAccount.mockResolvedValue(mockTransporter);
+      EmailDraft.findById.mockResolvedValue(baseDraft);
+    });
+
+    test('does not reference the deprecated EmailConfig model', () => {
+      const source = require('fs').readFileSync(require.resolve('../scheduler'), 'utf8');
+      expect(source).not.toMatch(/EmailConfig/);
+    });
+
+    test('uses EmailAccount directly by campaign.accountId when set, bypassing default/earliest resolution', async () => {
+      const account = { _id: 'acct-1', email: 'chosen@example.com', authMethod: 'app_password' };
+      const campaign = baseCampaign({ accountId: 'acct-1' });
+      EmailCampaign.findById.mockResolvedValue(campaign);
+      EmailAccount.findOne.mockResolvedValue(account);
+
+      await runJob('campaign-1');
+
+      expect(EmailAccount.findOne).toHaveBeenCalledWith({ _id: 'acct-1', ownerUid: 'user-1' });
+      expect(mockResolveEmailAccount).not.toHaveBeenCalled();
+      expect(mockBuildTransporterFromAccount).toHaveBeenCalledWith(account);
+      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ from: 'chosen@example.com', to: 'a@example.com' })
+      );
+      expect(campaign.status).toBe('sent');
+      expect(campaign.save).toHaveBeenCalled();
+      expect(mockSupabaseInsert).toHaveBeenCalledWith(
+        expect.objectContaining({ sender_email: 'chosen@example.com', status: 'sent' })
+      );
+    });
+
+    test('falls back to resolveEmailAccount (default/earliest EmailAccount) when campaign.accountId is absent', async () => {
+      const account = { _id: 'acct-2', email: 'default@example.com', authMethod: 'oauth2' };
+      const campaign = baseCampaign({ accountId: null });
+      EmailCampaign.findById.mockResolvedValue(campaign);
+      mockResolveEmailAccount.mockResolvedValue(account);
+
+      await runJob('campaign-1');
+
+      expect(mockResolveEmailAccount).toHaveBeenCalledWith(EmailAccount, 'user-1', null);
+      expect(EmailAccount.findOne).not.toHaveBeenCalled();
+      expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ from: 'default@example.com' })
+      );
+      expect(campaign.status).toBe('sent');
+    });
+
+    test('marks campaign failed (not a crash) when the user has no EmailAccount at all', async () => {
+      const campaign = baseCampaign({ accountId: null });
+      EmailCampaign.findById.mockResolvedValue(campaign);
+      mockResolveEmailAccount.mockResolvedValue(null);
+
+      await runJob('campaign-1');
+
+      expect(campaign.status).toBe('failed');
+      expect(campaign.save).toHaveBeenCalled();
+      expect(mockBuildTransporterFromAccount).not.toHaveBeenCalled();
+      expect(mockSupabaseInsert).not.toHaveBeenCalled();
+    });
   });
 });
