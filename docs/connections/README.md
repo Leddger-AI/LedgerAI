@@ -22,6 +22,7 @@ These docs serve as a **living architectural reference** so any developer can tr
 | 10 | [template-draft-lifecycle.md](./10-template-draft-lifecycle.md) | Template Draft Lifecycle | Create → schedule → activate → submit → expire |
 | 11 | [account-deletion.md](./11-account-deletion.md) | Account Deletion | Delete → cascade across Supabase + MongoDB + Cloudinary |
 | 12 | [avatar-upload.md](./12-avatar-upload.md) | Avatar Upload | File select → Sharp compress → Cloudinary → Supabase URL |
+| 13 | [ram-optimization.md](./13-ram-optimization.md) | RAM Optimization (512MB Render) | Lazy-load heavy modules → ~70MB saved at startup |
 
 ## How to Read Each Map
 

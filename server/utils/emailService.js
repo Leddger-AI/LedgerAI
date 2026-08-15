@@ -1,8 +1,22 @@
-const nodemailer = require('nodemailer');
-const { google } = require('googleapis');
-const OAuth2 = google.auth.OAuth2;
+let _nodemailer = null;
+let _OAuth2 = null;
+
+function getOAuth2() {
+  if (!_OAuth2) {
+    const { google } = require('googleapis');
+    _OAuth2 = google.auth.OAuth2;
+  }
+  return _OAuth2;
+}
+
+function getNodemailer() {
+  if (!_nodemailer) _nodemailer = require('nodemailer');
+  return _nodemailer;
+}
 
 const createTransporter = async (emailConfig = null) => {
+  const OAuth2 = getOAuth2();
+  const nodemailer = getNodemailer();
   if (emailConfig) {
     if (emailConfig.authMethod === 'oauth2') {
       const oauth2Client = new OAuth2(

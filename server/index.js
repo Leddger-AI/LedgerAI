@@ -1625,22 +1625,25 @@ app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
 // CLOUDINARY + IMAGE PROCESSING ENDPOINTS
 // ==========================================
 
-const multer = require('multer');
-const sharp = require('sharp');
-
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.'), false);
-    }
-  },
-});
+let _upload = null;
+function getUpload() {
+  if (!_upload) {
+    const multer = require('multer');
+    const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    _upload = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (req, file, cb) => {
+        if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.'), false);
+        }
+      },
+    });
+  }
+  return _upload;
+}
 
 function getCloudinary() {
   try {
@@ -1675,6 +1678,7 @@ function configureCloudinary() {
  * @returns {Promise<Buffer>} Compressed WebP image buffer
  */
 async function compressToTargetSize(buffer, maxBytes = 50 * 1024, dimension = 256) {
+  const sharp = require('sharp');
   let quality = 80;
   let output = buffer;
 
@@ -1708,7 +1712,7 @@ app.get('/api/cloudinary/status', verifyToken, async (req, res) => {
 });
 
 // POST /api/cloudinary/avatar — upload user avatar with Sharp + WebP compression
-app.post('/api/cloudinary/avatar', verifyToken, upload.single('file'), async (req, res) => {
+app.post('/api/cloudinary/avatar', verifyToken, (req, res, next) => { getUpload().single('file')(req, res, next); }, async (req, res) => {
   try {
     const cloudinary = configureCloudinary();
     if (!cloudinary) {
@@ -1798,7 +1802,7 @@ app.delete('/api/cloudinary/avatar', verifyToken, async (req, res) => {
 });
 
 // POST /api/cloudinary/upload — generic file upload (non-avatar)
-app.post('/api/cloudinary/upload', verifyToken, upload.single('file'), async (req, res) => {
+app.post('/api/cloudinary/upload', verifyToken, (req, res, next) => { getUpload().single('file')(req, res, next); }, async (req, res) => {
   try {
     const cloudinary = configureCloudinary();
     if (!cloudinary) {
