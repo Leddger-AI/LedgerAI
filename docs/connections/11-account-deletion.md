@@ -112,6 +112,10 @@ User can delete all their data (keeping auth account) or permanently delete thei
 | `CLOUDINARY_API_KEY` | No | Cloudinary |
 | `CLOUDINARY_API_SECREAT` | No | Cloudinary |
 
-## Note on Google Drive Tokens
+## Google Drive Token Cleanup
 
-The current deletion endpoints do **not** delete `GoogleDriveToken` records. This is a known gap — a fix should add `GoogleDriveToken.deleteMany({ ownerUid: userId })` to the MongoDB deletion step. See [04-google-drive-oauth-connect.md](./04-google-drive-oauth-connect.md).
+Both deletion endpoints call `revokeTokens(userId)` which:
+1. Revokes the Google OAuth token server-side (invalidates at Google)
+2. Deletes the `GoogleDriveToken` document from MongoDB
+
+This ensures no orphaned tokens remain after account deletion.

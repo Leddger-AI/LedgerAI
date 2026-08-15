@@ -1959,6 +1959,9 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
     const userResult = await User.deleteMany({ firebaseUid: userId });
     deleted.mongodb.push(`User (${userResult.deletedCount})`);
 
+    // --- Google Drive token cleanup ---
+    try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }
+
     // --- Cloudinary avatar deletion ---
     try {
       const cloudinary = configureCloudinary();
@@ -2014,6 +2017,9 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
     const User = require('./models/User');
     const userResult = await User.deleteMany({ firebaseUid: userId });
     deleted.mongodb.push(`User (${userResult.deletedCount})`);
+
+    // --- Google Drive token cleanup ---
+    try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }
 
     try {
       const cloudinary = configureCloudinary();
