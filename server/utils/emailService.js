@@ -97,13 +97,23 @@ const createTransporter = async (emailConfig = null) => {
   });
 };
 
+const buildSubmissionEmailHtml = (formTitle, submittedData) => {
+  const dataString = Object.entries(submittedData)
+    .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
+    .join('<br>');
+
+  return `
+    <h2>New Submission for ${formTitle}</h2>
+    <p>A user has just completed your form draft.</p>
+    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px;">
+      ${dataString}
+    </div>
+  `;
+};
+
 const sendFormSubmissionEmail = async (formTitle, submittedData, recruiterEmail = null, emailConfig = null) => {
   try {
     const transporter = await createTransporter(emailConfig);
-
-    const dataString = Object.entries(submittedData)
-      .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
-      .join('<br>');
 
     const fromEmail = emailConfig?.email || process.env.GOOGLE_EMAIL;
     const toEmail = recruiterEmail || emailConfig?.email || process.env.GOOGLE_EMAIL;
@@ -112,13 +122,7 @@ const sendFormSubmissionEmail = async (formTitle, submittedData, recruiterEmail 
       from: fromEmail,
       to: toEmail,
       subject: `New Form Submission: ${formTitle}`,
-      html: `
-        <h2>New Submission for ${formTitle}</h2>
-        <p>A user has just completed your form draft.</p>
-        <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px;">
-          ${dataString}
-        </div>
-      `
+      html: buildSubmissionEmailHtml(formTitle, submittedData),
     };
 
     await transporter.sendMail(mailOptions);
@@ -129,5 +133,6 @@ const sendFormSubmissionEmail = async (formTitle, submittedData, recruiterEmail 
 };
 
 module.exports = {
-  sendFormSubmissionEmail
+  sendFormSubmissionEmail,
+  buildSubmissionEmailHtml,
 };
