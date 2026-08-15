@@ -187,9 +187,6 @@ export default function ExcelCampaignGrid() {
       type: 'success',
       message: `${nonBlankRows.length} valid candidate${nonBlankRows.length !== 1 ? 's' : ''} ready for processing.`
     });
-
-    // Payload of validated rows, ready to be sent to a campaign launch endpoint.
-    console.log('Bulk campaign payload:', nonBlankRows);
   }, [rowData]);
 
   // Auto-dismiss the launch toast after a few seconds
