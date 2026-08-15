@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Loader2, AlertCircle, FileText, Users, Clock,
-  BarChart3, ChevronLeft, ChevronRight, GitBranch, Star,
+  BarChart3, ChevronLeft, ChevronRight, GitBranch, Star, HardDrive, ExternalLink, CheckCircle2,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -25,6 +25,8 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
   const [githubData, setGithubData] = useState(null);
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState(null);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveResult, setDriveResult] = useState(null);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -78,6 +80,27 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
       setGithubLoading(false);
     }
   }, [draftId]);
+
+  const handleDriveExport = async (format = 'csv') => {
+    setDriveLoading(true);
+    setDriveResult(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/analytics/templates/${draftId}/export/drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ format, convertToSheet: format === 'csv' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Export failed');
+      setDriveResult({ type: 'success', message: `Saved to Google Drive: ${data.name}`, link: data.webViewLink });
+    } catch (err) {
+      setDriveResult({ type: 'error', message: err.message });
+    } finally {
+      setDriveLoading(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -154,7 +177,29 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
             </span>
           </div>
         </div>
+        <div className="analytics-detail-actions">
+          <button
+            className="analytics-drive-btn"
+            onClick={() => handleDriveExport('csv')}
+            disabled={driveLoading}
+          >
+            {driveLoading ? <Loader2 size={14} className="spin" /> : <HardDrive size={14} />}
+            {driveLoading ? 'Saving...' : 'Save to Drive'}
+          </button>
+        </div>
       </div>
+
+      {driveResult && (
+        <div className={`analytics-sync-banner ${driveResult.type}`}>
+          {driveResult.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          <span>{driveResult.message}</span>
+          {driveResult.link && (
+            <a href={driveResult.link} target="_blank" rel="noopener noreferrer" className="analytics-drive-link">
+              <ExternalLink size={14} /> Open
+            </a>
+          )}
+        </div>
+      )}
 
       {/* KPI Cards for field stats */}
       <div className="analytics-kpi-grid">

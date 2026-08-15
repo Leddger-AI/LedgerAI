@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   BarChart3, TrendingUp, Users, FileText, RefreshCw, ChevronDown,
-  Loader2, AlertCircle, ArrowLeft, Clock, CheckCircle2, Eye,
+  Loader2, AlertCircle, ArrowLeft, Clock, CheckCircle2, Eye, HardDrive, ExternalLink,
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -24,6 +24,8 @@ export default function AnalyticsPage({ user }) {
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveResult, setDriveResult] = useState(null);
   const [selectedDraftId, setSelectedDraftId] = useState(null);
   const [dateRange, setDateRange] = useState(30);
 
@@ -110,6 +112,27 @@ export default function AnalyticsPage({ user }) {
     }
   };
 
+  const handleDriveExport = async (format = 'csv') => {
+    setDriveLoading(true);
+    setDriveResult(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/analytics/export/overview/drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ format, convertToSheet: format === 'csv' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Export failed');
+      setDriveResult({ type: 'success', message: `Saved to Google Drive: ${data.name}`, link: data.webViewLink });
+    } catch (err) {
+      setDriveResult({ type: 'error', message: err.message });
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
   if (selectedDraftId) {
     return (
       <TemplateDetailAnalytics
@@ -161,6 +184,14 @@ export default function AnalyticsPage({ user }) {
             {syncing ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
             {syncing ? 'Syncing...' : 'Sync Data'}
           </button>
+          <button
+            className="analytics-drive-btn"
+            onClick={() => handleDriveExport('csv')}
+            disabled={driveLoading}
+          >
+            {driveLoading ? <Loader2 size={14} className="spin" /> : <HardDrive size={14} />}
+            {driveLoading ? 'Saving...' : 'Save to Drive'}
+          </button>
         </div>
       </div>
 
@@ -175,6 +206,18 @@ export default function AnalyticsPage({ user }) {
         <div className={`analytics-sync-banner ${syncResult.type}`}>
           {syncResult.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           {syncResult.message}
+        </div>
+      )}
+
+      {driveResult && (
+        <div className={`analytics-sync-banner ${driveResult.type}`}>
+          {driveResult.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          <span>{driveResult.message}</span>
+          {driveResult.link && (
+            <a href={driveResult.link} target="_blank" rel="noopener noreferrer" className="analytics-drive-link">
+              <ExternalLink size={14} /> Open
+            </a>
+          )}
         </div>
       )}
 

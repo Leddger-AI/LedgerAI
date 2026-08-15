@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Cloud, CheckCircle2, Loader2, RefreshCw, AlertCircle, GitBranch, Plug } from 'lucide-react';
-import { getUserIdentities, unlinkProvider, loginWithGitHub, loginWithGoogleAndCalendar } from '../supabaseAuth';
+import { Cloud, CheckCircle2, Loader2, RefreshCw, AlertCircle, GitBranch, Plug, HardDrive } from 'lucide-react';
+import { getUserIdentities, unlinkProvider, loginWithGitHub, loginWithGoogleAndCalendar, getAuthToken } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -12,6 +12,8 @@ export default function IntegrationsSection() {
   const [errorMsg, setErrorMsg] = useState('');
   const [cloudinaryStatus, setCloudinaryStatus] = useState(null);
   const [cloudinaryChecking, setCloudinaryChecking] = useState(false);
+  const [driveStatus, setDriveStatus] = useState(null);
+  const [driveChecking, setDriveChecking] = useState(false);
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
@@ -50,9 +52,82 @@ export default function IntegrationsSection() {
     }
   };
 
+  const checkDriveStatus = async () => {
+    setDriveChecking(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) { setDriveStatus({ connected: false }); return; }
+      const res = await fetch(`${API_BASE_URL}/api/google-drive/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setDriveStatus(data);
+    } catch (err) {
+      setDriveStatus({ connected: false });
+    } finally {
+      setDriveChecking(false);
+    }
+  };
+
+  const handleConnectDrive = async () => {
+    setActionLoading('drive-connect');
+    try {
+      const token = await getAuthToken();
+      if (!token) { showError('Not authenticated. Please log in again.'); return; }
+      const res = await fetch(`${API_BASE_URL}/api/google-drive/auth`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        showError('Failed to get Google Drive auth URL.');
+      }
+    } catch (err) {
+      showError('Failed to connect Google Drive. Please try again.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDisconnectDrive = async () => {
+    if (!confirm('Disconnect Google Drive? You can reconnect anytime.')) return;
+    setActionLoading('drive-disconnect');
+    try {
+      const token = await getAuthToken();
+      if (!token) { showError('Not authenticated. Please log in again.'); return; }
+      const res = await fetch(`${API_BASE_URL}/api/google-drive/disconnect`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        showSuccess('Google Drive disconnected successfully.');
+        checkDriveStatus();
+      } else {
+        showError('Failed to disconnect Google Drive.');
+      }
+    } catch (err) {
+      showError('Network error. Please try again.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   useEffect(() => {
     fetchIdentities();
     checkCloudinaryStatus();
+    checkDriveStatus();
+
+    const params = new URLSearchParams(window.location.search);
+    const driveParam = params.get('drive');
+    if (driveParam === 'connected') {
+      showSuccess('Google Drive connected successfully!');
+    } else if (driveParam === 'error') {
+      showError('Failed to connect Google Drive. Please try again.');
+    }
+    if (driveParam) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const hasProvider = (provider) => identities.some((id) => id.provider === provider);
@@ -198,6 +273,54 @@ export default function IntegrationsSection() {
               disabled={actionLoading === 'google-connect'}
             >
               {actionLoading === 'google-connect' ? <><Loader2 size={14} className="spin" /> Connecting...</> : 'Connect Google'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Google Drive Integration */}
+      <div className="settings-card">
+        <div className="settings-card-title" style={{ justifyContent: 'space-between', display: 'flex' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <HardDrive size={18} style={{ color: 'var(--color-cyan)' }} />
+            Google Drive
+          </div>
+          {driveStatus && (
+            <span className={`settings-status-badge ${driveStatus.connected ? 'connected' : 'disconnected'}`}>
+              {driveStatus.connected ? (
+                <><CheckCircle2 size={12} /> Connected</>
+              ) : (
+                <><AlertCircle size={12} /> Not Connected</>
+              )}
+            </span>
+          )}
+        </div>
+        <div className="settings-card-desc">
+          Connect Google Drive to save analytics exports (CSV, Google Sheets, JSON) directly to your Drive.
+        </div>
+        {driveStatus?.connected && driveStatus.email && (
+          <div className="settings-hint" style={{ marginTop: '8px' }}>
+            Connected as <strong>{driveStatus.email}</strong>
+          </div>
+        )}
+        <div style={{ marginTop: '12px' }}>
+          {driveStatus?.connected ? (
+            <button
+              type="button"
+              className="settings-btn settings-btn-danger"
+              onClick={handleDisconnectDrive}
+              disabled={actionLoading === 'drive-disconnect'}
+            >
+              {actionLoading === 'drive-disconnect' ? <><Loader2 size={14} className="spin" /> Disconnecting...</> : 'Disconnect Drive'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="settings-btn settings-btn-primary"
+              onClick={handleConnectDrive}
+              disabled={actionLoading === 'drive-connect'}
+            >
+              {actionLoading === 'drive-connect' ? <><Loader2 size={14} className="spin" /> Connecting...</> : 'Connect Google Drive'}
             </button>
           )}
         </div>

@@ -26,6 +26,15 @@ const {
   getTemplateTypeDistribution,
 } = require('./utils/analyticsUtils');
 const { analyzeTemplateGitHub } = require('./utils/githubAnalyzer');
+const {
+  getAuthUrl,
+  exchangeCodeForTokens,
+  storeTokens,
+  getValidAccessToken,
+  revokeTokens,
+  getDriveStatus,
+} = require('./utils/googleDriveOAuth');
+const { uploadCSVToDrive, uploadJSONToDrive } = require('./utils/googleDriveUpload');
 const { encrypt, decrypt } = require('./utils/crypto');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
@@ -1616,22 +1625,25 @@ app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
 // CLOUDINARY + IMAGE PROCESSING ENDPOINTS
 // ==========================================
 
-const multer = require('multer');
-const sharp = require('sharp');
-
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.'), false);
-    }
-  },
-});
+let _upload = null;
+function getUpload() {
+  if (!_upload) {
+    const multer = require('multer');
+    const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    _upload = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (req, file, cb) => {
+        if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.'), false);
+        }
+      },
+    });
+  }
+  return _upload;
+}
 
 function getCloudinary() {
   try {
@@ -1666,6 +1678,7 @@ function configureCloudinary() {
  * @returns {Promise<Buffer>} Compressed WebP image buffer
  */
 async function compressToTargetSize(buffer, maxBytes = 50 * 1024, dimension = 256) {
+  const sharp = require('sharp');
   let quality = 80;
   let output = buffer;
 
@@ -1699,7 +1712,7 @@ app.get('/api/cloudinary/status', verifyToken, async (req, res) => {
 });
 
 // POST /api/cloudinary/avatar — upload user avatar with Sharp + WebP compression
-app.post('/api/cloudinary/avatar', verifyToken, upload.single('file'), async (req, res) => {
+app.post('/api/cloudinary/avatar', verifyToken, (req, res, next) => { getUpload().single('file')(req, res, next); }, async (req, res) => {
   try {
     const cloudinary = configureCloudinary();
     if (!cloudinary) {
@@ -1789,7 +1802,7 @@ app.delete('/api/cloudinary/avatar', verifyToken, async (req, res) => {
 });
 
 // POST /api/cloudinary/upload — generic file upload (non-avatar)
-app.post('/api/cloudinary/upload', verifyToken, upload.single('file'), async (req, res) => {
+app.post('/api/cloudinary/upload', verifyToken, (req, res, next) => { getUpload().single('file')(req, res, next); }, async (req, res) => {
   try {
     const cloudinary = configureCloudinary();
     if (!cloudinary) {
@@ -1950,6 +1963,9 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
     const userResult = await User.deleteMany({ firebaseUid: userId });
     deleted.mongodb.push(`User (${userResult.deletedCount})`);
 
+    // --- Google Drive token cleanup ---
+    try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }
+
     // --- Cloudinary avatar deletion ---
     try {
       const cloudinary = configureCloudinary();
@@ -2005,6 +2021,9 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
     const User = require('./models/User');
     const userResult = await User.deleteMany({ firebaseUid: userId });
     deleted.mongodb.push(`User (${userResult.deletedCount})`);
+
+    // --- Google Drive token cleanup ---
+    try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }
 
     try {
       const cloudinary = configureCloudinary();
@@ -2211,6 +2230,167 @@ app.get('/api/analytics/trends', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching analytics trends:', error);
     res.status(500).json({ error: 'Failed to fetch trends' });
+  }
+});
+
+// ==========================================
+// GOOGLE DRIVE INTEGRATION ENDPOINTS
+// ==========================================
+
+/**
+ * GET /api/google-drive/auth
+ * Returns Google OAuth URL for Drive connection
+ */
+app.get('/api/google-drive/auth', verifyToken, (req, res) => {
+  try {
+    const state = req.user.uid;
+    const authUrl = getAuthUrl(state);
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Error generating Google Drive auth URL:', error);
+    res.status(500).json({ error: 'Failed to generate auth URL' });
+  }
+});
+
+/**
+ * GET /api/google-drive/callback
+ * OAuth callback — exchanges code for tokens, stores them, redirects to frontend
+ */
+app.get('/api/google-drive/callback', async (req, res) => {
+  const { code, state } = req.query;
+  if (!code || !state) {
+    return res.status(400).send('Missing code or state parameter');
+  }
+
+  try {
+    const tokens = await exchangeCodeForTokens(code);
+    await storeTokens(state, tokens);
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/dashboard/settings/integrations?drive=connected`);
+  } catch (error) {
+    console.error('Error in Google Drive callback:', error);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/dashboard/settings/integrations?drive=error`);
+  }
+});
+
+/**
+ * GET /api/google-drive/status
+ * Check if user has Google Drive connected
+ */
+app.get('/api/google-drive/status', verifyToken, async (req, res) => {
+  try {
+    const status = await getDriveStatus(req.user.uid);
+    res.json(status);
+  } catch (error) {
+    console.error('Error checking Google Drive status:', error);
+    res.status(500).json({ error: 'Failed to check Drive status' });
+  }
+});
+
+/**
+ * DELETE /api/google-drive/disconnect
+ * Revoke tokens and delete from database
+ */
+app.delete('/api/google-drive/disconnect', verifyToken, async (req, res) => {
+  try {
+    await revokeTokens(req.user.uid);
+    res.json({ success: true, message: 'Google Drive disconnected successfully' });
+  } catch (error) {
+    console.error('Error disconnecting Google Drive:', error);
+    res.status(500).json({ error: 'Failed to disconnect Google Drive' });
+  }
+});
+
+/**
+ * POST /api/analytics/export/overview/drive
+ * Export overview analytics to Google Drive as CSV or JSON
+ */
+app.post('/api/analytics/export/overview/drive', verifyToken, async (req, res) => {
+  try {
+    const { format = 'csv', convertToSheet = true } = req.body;
+
+    const [overview, templates, trendsData] = await Promise.all([
+      getOverviewStats(req.user.uid),
+      getTemplatesWithStats(req.user.uid),
+      getSubmissionTrends(req.user.uid, 30),
+    ]);
+
+    const typeDist = await getTemplateTypeDistribution(req.user.uid);
+    const exportData = { overview, templates, trends: trendsData, typeDistribution: typeDist };
+
+    if (format === 'json') {
+      const jsonContent = JSON.stringify(exportData, null, 2);
+      const result = await uploadJSONToDrive(req.user.uid, jsonContent, `analytics-overview-${Date.now()}.json`);
+      res.json({ success: true, ...result });
+    } else {
+      const rows = [
+        ['Metric', 'Value'],
+        ['Total Templates', overview.totalTemplates],
+        ['Active Links', overview.activeLinks],
+        ['Total Submissions', overview.totalSubmissions],
+        ['Avg Fields/Template', overview.avgFieldsPerTemplate],
+        [],
+        ['Draft ID', 'Title', 'Type', 'Status', 'Submissions', 'Last Submission'],
+        ...templates.map(t => [
+          t.draftId, t.title, t.templateType, t.status,
+          t.submissionCount, t.lastSubmissionAt ? new Date(t.lastSubmissionAt).toISOString() : 'N/A',
+        ]),
+      ];
+      const csvContent = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const result = await uploadCSVToDrive(req.user.uid, csvContent, `analytics-overview-${Date.now()}.csv`, convertToSheet);
+      res.json({ success: true, ...result });
+    }
+  } catch (error) {
+    console.error('Error exporting overview to Drive:', error);
+    if (error.message?.includes('not connected')) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to export to Google Drive' });
+  }
+});
+
+/**
+ * POST /api/analytics/templates/:draftId/export/drive
+ * Export template detail analytics to Google Drive
+ */
+app.post('/api/analytics/templates/:draftId/export/drive', verifyToken, async (req, res) => {
+  try {
+    const { format = 'csv', convertToSheet = true } = req.body;
+
+    const detail = await getTemplateDetail(req.user.uid, req.params.draftId);
+    if (!detail) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const subResult = await getTemplateSubmissions(req.user.uid, req.params.draftId, 1, 10000);
+    const submissions = subResult.submissions;
+
+    if (format === 'json') {
+      const jsonContent = JSON.stringify({ detail, submissions }, null, 2);
+      const result = await uploadJSONToDrive(req.user.uid, jsonContent, `template-${req.params.draftId}-${Date.now()}.json`);
+      res.json({ success: true, ...result });
+    } else {
+      const allKeys = [...new Set(submissions.flatMap(s => Object.keys(s.submittedData || {})))];
+      const headerRow = ['Submission ID', 'Submitted At', ...allKeys];
+      const dataRows = submissions.map(s => [
+        s.submissionId,
+        new Date(s.submittedAt).toISOString(),
+        ...allKeys.map(k => s.submittedData?.[k] ?? ''),
+      ]);
+      const csvContent = [headerRow, ...dataRows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const result = await uploadCSVToDrive(req.user.uid, csvContent, `template-${detail.title.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}.csv`, convertToSheet);
+      res.json({ success: true, ...result });
+    }
+  } catch (error) {
+    console.error('Error exporting template to Drive:', error);
+    if (error.message?.includes('not connected')) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to export to Google Drive' });
   }
 });
 

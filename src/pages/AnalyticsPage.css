@@ -582,3 +582,54 @@
 .analytics-type-badge.data { background: rgba(34, 197, 94, 0.15); color: #22C55E; }
 .analytics-type-badge.mobile { background: rgba(99, 102, 241, 0.15); color: #6366F1; }
 .analytics-type-badge.unknown { background: rgba(128, 128, 128, 0.15); color: #888; }
+
+/* Google Drive export button */
+.analytics-drive-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.analytics-drive-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.analytics-drive-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Detail header actions */
+.analytics-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Drive result link inside banner */
+.analytics-drive-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: var(--color-cyan, #06b6d4);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.analytics-drive-link:hover {
+  text-decoration: underline;
+}
