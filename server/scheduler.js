@@ -21,7 +21,8 @@ async function getAgenda() {
     const { campaignId } = job.attrs.data;
     const EmailCampaign = require('./models/EmailCampaign');
     const EmailDraft = require('./models/EmailDraft');
-    const EmailConfig = require('./models/EmailConfig');
+    const EmailAccount = require('./models/EmailAccount');
+    const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
     const supabase = require('./supabaseClient');
 
     const campaign = await EmailCampaign.findById(campaignId);
@@ -43,57 +44,18 @@ async function getAgenda() {
       return;
     }
 
-    const config = await EmailConfig.findOne({ ownerUid: campaign.ownerUid });
-    if (!config) {
-      console.error(`[Scheduler] No email config for user ${campaign.ownerUid}`);
+    const account = campaign.accountId
+      ? await EmailAccount.findOne({ _id: campaign.accountId, ownerUid: campaign.ownerUid })
+      : await resolveEmailAccount(EmailAccount, campaign.ownerUid, null);
+    if (!account) {
+      console.error(`[Scheduler] No email account for user ${campaign.ownerUid}`);
       campaign.status = 'failed';
       await campaign.save();
       return;
     }
 
     // Build transporter
-    const nodemailer = require('nodemailer');
-    let transporter;
-
-    if (config.authMethod === 'oauth2') {
-      const { google } = require('googleapis');
-      const OAuth2 = google.auth.OAuth2;
-      const oauth2Client = new OAuth2(
-        config.clientId,
-        config.clientSecret,
-        'https://developers.google.com/oauthplayground'
-      );
-      oauth2Client.setCredentials({ refresh_token: config.refreshToken });
-
-      const accessToken = await new Promise((resolve, reject) => {
-        oauth2Client.getAccessToken((err, token) => {
-          if (err) reject(err);
-          resolve(token);
-        });
-      });
-
-      transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          type: 'OAuth2',
-          user: config.email,
-          accessToken,
-          clientId: config.clientId,
-          clientSecret: config.clientSecret,
-          refreshToken: config.refreshToken,
-        },
-      });
-    } else {
-      transporter = nodemailer.createTransport({
-        host: config.smtpHost,
-        port: config.smtpPort,
-        secure: config.smtpPort === 465,
-        auth: {
-          user: config.email,
-          pass: config.appPassword,
-        },
-      });
-    }
+    const transporter = await buildTransporterFromAccount(account);
 
     // Send emails
     let sentCount = 0;
@@ -112,7 +74,7 @@ async function getAgenda() {
         }
 
         await transporter.sendMail({
-          from: config.email,
+          from: account.email,
           to: recipient.email,
           subject,
           html: bodyHtml,
@@ -140,7 +102,7 @@ async function getAgenda() {
       campaign_id: campaign._id.toString(),
       draft_id: campaign.draftId.toString(),
       draft_title: draft.subject || 'Untitled',
-      sender_email: config.email,
+      sender_email: account.email,
       recipient_count: campaign.recipients.length,
       sent_count: sentCount,
       failed_count: failedCount,
