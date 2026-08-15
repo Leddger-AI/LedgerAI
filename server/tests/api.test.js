@@ -611,7 +611,7 @@ describe('Forms & Submissions API', () => {
       expect(res.status).toBe(200);
 
       const { sendFormSubmissionEmail } = require('../utils/emailService');
-      expect(sendFormSubmissionEmail).toHaveBeenCalledWith('Active Form', { name: 'John' }, null, null);
+      expect(sendFormSubmissionEmail).toHaveBeenCalledWith('Active Form', { name: 'John' });
       expect(mockSendMail).not.toHaveBeenCalled();
     });
   });
