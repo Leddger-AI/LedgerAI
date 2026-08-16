@@ -9,10 +9,16 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT,
   display_name TEXT,
   avatar_url TEXT,
+  timezone TEXT,
   departments TEXT[] DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Idempotent — safe to re-run against a database created before the
+-- timezone column existed (CREATE TABLE IF NOT EXISTS above is a no-op
+-- on an existing table, so this covers that case explicitly).
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS timezone TEXT;
 
 -- Form Drafts table
 CREATE TABLE IF NOT EXISTS form_drafts (

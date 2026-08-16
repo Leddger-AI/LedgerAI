@@ -1831,6 +1831,7 @@ app.get('/api/user/profile', verifyToken, async (req, res) => {
       email: profile?.email || req.user.email || '',
       display_name: profile?.display_name || '',
       avatar_url: profile?.avatar_url || null,
+      timezone: profile?.timezone || null,
       departments: profile?.departments || [],
     });
   } catch (error) {
@@ -1839,15 +1840,16 @@ app.get('/api/user/profile', verifyToken, async (req, res) => {
   }
 });
 
-// PUT /api/user/profile — update display name and/or avatar_url
+// PUT /api/user/profile — update display name, avatar_url, and/or timezone
 app.put('/api/user/profile', verifyToken, async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { display_name, avatar_url } = req.body || {};
+    const { display_name, avatar_url, timezone } = req.body || {};
 
     const updates = { updated_at: new Date().toISOString() };
     if (display_name !== undefined) updates.display_name = display_name;
     if (avatar_url !== undefined) updates.avatar_url = avatar_url;
+    if (timezone !== undefined) updates.timezone = timezone;
 
     const { data, error } = await supabase
       .from('profiles')
@@ -1865,6 +1867,7 @@ app.put('/api/user/profile', verifyToken, async (req, res) => {
       email: data.email,
       display_name: data.display_name,
       avatar_url: data.avatar_url,
+      timezone: data.timezone || null,
       departments: data.departments || [],
     });
   } catch (error) {
