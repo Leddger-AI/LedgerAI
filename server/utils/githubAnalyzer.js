@@ -146,8 +146,9 @@ async function fetchGitHubRepos(username) {
     updatedAt: r.updated_at,
   }));
 
-  setCached(`repos:${username}`, simplified);
-  return { repos: simplified };
+  const result = { repos: simplified };
+  setCached(`repos:${username}`, result);
+  return result;
 }
 
 async function analyzeTemplateGitHub(ownerUid, draftId) {

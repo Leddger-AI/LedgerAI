@@ -508,7 +508,7 @@ describe('POST /api/analytics/sync', () => {
 // =====================
 
 describe('githubAnalyzer utility', () => {
-  const { classifyRole, extractTechStack } = require('../utils/githubAnalyzer');
+  const { classifyRole, extractTechStack, fetchGitHubRepos } = require('../utils/githubAnalyzer');
 
   describe('classifyRole', () => {
     test('should classify frontend repos', () => {
@@ -615,6 +615,68 @@ describe('githubAnalyzer utility', () => {
       }));
       const result = extractTechStack(repos);
       expect(result.languages.length).toBeLessThanOrEqual(10);
+    });
+  });
+
+  describe('fetchGitHubRepos (issue #32: cached vs uncached shape)', () => {
+    const originalFetch = global.fetch;
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    const mockGitHubResponse = (repos) => ({
+      ok: true,
+      status: 200,
+      json: async () => repos,
+    });
+
+    test('uncached call returns { repos: [...] }', async () => {
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([
+        { name: 'repo-a', description: 'A', language: 'JavaScript', topics: ['react'], stargazers_count: 1, forks_count: 0, updated_at: '2026-01-01' },
+      ]));
+
+      const result = await fetchGitHubRepos('gh32-uncached-user');
+
+      expect(result.repos).toBeDefined();
+      expect(result.repos).toHaveLength(1);
+      expect(result.repos[0].name).toBe('repo-a');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    test('a cached call returns the same { repos: [...] } shape, not a bare array (regression for #32)', async () => {
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([
+        { name: 'repo-b', description: 'B', language: 'Python', topics: ['ml'], stargazers_count: 5, forks_count: 2, updated_at: '2026-01-02' },
+      ]));
+
+      const first = await fetchGitHubRepos('gh32-cached-user');
+      const second = await fetchGitHubRepos('gh32-cached-user');
+
+      // Only one real network call — the second was served from cache
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      // This is exactly what #32 got wrong: the cached path used to return
+      // the bare array, so `const { repos } = await fetchGitHubRepos(...)`
+      // would destructure `repos` as undefined here.
+      expect(second.repos).toBeDefined();
+      expect(second.repos).toEqual(first.repos);
+      expect(second.repos[0].name).toBe('repo-b');
+    });
+
+    test('returns { error: "User not found", repos: [] } on 404', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 });
+
+      const result = await fetchGitHubRepos('gh32-404-user');
+
+      expect(result).toEqual({ error: 'User not found', repos: [] });
+    });
+
+    test('returns { error: "Rate limited", repos: [] } on 403', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
+
+      const result = await fetchGitHubRepos('gh32-403-user');
+
+      expect(result).toEqual({ error: 'Rate limited', repos: [] });
     });
   });
 });
