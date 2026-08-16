@@ -145,9 +145,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
     rate: detail.fieldStats?.[field]?.completionRate || 0,
   }));
 
-  const allSubmissionKeys = submissions.length > 0
-    ? Object.keys(submissions[0].submittedData || {})
-    : [];
+  const allSubmissionKeys = detail.enabledFields;
 
   return (
     <div className="analytics-page">
