@@ -104,6 +104,11 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
 
   useEffect(() => {
     (async () => {
+      setError(null);
+      setGithubData(null);
+      setGithubError(null);
+      setSubmissionsPage(1);
+      setDriveResult(null);
       setLoading(true);
       await Promise.all([fetchDetail(), fetchSubmissions(1)]);
       setLoading(false);
