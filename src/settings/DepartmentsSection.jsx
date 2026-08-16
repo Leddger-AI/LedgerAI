@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, X, CheckCircle2, Loader2 } from 'lucide-react';
+import { Building2, Plus, X, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { getAuthToken } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -9,17 +10,28 @@ export default function DepartmentsSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const fetchDepartments = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
-      const res = await fetch(`${API_BASE_URL}/api/user/departments`);
+      const token = await getAuthToken();
+      if (!token) {
+        setErrorMsg('Not authenticated.');
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/api/user/departments`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (res.ok) {
         const data = await res.json();
         setDepartments(data.departments || []);
+      } else {
+        setErrorMsg('Failed to load departments.');
       }
-    } catch (err) {
-      // Use empty list on error
+    } catch {
+      setErrorMsg('Network error while loading departments.');
     } finally {
       setLoading(false);
     }
@@ -43,20 +55,32 @@ export default function DepartmentsSection() {
 
   const handleSave = async () => {
     setSaving(true);
+    setErrorMsg('');
     try {
+      const token = await getAuthToken();
+      if (!token) {
+        setErrorMsg('Not authenticated.');
+        return;
+      }
       const res = await fetch(`${API_BASE_URL}/api/user/departments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ departments }),
       });
 
       if (res.ok) {
         setSuccessMsg('Departments saved successfully!');
         setTimeout(() => setSuccessMsg(''), 3000);
+      } else {
+        setErrorMsg('Failed to save departments.');
+        setTimeout(() => setErrorMsg(''), 5000);
       }
-    } catch (err) {
-      setSuccessMsg('Failed to save departments.');
-      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch {
+      setErrorMsg('Network error while saving departments.');
+      setTimeout(() => setErrorMsg(''), 5000);
     } finally {
       setSaving(false);
     }
@@ -68,6 +92,13 @@ export default function DepartmentsSection() {
         <div className="settings-success">
           <CheckCircle2 size={16} />
           <span>{successMsg}</span>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="settings-success" style={{ background: 'var(--color-danger-glow)', borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
+          <AlertTriangle size={16} />
+          <span>{errorMsg}</span>
         </div>
       )}
 
