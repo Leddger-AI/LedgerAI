@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lock, LogOut, RefreshCw, AlertTriangle, CheckCircle2, Loader2, Trash2, UserX, ShieldCheck, KeyRound } from 'lucide-react';
+import { Lock, LogOut, RefreshCw, AlertTriangle, AlertCircle, CheckCircle2, Loader2, Trash2, UserX, ShieldCheck, KeyRound } from 'lucide-react';
 import { getCurrentSession } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -152,7 +152,7 @@ export default function SecuritySection({ onLogout, onResetData, user }) {
 
       {errorMsg && (
         <div className="settings-success" style={{ background: 'var(--color-danger-glow)', borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
-          <AlertTriangle size={16} />
+          <AlertCircle size={16} />
           <span>{errorMsg}</span>
         </div>
       )}
