@@ -1,8 +1,8 @@
 # Bug Fixes & Enhancements Summary
 
 **Date:** August 15–16, 2026
-**Scope:** A systematic pass through the repo's open bug/enhancement backlog (issues #17–#33), fixing each with a dedicated branch, PR, and test coverage.
-**Result:** 10 issues fixed across 10 merged PRs, 1 feature shipped, 2 issues closed as already-resolved/duplicate, 38 new backend tests added (145 → 183 passing).
+**Scope:** A systematic pass through the repo's open bug/enhancement backlog (issues #17–#40), fixing each with a dedicated branch, PR, and test coverage.
+**Result:** 13 merged PRs (#43–#52, #54–#56) fixing 12 issues plus one bonus fix found while verifying another (#33's `GoogleDriveToken` sibling); 1 feature shipped (#22); 2 issues closed without new code because their fixes already existed elsewhere (#21, #33); 1 additional fix (#40) implemented directly on the still-open Phase 5 PR ([#30](https://github.com/Leddger-AI/LedgerAI/pull/30)), not yet on `main`. 49 new backend tests added in total — 145 → 183 on `main`, plus 11 more on the separate, unmerged `feature/analytics-phase5` branch.
 
 ---
 
@@ -21,8 +21,12 @@
 | [#25](https://github.com/Leddger-AI/LedgerAI/issues/25) | `SecuritySection` error banner used the wrong icon | Bug | [#50](https://github.com/Leddger-AI/LedgerAI/pull/50) | `src/settings/SecuritySection.jsx` |
 | [#32](https://github.com/Leddger-AI/LedgerAI/issues/32) | `fetchGitHubRepos` returned a different shape on cache hit vs miss | Bug | [#51](https://github.com/Leddger-AI/LedgerAI/pull/51) | `server/utils/githubAnalyzer.js` |
 | [#33](https://github.com/Leddger-AI/LedgerAI/issues/33) | `TemplateData` pre-save hook incompatible with Mongoose 9.x | Bug | *(already fixed in PR #29, closed)* → same pattern found in `GoogleDriveToken.js`, fixed via [#52](https://github.com/Leddger-AI/LedgerAI/pull/52) | `server/models/GoogleDriveToken.js` |
+| [#34](https://github.com/Leddger-AI/LedgerAI/issues/34) | `getOverviewStats` internal variables named `completionRate*` but computed a field count, not a rate | Enhancement | [#54](https://github.com/Leddger-AI/LedgerAI/pull/54) | `server/utils/analyticsUtils.js` |
+| [#36](https://github.com/Leddger-AI/LedgerAI/issues/36) | Raw submissions table columns came from the first submission on the page only | Bug | [#55](https://github.com/Leddger-AI/LedgerAI/pull/55) | `src/pages/TemplateDetailAnalytics.jsx` |
+| [#39](https://github.com/Leddger-AI/LedgerAI/issues/39) | `TemplateDetailAnalytics` didn't reset state when `draftId` changed | Bug | [#56](https://github.com/Leddger-AI/LedgerAI/pull/56) | `src/pages/TemplateDetailAnalytics.jsx` |
+| [#40](https://github.com/Leddger-AI/LedgerAI/issues/40) | No rate limiting or size cap on analytics export endpoints (OOM risk) | Enhancement | *commit on open PR [#30](https://github.com/Leddger-AI/LedgerAI/pull/30) — not yet merged* | `server/middleware/exportRateLimit.js` (new), `server/utils/exportUtils.js` |
 
-All 10 PRs above are **merged**. Every fix shipped with new or updated automated tests — none relied on manual verification alone.
+Every PR above is **merged**, except #40's — that fix is a commit on the still-open Phase 5 PR ([#30](https://github.com/Leddger-AI/LedgerAI/pull/30)), landing on `main` whenever that PR merges, not before. Every fix shipped with new or updated automated tests — none relied on manual verification alone.
 
 ---
 
@@ -138,6 +142,49 @@ Resolved as a side effect of #17/PR #43 — the rewritten test file mocks `Email
 
 ---
 
+## Issue #34 — getOverviewStats' internal variables were misleadingly named
+
+**Problem:** `getOverviewStats()` computed an average *field count* per template but named its internal variables `completionRates`/`avgCompletionRate`. The returned API field was already correctly named `avgFieldsPerTemplate`, matching the frontend's "Avg Fields/Template" label — this was purely an internal-readability issue, not a behavioral one.
+
+**Why a rename, not a real completion-rate calculation (the issue's own alternative suggestion):** checked first — a genuine per-field completion rate already exists and is tested at the template-detail level (`getTemplateDetail`'s `completionRate`). Calculating a second one here would have duplicated that, not fixed a gap; this stat was never meant to be a completion rate.
+
+**Fix:** Pure rename — `completionRates` → `fieldCounts`, `avgCompletionRate` → `avgFieldsPerTemplate` (now matching the return key directly). Zero behavior change; existing test coverage for this exact field continued to pass unchanged.
+
+---
+
+## Issue #36 — Raw submissions table columns came from the first submission only
+
+**Problem:** `allSubmissionKeys` was built from `Object.keys(submissions[0].submittedData)` — a column only appeared if the first submission on the current page happened to have that field filled. Optional fields filled by later submissions never got a column, and since "first submission" changes per page, the column set itself changed as users paginated.
+
+**Fix:** Switched to `detail.enabledFields` — the template's configured field schema, already fetched by this component and already used elsewhere in it. Unlike a per-page union of keys (the issue's other suggested fix), this is independent of which submissions are on the current page, fixing both symptoms at once. One-line change; row rendering already tolerated a missing value per cell.
+
+---
+
+## Issue #39 — TemplateDetailAnalytics didn't reset state when draftId changed
+
+**Problem:** The fetch effect never reset `error`, `githubData`, `githubError`, or `submissionsPage` — stale state from a previous template could show through for a new one.
+
+**Reachability check:** traced whether this could actually happen via the live UI before fixing it. It couldn't — `TemplateDetailAnalytics`'s only caller never changes `draftId` on a mounted instance; every path between templates goes through the list view in between, which already discards all state via unmount/remount. Fixed anyway, for the same reason as #33's `GoogleDriveToken` fix: zero-risk today, but a plausible near-future "next/previous template" control would make it a live, confusing bug with no obvious link back to the cause.
+
+**Also fixed:** `driveResult`, the same staleness class, found while checking every piece of state in the component — not mentioned in the original issue.
+
+---
+
+## Issue #40 — No rate limiting or size cap on analytics export endpoints
+
+**Different from every other entry above:** this issue's code (`GET /api/analytics/export/*`, `GET /api/analytics/templates/:draftId/export.*`) doesn't exist on `main` — it's part of Phase 5 ([PR #30](https://github.com/Leddger-AI/LedgerAI/pull/30)), which is still open and was ~40 commits behind `main` when this fix was implemented. The fix landed as an additional commit directly on that branch, not a new PR, and won't reach `main` until #30 merges.
+
+**Problem:** The 5 export endpoints fetched up to 10,000 submissions into memory and built the full CSV/JSON string before sending, with no rate limiting anywhere in the app — concurrent large exports from multiple users could spike memory on the 512MB Render instance.
+
+**Fix (2 of the issue's 3 suggested mitigations; the third deferred):**
+- **Per-user rate limit** — a lightweight in-memory 30s cooldown (`server/middleware/exportRateLimit.js`, new) across all 5 export routes. Not a new `express-rate-limit` dependency: doesn't need to survive a restart, and per-user (not per-IP) fits since these are authenticated endpoints.
+- **Lowered submission cap** — 10,000 → 5,000 (`MAX_EXPORT_SUBMISSIONS`). When the true total exceeds the cap, CSV exports get an appended note and JSON exports get `truncated`/`totalAvailable` fields, so a capped export is never silently incomplete.
+- **Deferred:** streaming responses instead of building the full string in memory. The issue's own math (10k rows × ~1KB ≈ 10MB) shows today's realistic ceiling is manageable even unstreamed; streaming would mean restructuring the multi-section CSV builder into a different architecture, worth doing only if real usage outgrows what the rate limit + cap can bound safely.
+
+**Tests:** New `export.test.js`, 11 tests, on the `feature/analytics-phase5` branch — 104 → 115 passing *on that branch*, a separate count from `main`'s 183 since the branch predates most of this session's other work.
+
+---
+
 ## Test coverage growth
 
 | Stage | Backend tests passing |
@@ -149,10 +196,15 @@ Resolved as a side effect of #17/PR #43 — the rewritten test file mocks `Email
 | After #22 (OTP feature) | 171 |
 | After #24 | 175 |
 | After #32 | 179 |
-| After #33 (GoogleDriveToken) | **183** |
+| After #33 (GoogleDriveToken) | 183 |
+| After #34, #36, #39 | **183** *(unchanged — a pure rename and two frontend-only fixes with no new backend test surface)* |
 
 Every fix included baseline verification before changing anything, real (non-mocked, where practical) test coverage for the fixed logic, and — for the correctness bugs — explicit confirmation that the new test actually fails against the old code before being trusted as a valid regression guard.
 
+**Separately, on the still-open `feature/analytics-phase5` branch** (issue #40 — not part of the `main`-branch progression above, since that branch predates most of this work): 104 → **115** passing after the export rate-limit/cap fix.
+
 ## Pattern across this backlog
 
-Five of the ten fixed issues (#17, #18, #19, #21, and the `TemplateData`/`GoogleDriveToken` pair in #33) trace back to the same root cause repeating in slightly different forms: code migrated from one data model or auth pattern to another (`EmailConfig` → `EmailAccount`, Firebase → Supabase auth, Mongoose callback-style hooks → promise-style), with a sibling file or code path missed each time. Two more (#23, #24) were a third variant of the same class — a wrapped session helper's field name assumed incorrectly. Where a fix touched shared logic, it was extracted into a reusable module (`emailAccount.js`, `otp.js`) rather than left duplicated, specifically to reduce the chance of the next migration missing a spot the same way.
+Five of the ten early-fixed issues (#17, #18, #19, #21, and the `TemplateData`/`GoogleDriveToken` pair in #33) trace back to the same root cause repeating in slightly different forms: code migrated from one data model or auth pattern to another (`EmailConfig` → `EmailAccount`, Firebase → Supabase auth, Mongoose callback-style hooks → promise-style), with a sibling file or code path missed each time. Two more (#23, #24) were a third variant of the same class — a wrapped session helper's field name assumed incorrectly. Where a fix touched shared logic, it was extracted into a reusable module (`emailAccount.js`, `otp.js`) rather than left duplicated, specifically to reduce the chance of the next migration missing a spot the same way.
+
+A different pattern shows up in the later issues (#36, #39, #40): each one was checked for real-world reachability or actual severity before being fixed — #36 and #39 turned out to be either fully live or currently-unreachable-but-worth-fixing-anyway, and #40's own severity assessment ("Low... not a problem for typical usage") shaped a deliberately partial fix (2 of 3 suggested mitigations) rather than over-building for a risk that isn't live yet. #40 also surfaced a process issue distinct from any code bug: it was filed against a PR (#30) that was open and significantly behind `main`, a reminder to check whether an issue's referenced code has actually shipped before assuming it needs fixing on `main`.
