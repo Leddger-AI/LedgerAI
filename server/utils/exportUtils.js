@@ -9,6 +9,17 @@ const {
   getTemplateTypeDistribution,
 } = require('./analyticsUtils');
 
+// Caps how many submission rows a single export loads into memory at once
+// (issue #40). getTemplateSubmissions' `total` (a countDocuments, independent
+// of this limit) is used to detect and report truncation.
+const MAX_EXPORT_SUBMISSIONS = 5000;
+
+function truncationNote(total) {
+  return total > MAX_EXPORT_SUBMISSIONS
+    ? `Export truncated to the ${MAX_EXPORT_SUBMISSIONS} most recent submissions (${total} total). Use the app's paginated view to see the rest.`
+    : null;
+}
+
 function escapeCSV(value) {
   if (value === null || value === undefined) return '';
   const str = String(value);
@@ -77,7 +88,7 @@ async function exportTemplateDetailCSV(ownerUid, draftId) {
   const detail = await getTemplateDetail(ownerUid, draftId);
   if (!detail) return null;
 
-  const submissions = await getTemplateSubmissions(ownerUid, draftId, 1, 10000);
+  const submissions = await getTemplateSubmissions(ownerUid, draftId, 1, MAX_EXPORT_SUBMISSIONS);
   const sections = [];
 
   sections.push('# Template Info');
@@ -111,6 +122,8 @@ async function exportTemplateDetailCSV(ownerUid, draftId) {
       return row;
     });
     sections.push(arrayToCSV(flatSubs));
+    const note = truncationNote(submissions.total);
+    if (note) sections.push(`\n# Note: ${note}`);
   } else {
     sections.push('No submissions');
   }
@@ -122,7 +135,7 @@ async function exportTemplateDetailJSON(ownerUid, draftId) {
   const detail = await getTemplateDetail(ownerUid, draftId);
   if (!detail) return null;
 
-  const submissions = await getTemplateSubmissions(ownerUid, draftId, 1, 10000);
+  const submissions = await getTemplateSubmissions(ownerUid, draftId, 1, MAX_EXPORT_SUBMISSIONS);
 
   return JSON.stringify({
     generatedAt: new Date().toISOString(),
@@ -138,11 +151,13 @@ async function exportTemplateDetailJSON(ownerUid, draftId) {
       fieldStats: detail.fieldStats,
     },
     submissions: submissions.submissions,
+    truncated: submissions.total > MAX_EXPORT_SUBMISSIONS,
+    totalAvailable: submissions.total,
   }, null, 2);
 }
 
 async function exportAllSubmissionsCSV(ownerUid, draftId) {
-  const result = await getTemplateSubmissions(ownerUid, draftId, 1, 10000);
+  const result = await getTemplateSubmissions(ownerUid, draftId, 1, MAX_EXPORT_SUBMISSIONS);
   if (result.submissions.length === 0) return 'No submissions found';
 
   const flatSubs = result.submissions.map(s => {
@@ -152,7 +167,10 @@ async function exportAllSubmissionsCSV(ownerUid, draftId) {
     return row;
   });
 
-  return arrayToCSV(flatSubs);
+  let csv = arrayToCSV(flatSubs);
+  const note = truncationNote(result.total);
+  if (note) csv += `\n\n# Note: ${note}`;
+  return csv;
 }
 
 module.exports = {
@@ -163,4 +181,5 @@ module.exports = {
   exportAllSubmissionsCSV,
   arrayToCSV,
   escapeCSV,
+  MAX_EXPORT_SUBMISSIONS,
 };

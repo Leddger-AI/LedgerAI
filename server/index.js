@@ -33,6 +33,7 @@ const {
   exportTemplateDetailJSON,
   exportAllSubmissionsCSV,
 } = require('./utils/exportUtils');
+const { exportRateLimit } = require('./middleware/exportRateLimit');
 const { encrypt, decrypt } = require('./utils/crypto');
 const { sendFormSubmissionEmail } = require('./utils/emailService');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
@@ -2229,7 +2230,7 @@ app.get('/api/analytics/trends', verifyToken, async (req, res) => {
  * GET /api/analytics/export/overview.csv
  * Export overview analytics as CSV
  */
-app.get('/api/analytics/export/overview.csv', verifyToken, async (req, res) => {
+app.get('/api/analytics/export/overview.csv', verifyToken, exportRateLimit, async (req, res) => {
   try {
     const csv = await exportOverviewCSV(req.user.uid);
     res.setHeader('Content-Type', 'text/csv');
@@ -2245,7 +2246,7 @@ app.get('/api/analytics/export/overview.csv', verifyToken, async (req, res) => {
  * GET /api/analytics/export/overview.json
  * Export overview analytics as JSON
  */
-app.get('/api/analytics/export/overview.json', verifyToken, async (req, res) => {
+app.get('/api/analytics/export/overview.json', verifyToken, exportRateLimit, async (req, res) => {
   try {
     const json = await exportOverviewJSON(req.user.uid);
     res.setHeader('Content-Type', 'application/json');
@@ -2261,7 +2262,7 @@ app.get('/api/analytics/export/overview.json', verifyToken, async (req, res) => 
  * GET /api/analytics/templates/:draftId/export.csv
  * Export template detail analytics as CSV
  */
-app.get('/api/analytics/templates/:draftId/export.csv', verifyToken, async (req, res) => {
+app.get('/api/analytics/templates/:draftId/export.csv', verifyToken, exportRateLimit, async (req, res) => {
   try {
     const csv = await exportTemplateDetailCSV(req.user.uid, req.params.draftId);
     if (!csv) return res.status(404).json({ error: 'Template not found' });
@@ -2278,7 +2279,7 @@ app.get('/api/analytics/templates/:draftId/export.csv', verifyToken, async (req,
  * GET /api/analytics/templates/:draftId/export.json
  * Export template detail analytics as JSON
  */
-app.get('/api/analytics/templates/:draftId/export.json', verifyToken, async (req, res) => {
+app.get('/api/analytics/templates/:draftId/export.json', verifyToken, exportRateLimit, async (req, res) => {
   try {
     const json = await exportTemplateDetailJSON(req.user.uid, req.params.draftId);
     if (!json) return res.status(404).json({ error: 'Template not found' });
@@ -2295,7 +2296,7 @@ app.get('/api/analytics/templates/:draftId/export.json', verifyToken, async (req
  * GET /api/analytics/templates/:draftId/submissions/export.csv
  * Export all submissions for a template as CSV
  */
-app.get('/api/analytics/templates/:draftId/submissions/export.csv', verifyToken, async (req, res) => {
+app.get('/api/analytics/templates/:draftId/submissions/export.csv', verifyToken, exportRateLimit, async (req, res) => {
   try {
     const csv = await exportAllSubmissionsCSV(req.user.uid, req.params.draftId);
     res.setHeader('Content-Type', 'text/csv');
