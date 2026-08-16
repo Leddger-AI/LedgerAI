@@ -3,7 +3,7 @@ const TemplateSubmission = require('../models/TemplateSubmission');
 
 /**
  * Get overview KPIs across all user templates.
- * Returns: totalTemplates, activeLinks, totalSubmissions, avgCompletionRate
+ * Returns: totalTemplates, activeLinks, totalSubmissions, avgFieldsPerTemplate
  */
 async function getOverviewStats(ownerUid) {
   const templates = await TemplateData.find({ ownerUid }).lean();
@@ -16,22 +16,22 @@ async function getOverviewStats(ownerUid) {
   ]);
   const totalSubmissions = submissionCounts.reduce((sum, s) => sum + s.count, 0);
 
-  const completionRates = templates.map(t => {
+  const fieldCounts = templates.map(t => {
     const config = t.config || {};
     const toggles = config.toggles || {};
     const enabledFields = Object.values(toggles).filter(Boolean).length;
     if (enabledFields === 0) return 0;
     return enabledFields;
   });
-  const avgCompletionRate = completionRates.length > 0
-    ? Math.round((completionRates.reduce((a, b) => a + b, 0) / completionRates.length))
+  const avgFieldsPerTemplate = fieldCounts.length > 0
+    ? Math.round((fieldCounts.reduce((a, b) => a + b, 0) / fieldCounts.length))
     : 0;
 
   return {
     totalTemplates,
     activeLinks,
     totalSubmissions,
-    avgFieldsPerTemplate: avgCompletionRate,
+    avgFieldsPerTemplate,
   };
 }
 
