@@ -666,6 +666,101 @@ describe('Forms & Submissions API', () => {
 });
 
 // ==========================================
+// PROFILE (issue #24: timezone persistence)
+// ==========================================
+
+describe('Profile API', () => {
+  describe('GET /api/user/profile', () => {
+    test('P1: returns the stored timezone', async () => {
+      mockSupabaseQuery.data = {
+        id: 'test-user-uid',
+        email: 'test@leddger.ai',
+        display_name: 'Test User',
+        avatar_url: null,
+        timezone: 'Asia/Kolkata',
+        departments: [],
+      };
+      mockSupabaseQuery.error = null;
+
+      const res = await request(app)
+        .get('/api/user/profile')
+        .set('x-test-uid', 'test-user-uid');
+
+      expect(res.status).toBe(200);
+      expect(res.body.timezone).toBe('Asia/Kolkata');
+    });
+
+    test('P2: returns null timezone when never set', async () => {
+      mockSupabaseQuery.data = {
+        id: 'test-user-uid',
+        email: 'test@leddger.ai',
+        display_name: '',
+        avatar_url: null,
+        timezone: null,
+        departments: [],
+      };
+      mockSupabaseQuery.error = null;
+
+      const res = await request(app)
+        .get('/api/user/profile')
+        .set('x-test-uid', 'test-user-uid');
+
+      expect(res.status).toBe(200);
+      expect(res.body.timezone).toBeNull();
+    });
+  });
+
+  describe('PUT /api/user/profile', () => {
+    test('P3: persists timezone — sends it in the Supabase update() call and returns it', async () => {
+      const chain = createChain();
+      mockSupabaseQuery.data = {
+        id: 'test-user-uid',
+        email: 'test@leddger.ai',
+        display_name: 'Test User',
+        avatar_url: null,
+        timezone: 'Europe/London',
+        departments: [],
+      };
+      mockSupabaseQuery.error = null;
+      mockSupabase.from.mockReturnValueOnce(chain);
+
+      const res = await request(app)
+        .put('/api/user/profile')
+        .set('x-test-uid', 'test-user-uid')
+        .send({ display_name: 'Test User', timezone: 'Europe/London' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.timezone).toBe('Europe/London');
+      expect(chain.update).toHaveBeenCalledWith(
+        expect.objectContaining({ display_name: 'Test User', timezone: 'Europe/London' })
+      );
+    });
+
+    test('P4: omitting timezone from the request does not touch it in the update payload', async () => {
+      const chain = createChain();
+      mockSupabaseQuery.data = {
+        id: 'test-user-uid',
+        email: 'test@leddger.ai',
+        display_name: 'Test User',
+        avatar_url: null,
+        timezone: 'Europe/London',
+        departments: [],
+      };
+      mockSupabaseQuery.error = null;
+      mockSupabase.from.mockReturnValueOnce(chain);
+
+      const res = await request(app)
+        .put('/api/user/profile')
+        .set('x-test-uid', 'test-user-uid')
+        .send({ display_name: 'Test User' });
+
+      expect(res.status).toBe(200);
+      expect(chain.update.mock.calls[0][0]).not.toHaveProperty('timezone');
+    });
+  });
+});
+
+// ==========================================
 // SPREADSHEETS
 // ==========================================
 

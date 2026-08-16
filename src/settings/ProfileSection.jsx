@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { User, Upload, CheckCircle2, Loader2, AlertCircle, Trash2 } from 'lucide-react';
-import { getCurrentSession } from '../supabaseAuth';
+import { getAuthToken } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -10,6 +10,7 @@ export default function ProfileSection({ user }) {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [email, setEmail] = useState(user?.email || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.photoURL || '');
+  const [timezone, setTimezone] = useState('');
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -34,8 +35,7 @@ export default function ProfileSection({ user }) {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const session = await getCurrentSession();
-        const token = session?.access_token;
+        const token = await getAuthToken();
         if (!token) { setLoading(false); return; }
 
         const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
@@ -47,8 +47,9 @@ export default function ProfileSection({ user }) {
           if (data.display_name) setDisplayName(data.display_name);
           if (data.email) setEmail(data.email);
           if (data.avatar_url) setAvatarUrl(data.avatar_url);
+          if (data.timezone) setTimezone(data.timezone);
         }
-      } catch (err) {
+      } catch {
         // Fall back to user prop data
       } finally {
         setLoading(false);
@@ -77,8 +78,7 @@ export default function ProfileSection({ user }) {
     setUploading(true);
     setErrorMsg('');
     try {
-      const session = await getCurrentSession();
-      const token = session?.access_token;
+      const token = await getAuthToken();
       if (!token) {
         showError('Not authenticated. Please log in again.');
         return;
@@ -101,7 +101,7 @@ export default function ProfileSection({ user }) {
         const data = await res.json().catch(() => ({}));
         showError(data.error || 'Upload failed. Check Cloudinary configuration.');
       }
-    } catch (err) {
+    } catch {
       showError('Network error. Please try again.');
     } finally {
       setUploading(false);
@@ -113,8 +113,11 @@ export default function ProfileSection({ user }) {
     setRemoving(true);
     setErrorMsg('');
     try {
-      const session = await getCurrentSession();
-      const token = session?.access_token;
+      const token = await getAuthToken();
+      if (!token) {
+        showError('Not authenticated. Please log in again.');
+        return;
+      }
 
       const res = await fetch(`${API_BASE_URL}/api/cloudinary/avatar`, {
         method: 'DELETE',
@@ -127,7 +130,7 @@ export default function ProfileSection({ user }) {
       } else {
         showError('Failed to remove avatar.');
       }
-    } catch (err) {
+    } catch {
       showError('Network error. Please try again.');
     } finally {
       setRemoving(false);
@@ -139,8 +142,11 @@ export default function ProfileSection({ user }) {
     setSaving(true);
     setErrorMsg('');
     try {
-      const session = await getCurrentSession();
-      const token = session?.access_token;
+      const token = await getAuthToken();
+      if (!token) {
+        showError('Not authenticated. Please log in again.');
+        return;
+      }
 
       const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
         method: 'PUT',
@@ -148,7 +154,7 @@ export default function ProfileSection({ user }) {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ display_name: displayName }),
+        body: JSON.stringify({ display_name: displayName, timezone }),
       });
 
       if (res.ok) {
@@ -157,7 +163,7 @@ export default function ProfileSection({ user }) {
         const data = await res.json().catch(() => ({}));
         showError(data.error || 'Failed to save profile.');
       }
-    } catch (err) {
+    } catch {
       showError('Network error. Please try again.');
     } finally {
       setSaving(false);
@@ -301,7 +307,7 @@ export default function ProfileSection({ user }) {
 
           <div className="settings-field">
             <label className="settings-label">Timezone</label>
-            <select className="settings-select" defaultValue="">
+            <select className="settings-select" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
               <option value="" disabled>Select your timezone</option>
               <option value="America/New_York">America/New York (EST)</option>
               <option value="America/Chicago">America/Chicago (CST)</option>
