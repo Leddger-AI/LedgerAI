@@ -33,9 +33,8 @@ const GoogleDriveTokenSchema = new mongoose.Schema({
   },
 });
 
-GoogleDriveTokenSchema.pre('save', function (next) {
+GoogleDriveTokenSchema.pre('save', function () {
   this.updatedAt = new Date();
-  next();
 });
 
 module.exports = mongoose.model('GoogleDriveToken', GoogleDriveTokenSchema);
