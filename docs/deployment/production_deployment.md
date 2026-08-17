@@ -38,6 +38,7 @@ Deploy the Node.js/Express backend as a **Web Service** on Render:
   * `GOOGLE_REFRESH_TOKEN`: Gmail OAuth2 refresh token.
   * `GOOGLE_EMAIL`: The Gmail address sending notifications.
   * `GEMINI_API_KEY`: *(Optional, Google Gemini API key for AI attribution)*.
+  * `GITHUB_TOKEN`: *(Optional, GitHub Personal Access Token — raises the GitHub API rate limit for candidate GitHub analysis from 60/hr to 5,000/hr)*.
 
 ---
 

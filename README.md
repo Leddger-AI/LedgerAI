@@ -89,6 +89,11 @@ GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REFRESH_TOKEN=your-google-refresh-token
 GOOGLE_EMAIL=your-email@gmail.com
+
+# GitHub (optional — raises the GitHub API rate limit for candidate GitHub
+# analysis from 60/hr unauthenticated to 5,000/hr. A plain Personal Access
+# Token with no scopes is sufficient, since only public repo data is read.)
+GITHUB_TOKEN=your-github-personal-access-token
 ```
 
 > **⚠️ CRITICAL:** Never expose the `SUPABASE_SERVICE_ROLE_KEY` in frontend code. Only use `VITE_SUPABASE_ANON_KEY` in the frontend.

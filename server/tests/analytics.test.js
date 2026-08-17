@@ -508,7 +508,13 @@ describe('POST /api/analytics/sync', () => {
 // =====================
 
 describe('githubAnalyzer utility', () => {
-  const { classifyRole, extractTechStack, fetchGitHubRepos } = require('../utils/githubAnalyzer');
+  const {
+    classifyRole,
+    extractTechStack,
+    fetchGitHubRepos,
+    _setGithubThrottleMsForTests,
+    _resetGithubThrottleForTests,
+  } = require('../utils/githubAnalyzer');
 
   describe('classifyRole', () => {
     test('should classify frontend repos', () => {
@@ -620,14 +626,29 @@ describe('githubAnalyzer utility', () => {
 
   describe('fetchGitHubRepos (issue #32: cached vs uncached shape)', () => {
     const originalFetch = global.fetch;
+    const originalToken = process.env.GITHUB_TOKEN;
+    const noHeaders = { get: () => null };
+
+    beforeEach(() => {
+      // Default to no throttle delay so these tests run fast; the
+      // dedicated throttle test below overrides this with a real (short)
+      // interval to prove pacing actually happens.
+      _resetGithubThrottleForTests();
+      _setGithubThrottleMsForTests(0);
+      delete process.env.GITHUB_TOKEN;
+    });
 
     afterEach(() => {
       global.fetch = originalFetch;
+      _setGithubThrottleMsForTests(0);
+      if (originalToken === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = originalToken;
     });
 
     const mockGitHubResponse = (repos) => ({
       ok: true,
       status: 200,
+      headers: noHeaders,
       json: async () => repos,
     });
 
@@ -664,19 +685,78 @@ describe('githubAnalyzer utility', () => {
     });
 
     test('returns { error: "User not found", repos: [] } on 404', async () => {
-      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 });
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404, headers: noHeaders });
 
       const result = await fetchGitHubRepos('gh32-404-user');
 
       expect(result).toEqual({ error: 'User not found', repos: [] });
     });
 
-    test('returns { error: "Rate limited", repos: [] } on 403', async () => {
-      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
+    test('returns a bare "Rate limited" message on 403 with no rate-limit headers', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403, headers: noHeaders });
 
-      const result = await fetchGitHubRepos('gh32-403-user');
+      const result = await fetchGitHubRepos('gh35-403-no-headers');
 
       expect(result).toEqual({ error: 'Rate limited', repos: [] });
+    });
+
+    test('issue #35: includes Authorization header when GITHUB_TOKEN is set', async () => {
+      process.env.GITHUB_TOKEN = 'test-pat-123';
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
+
+      await fetchGitHubRepos('gh35-auth-user');
+
+      const [, options] = global.fetch.mock.calls[0];
+      expect(options.headers.Authorization).toBe('token test-pat-123');
+    });
+
+    test('issue #35: omits Authorization header when GITHUB_TOKEN is not set', async () => {
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
+
+      await fetchGitHubRepos('gh35-no-auth-user');
+
+      const [, options] = global.fetch.mock.calls[0];
+      expect(options.headers.Authorization).toBeUndefined();
+    });
+
+    test('issue #35: 403 with Retry-After header includes the wait time in seconds', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        headers: { get: (name) => (name === 'retry-after' ? '45' : null) },
+      });
+
+      const result = await fetchGitHubRepos('gh35-retry-after-user');
+
+      expect(result.error).toBe('Rate limited by GitHub. Try again in 45s.');
+    });
+
+    test('issue #35: 403 with only X-RateLimit-Reset falls back to a minutes estimate', async () => {
+      const resetAt = Math.ceil(Date.now() / 1000) + 300; // 5 minutes out
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        headers: { get: (name) => (name === 'x-ratelimit-reset' ? String(resetAt) : null) },
+      });
+
+      const result = await fetchGitHubRepos('gh35-reset-header-user');
+
+      expect(result.error).toMatch(/Rate limited by GitHub\. Try again in ~\d+ min\./);
+    });
+
+    test('issue #35: throttles consecutive uncached requests by roughly the configured interval', async () => {
+      _setGithubThrottleMsForTests(150);
+      _resetGithubThrottleForTests();
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
+
+      const start = Date.now();
+      await fetchGitHubRepos('gh35-throttle-user-1');
+      await fetchGitHubRepos('gh35-throttle-user-2');
+      const elapsed = Date.now() - start;
+
+      // First call is unthrottled (no prior request), second must wait
+      // out the remainder of the interval — allow slack for CI jitter.
+      expect(elapsed).toBeGreaterThanOrEqual(100);
     });
   });
 });
