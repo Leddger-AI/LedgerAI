@@ -19,6 +19,7 @@ function createChain() {
     eq: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
+    range: jest.fn().mockReturnThis(),
     single: jest.fn().mockResolvedValue(mockSupabaseQuery),
     count: jest.fn().mockReturnThis(),
     then: (resolve, reject) => Promise.resolve(mockSupabaseQuery).then(resolve, reject),
@@ -501,6 +502,136 @@ describe('POST /api/analytics/sync', () => {
     expect(count).toBe(1);
     mockSupabase.from = originalFrom;
   });
+
+  test('bulk upsert does not overwrite an existing submission\'s data (issue #37)', async () => {
+    await createSubmission({
+      submissionId: 'preserve-sub',
+      draftId: 'preserve-draft',
+      title: 'Original Title',
+      submittedData: { name: 'Original' },
+    });
+
+    const originalFrom = mockSupabase.from;
+    mockSupabase.from = jest.fn((table) => {
+      const chain = createChain();
+      if (table === 'form_drafts') {
+        mockSupabaseQuery.data = [];
+      } else if (table === 'form_submissions') {
+        mockSupabaseQuery.data = [
+          { submission_id: 'preserve-sub', draft_id: 'preserve-draft', user_id: 'test-user-uid', template_type: 'student', title: 'Changed Title', submitted_data: { name: 'Changed' }, submitted_at: '2024-01-01T00:00:00Z' },
+        ];
+      }
+      return chain;
+    });
+
+    const res = await request(app)
+      .post('/api/analytics/sync')
+      .set('x-test-uid', 'test-user-uid');
+    expect(res.status).toBe(200);
+    // Already existed — not counted as newly synced
+    expect(res.body.submissionsSynced).toBe(0);
+
+    const doc = await TemplateSubmission.findOne({ submissionId: 'preserve-sub' });
+    expect(doc.title).toBe('Original Title');
+    expect(doc.submittedData.name).toBe('Original');
+    mockSupabase.from = originalFrom;
+  });
+
+  test('paginates past the Supabase 1000-row page cap (issue #37)', async () => {
+    const originalFrom = mockSupabase.from;
+    let draftCalls = 0;
+    let subCalls = 0;
+
+    const makeDraft = (i) => ({
+      draft_id: `page-draft-${i}`,
+      user_id: 'test-user-uid',
+      title: `Page Template ${i}`,
+      template_type: 'student',
+      config: { toggles: { name: true } },
+      status: 'active',
+      expires_at: null,
+      created_at: '2024-01-01T00:00:00Z',
+    });
+    const makeSub = (i) => ({
+      submission_id: `page-sub-${i}`,
+      draft_id: 'page-draft-0',
+      user_id: 'test-user-uid',
+      template_type: 'student',
+      title: 'Page Template 0',
+      submitted_data: { name: `User ${i}` },
+      submitted_at: '2024-01-01T00:00:00Z',
+    });
+
+    const draftPage1 = Array.from({ length: 1000 }, (_, i) => makeDraft(i));
+    const draftPage2 = [makeDraft(1000), makeDraft(1001)]; // 1002 total, spans 2 pages
+    const subPage1 = Array.from({ length: 1000 }, (_, i) => makeSub(i));
+    const subPage2 = [makeSub(1000)]; // 1001 total, spans 2 pages
+
+    mockSupabase.from = jest.fn((table) => {
+      const chain = createChain();
+      if (table === 'form_drafts') {
+        draftCalls++;
+        mockSupabaseQuery.data = draftCalls === 1 ? draftPage1 : draftPage2;
+      } else if (table === 'form_submissions') {
+        subCalls++;
+        mockSupabaseQuery.data = subCalls === 1 ? subPage1 : subPage2;
+      }
+      return chain;
+    });
+
+    const res = await request(app)
+      .post('/api/analytics/sync')
+      .set('x-test-uid', 'test-user-uid');
+
+    expect(res.status).toBe(200);
+    expect(draftCalls).toBe(2);
+    expect(subCalls).toBe(2);
+    expect(res.body.templatesSynced).toBe(1002);
+    expect(res.body.submissionsSynced).toBe(1001);
+
+    const templateCount = await TemplateData.countDocuments({ draftId: /^page-draft-/ });
+    expect(templateCount).toBe(1002);
+    const subCount = await TemplateSubmission.countDocuments({ submissionId: /^page-sub-/ });
+    expect(subCount).toBe(1001);
+
+    mockSupabase.from = originalFrom;
+  }, 30000);
+
+  test('fetches a second, empty page when the row count is an exact multiple of the page size (issue #37)', async () => {
+    const originalFrom = mockSupabase.from;
+    let subCalls = 0;
+    const subPage1 = Array.from({ length: 1000 }, (_, i) => ({
+      submission_id: `exact-sub-${i}`,
+      draft_id: 'exact-draft',
+      user_id: 'test-user-uid',
+      template_type: 'student',
+      title: 'Exact Template',
+      submitted_data: { name: `User ${i}` },
+      submitted_at: '2024-01-01T00:00:00Z',
+    }));
+
+    mockSupabase.from = jest.fn((table) => {
+      const chain = createChain();
+      if (table === 'form_drafts') {
+        mockSupabaseQuery.data = [];
+      } else if (table === 'form_submissions') {
+        subCalls++;
+        mockSupabaseQuery.data = subCalls === 1 ? subPage1 : [];
+      }
+      return chain;
+    });
+
+    const res = await request(app)
+      .post('/api/analytics/sync')
+      .set('x-test-uid', 'test-user-uid');
+
+    expect(res.status).toBe(200);
+    // Proves it queried a second page rather than assuming a full first page was the last
+    expect(subCalls).toBe(2);
+    expect(res.body.submissionsSynced).toBe(1000);
+
+    mockSupabase.from = originalFrom;
+  }, 30000);
 });
 
 // =====================
