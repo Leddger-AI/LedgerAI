@@ -645,6 +645,9 @@ describe('githubAnalyzer utility', () => {
     fetchGitHubRepos,
     _setGithubThrottleMsForTests,
     _resetGithubThrottleForTests,
+    _setGithubCacheMaxSizeForTests,
+    _resetGithubCacheMaxSizeForTests,
+    _clearGithubCacheForTests,
   } = require('../utils/githubAnalyzer');
 
   describe('classifyRole', () => {
@@ -888,6 +891,92 @@ describe('githubAnalyzer utility', () => {
       // First call is unthrottled (no prior request), second must wait
       // out the remainder of the interval — allow slack for CI jitter.
       expect(elapsed).toBeGreaterThanOrEqual(100);
+    });
+  });
+
+  describe('githubCache size cap (issue #38)', () => {
+    let originalFetch;
+    const noHeaders = { get: () => null };
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+      _resetGithubThrottleForTests();
+      _setGithubThrottleMsForTests(0);
+      _clearGithubCacheForTests();
+      delete process.env.GITHUB_TOKEN;
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      _setGithubThrottleMsForTests(0);
+      _resetGithubCacheMaxSizeForTests();
+      _clearGithubCacheForTests();
+    });
+
+    const mockGitHubResponse = (repos) => ({
+      ok: true,
+      status: 200,
+      headers: noHeaders,
+      json: async () => repos,
+    });
+
+    test('evicts the oldest entry once a new key would push the cache past its cap', async () => {
+      _setGithubCacheMaxSizeForTests(3);
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
+
+      await fetchGitHubRepos('cache38-user-1'); // oldest
+      await fetchGitHubRepos('cache38-user-2');
+      await fetchGitHubRepos('cache38-user-3');
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+
+      // 4th distinct key exceeds the cap of 3 — user-1 should be evicted
+      await fetchGitHubRepos('cache38-user-4');
+      expect(global.fetch).toHaveBeenCalledTimes(4);
+
+      // user-1 was evicted: re-fetching it is a cache miss (a real call)
+      await fetchGitHubRepos('cache38-user-1');
+      expect(global.fetch).toHaveBeenCalledTimes(5);
+
+      // user-3 (recently inserted, never evicted) is still a cache hit
+      await fetchGitHubRepos('cache38-user-3');
+      expect(global.fetch).toHaveBeenCalledTimes(5);
+    });
+
+    test('does not evict anything while at or under the cap', async () => {
+      _setGithubCacheMaxSizeForTests(3);
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
+
+      await fetchGitHubRepos('cache38-under-1');
+      await fetchGitHubRepos('cache38-under-2');
+      await fetchGitHubRepos('cache38-under-3');
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+
+      // Re-fetching all 3 again should be pure cache hits — no new calls
+      await fetchGitHubRepos('cache38-under-1');
+      await fetchGitHubRepos('cache38-under-2');
+      await fetchGitHubRepos('cache38-under-3');
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    test('eviction removes exactly one entry per key over the cap, not the whole cache', async () => {
+      _setGithubCacheMaxSizeForTests(2);
+      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
+
+      await fetchGitHubRepos('cache38-multi-1'); // oldest, will be evicted 1st
+      await fetchGitHubRepos('cache38-multi-2'); // evicted 2nd
+      await fetchGitHubRepos('cache38-multi-3'); // pushes multi-1 out, cap holds at 2
+      await fetchGitHubRepos('cache38-multi-4'); // pushes multi-2 out, cap holds at 2
+      expect(global.fetch).toHaveBeenCalledTimes(4);
+
+      // multi-3 and multi-4 are the 2 survivors — both still cache hits
+      await fetchGitHubRepos('cache38-multi-3');
+      await fetchGitHubRepos('cache38-multi-4');
+      expect(global.fetch).toHaveBeenCalledTimes(4);
+
+      // multi-1 and multi-2 were evicted — both are cache misses
+      await fetchGitHubRepos('cache38-multi-1');
+      await fetchGitHubRepos('cache38-multi-2');
+      expect(global.fetch).toHaveBeenCalledTimes(6);
     });
   });
 });
