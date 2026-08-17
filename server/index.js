@@ -1961,11 +1961,6 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
       deleted.mongodb.push(`${name} (${result.deletedCount})`);
     }
 
-    // User model uses firebaseUid
-    const User = require('./models/User');
-    const userResult = await User.deleteMany({ firebaseUid: userId });
-    deleted.mongodb.push(`User (${userResult.deletedCount})`);
-
     // --- Google Drive token cleanup ---
     try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }
 
@@ -2029,10 +2024,6 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
       const result = await model.deleteMany({ ownerUid: userId });
       deleted.mongodb.push(`${name} (${result.deletedCount})`);
     }
-
-    const User = require('./models/User');
-    const userResult = await User.deleteMany({ firebaseUid: userId });
-    deleted.mongodb.push(`User (${userResult.deletedCount})`);
 
     // --- Google Drive token cleanup ---
     try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }

@@ -256,6 +256,9 @@ describe('DELETE /api/user/data — OTP gate', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(findOtpRow(TEST_UID, 'delete_data')).toBeNull();
+    // issue #41: the dead server/models/User.js deleteMany({firebaseUid})
+    // call is gone — no 'User (...)' entry should show up in the response.
+    expect(res.body.deleted.mongodb.some((entry) => entry.startsWith('User ('))).toBe(false);
 
     // Replay attempt with the same (now-consumed) OTP must fail
     const replay = await authedRequest('delete', '/api/user/data').send({ confirmEmail: TEST_EMAIL, otp: '654321' });
@@ -311,6 +314,8 @@ describe('DELETE /api/user/account — OTP gate', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.accountDeleted).toBe(true);
+    // issue #41: same dead User.deleteMany call removed from this endpoint too
+    expect(res.body.deleted.mongodb.some((entry) => entry.startsWith('User ('))).toBe(false);
   });
 
   test('OTP14: a delete_data OTP cannot authorize delete_account (actions are isolated)', async () => {
