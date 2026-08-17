@@ -2068,6 +2068,30 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
 // ANALYTICS API ENDPOINTS
 // ==========================================
 
+// Supabase/PostgREST caps a single select at 1000 rows by default, so a
+// straight `.select('*')` silently truncates any user with more than that
+// many drafts or submissions. Page through with `.range()` instead.
+const SYNC_PAGE_SIZE = 1000;
+
+async function fetchAllSyncRows(table, userId) {
+  const rows = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('user_id', userId)
+      .range(from, from + SYNC_PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    rows.push(...(data || []));
+    if (!data || data.length < SYNC_PAGE_SIZE) break;
+    from += SYNC_PAGE_SIZE;
+  }
+  return rows;
+}
+
 /**
  * POST /api/analytics/sync
  * Backfill existing Supabase templates and submissions to MongoDB
@@ -2075,15 +2099,10 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
  */
 app.post('/api/analytics/sync', verifyToken, async (req, res) => {
   try {
-    const { data: drafts, error: draftsError } = await supabase
-      .from('form_drafts')
-      .select('*')
-      .eq('user_id', req.user.uid);
-
-    if (draftsError) throw draftsError;
+    const drafts = await fetchAllSyncRows('form_drafts', req.user.uid);
 
     let templatesSynced = 0;
-    for (const draft of (drafts || [])) {
+    for (const draft of drafts) {
       await TemplateData.findOneAndUpdate(
         { draftId: draft.draft_id },
         {
@@ -2101,28 +2120,34 @@ app.post('/api/analytics/sync', verifyToken, async (req, res) => {
       templatesSynced++;
     }
 
-    const { data: submissions, error: subError } = await supabase
-      .from('form_submissions')
-      .select('*')
-      .eq('user_id', req.user.uid);
-
-    if (subError) throw subError;
+    const submissions = await fetchAllSyncRows('form_submissions', req.user.uid);
 
     let submissionsSynced = 0;
-    for (const sub of (submissions || [])) {
-      const exists = await TemplateSubmission.findOne({ submissionId: sub.submission_id });
-      if (!exists) {
-        await TemplateSubmission.create({
-          submissionId: sub.submission_id,
-          draftId: sub.draft_id,
-          ownerUid: req.user.uid,
-          templateType: sub.template_type || 'unknown',
-          title: sub.title,
-          submittedData: sub.submitted_data,
-          submittedAt: sub.submitted_at,
-        });
-        submissionsSynced++;
-      }
+    if (submissions.length > 0) {
+      // A single bulk upsert instead of a findOne+create round trip per
+      // submission — halves the DB calls and stays idempotent (existing
+      // submissions are matched and left untouched via $setOnInsert).
+      const result = await TemplateSubmission.bulkWrite(
+        submissions.map((sub) => ({
+          updateOne: {
+            filter: { submissionId: sub.submission_id },
+            update: {
+              $setOnInsert: {
+                submissionId: sub.submission_id,
+                draftId: sub.draft_id,
+                ownerUid: req.user.uid,
+                templateType: sub.template_type || 'unknown',
+                title: sub.title,
+                submittedData: sub.submitted_data,
+                submittedAt: sub.submitted_at,
+              },
+            },
+            upsert: true,
+          },
+        })),
+        { ordered: false }
+      );
+      submissionsSynced = result.upsertedCount || 0;
     }
 
     res.json({
