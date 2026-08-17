@@ -33,6 +33,12 @@ const LANGUAGE_TO_ROLE = {
 };
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
+// Entries are only evicted lazily on read (see getCached), so without a
+// size cap the Map grows unbounded for every unique username ever looked
+// up, even ones never re-accessed. Cap it and evict the oldest entry
+// (Map iteration order is insertion order) when a genuinely new key would
+// push it over the limit.
+let CACHE_MAX_SIZE = 500;
 const githubCache = new Map();
 
 function getCached(key) {
@@ -46,7 +52,21 @@ function getCached(key) {
 }
 
 function setCached(key, data) {
+  if (!githubCache.has(key) && githubCache.size >= CACHE_MAX_SIZE) {
+    const oldestKey = githubCache.keys().next().value;
+    githubCache.delete(oldestKey);
+  }
   githubCache.set(key, { data, timestamp: Date.now() });
+}
+
+function _setGithubCacheMaxSizeForTests(size) {
+  CACHE_MAX_SIZE = size;
+}
+function _resetGithubCacheMaxSizeForTests() {
+  CACHE_MAX_SIZE = 500;
+}
+function _clearGithubCacheForTests() {
+  githubCache.clear();
 }
 
 function classifyRole(repos) {
@@ -294,4 +314,7 @@ module.exports = {
   fetchGitHubRepos,
   _setGithubThrottleMsForTests,
   _resetGithubThrottleForTests,
+  _setGithubCacheMaxSizeForTests,
+  _resetGithubCacheMaxSizeForTests,
+  _clearGithubCacheForTests,
 };
