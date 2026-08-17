@@ -2,7 +2,7 @@
 
 **Date:** August 15–16, 2026
 **Scope:** A systematic pass through the repo's open bug/enhancement backlog (issues #17–#40), fixing each with a dedicated branch, PR, and test coverage.
-**Result:** 13 merged PRs (#43–#52, #54–#56) fixing 12 issues plus one bonus fix found while verifying another (#33's `GoogleDriveToken` sibling); 1 feature shipped (#22); 2 issues closed without new code because their fixes already existed elsewhere (#21, #33); 1 additional fix (#40) implemented directly on the still-open Phase 5 PR ([#30](https://github.com/Leddger-AI/LedgerAI/pull/30)), not yet on `main`. 49 new backend tests added in total — 145 → 183 on `main`, plus 11 more on the separate, unmerged `feature/analytics-phase5` branch.
+**Result:** 14 PRs (#43–#52, #54–#56, #58) fixing 13 issues plus one bonus fix found while verifying another (#33's `GoogleDriveToken` sibling); 2 features shipped (#22, #35); 2 issues closed without new code because their fixes already existed elsewhere (#21, #33); 1 additional fix (#40) implemented on the Phase 5 branch, whose PR ([#30](https://github.com/Leddger-AI/LedgerAI/pull/30)) was closed without merging — see its row below. 54 new backend tests added in total — 145 → 188 on `main`, plus 11 more sitting on the separate, unmerged `feature/analytics-phase5` branch.
 
 ---
 
@@ -22,11 +22,12 @@
 | [#32](https://github.com/Leddger-AI/LedgerAI/issues/32) | `fetchGitHubRepos` returned a different shape on cache hit vs miss | Bug | [#51](https://github.com/Leddger-AI/LedgerAI/pull/51) | `server/utils/githubAnalyzer.js` |
 | [#33](https://github.com/Leddger-AI/LedgerAI/issues/33) | `TemplateData` pre-save hook incompatible with Mongoose 9.x | Bug | *(already fixed in PR #29, closed)* → same pattern found in `GoogleDriveToken.js`, fixed via [#52](https://github.com/Leddger-AI/LedgerAI/pull/52) | `server/models/GoogleDriveToken.js` |
 | [#34](https://github.com/Leddger-AI/LedgerAI/issues/34) | `getOverviewStats` internal variables named `completionRate*` but computed a field count, not a rate | Enhancement | [#54](https://github.com/Leddger-AI/LedgerAI/pull/54) | `server/utils/analyticsUtils.js` |
+| [#35](https://github.com/Leddger-AI/LedgerAI/issues/35) | GitHub API calls had no auth token or rate-limit protection (60 req/hr shared across all users) | Enhancement | [#58](https://github.com/Leddger-AI/LedgerAI/pull/58) | `server/utils/githubAnalyzer.js`, `README.md`, `docs/deployment/production_deployment.md` |
 | [#36](https://github.com/Leddger-AI/LedgerAI/issues/36) | Raw submissions table columns came from the first submission on the page only | Bug | [#55](https://github.com/Leddger-AI/LedgerAI/pull/55) | `src/pages/TemplateDetailAnalytics.jsx` |
 | [#39](https://github.com/Leddger-AI/LedgerAI/issues/39) | `TemplateDetailAnalytics` didn't reset state when `draftId` changed | Bug | [#56](https://github.com/Leddger-AI/LedgerAI/pull/56) | `src/pages/TemplateDetailAnalytics.jsx` |
-| [#40](https://github.com/Leddger-AI/LedgerAI/issues/40) | No rate limiting or size cap on analytics export endpoints (OOM risk) | Enhancement | *commit on open PR [#30](https://github.com/Leddger-AI/LedgerAI/pull/30) — not yet merged* | `server/middleware/exportRateLimit.js` (new), `server/utils/exportUtils.js` |
+| [#40](https://github.com/Leddger-AI/LedgerAI/issues/40) | No rate limiting or size cap on analytics export endpoints (OOM risk) | Enhancement | *commit on Phase 5 branch — PR [#30](https://github.com/Leddger-AI/LedgerAI/pull/30) was closed without merging* | `server/middleware/exportRateLimit.js` (new), `server/utils/exportUtils.js` |
 
-Every PR above is **merged**, except #40's — that fix is a commit on the still-open Phase 5 PR ([#30](https://github.com/Leddger-AI/LedgerAI/pull/30)), landing on `main` whenever that PR merges, not before. Every fix shipped with new or updated automated tests — none relied on manual verification alone.
+Every PR above is **merged** except two: #58 is open, pending your merge like the rest of this batch; #40's fix is a commit sitting on the `feature/analytics-phase5` branch whose PR (#30) was closed — not merged — after the commit was pushed, so that fix isn't heading to `main` unless #30 is reopened or a fresh PR is opened from that branch. Every fix shipped with new or updated automated tests — none relied on manual verification alone.
 
 ---
 
@@ -152,6 +153,18 @@ Resolved as a side effect of #17/PR #43 — the rewritten test file mocks `Email
 
 ---
 
+## Issue #35 — GitHub API calls had no auth token or rate-limit protection
+
+**Problem:** `fetchGitHubRepos()` called the GitHub API unauthenticated — capped at 60 requests/hour, shared across every server IP and every user. A single recruiter analyzing a couple of templates with 30+ candidate profiles could exhaust the entire server's hourly quota for everyone else.
+
+**A correction to this project's own docs, checked before implementing:** `docs/analytics/phase3-github-role-techstack-analysis.md` names *"the existing GitHub App integration (`GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`)"* as the intended future fix. Those env vars don't exist anywhere in the active Node backend — only `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in the legacy, inactive Rust backend, wired to an unrelated candidate-consent OAuth flow. More fundamentally, a GitHub App's elevated rate limit is scoped to whoever installed it — it can't look up an arbitrary third party's public repos at a higher limit, which is exactly what this feature needs. A plain Personal Access Token, as the issue itself proposed, is the architecturally correct tool here.
+
+**Fix:** Conditionally sends `Authorization: token ${GITHUB_TOKEN}` (60/hr → 5,000/hr when set); a global 1-second throttle between real outbound GitHub calls (cache hits stay instant, and it's global rather than per-user since the constraint is per-server-IP); and a rate-limit error message built from GitHub's own `Retry-After`/`X-RateLimit-Reset` response headers instead of a bare `"Rate limited"` string.
+
+**Tests:** 5 new tests — auth header present/absent, `Retry-After`-based message, `X-RateLimit-Reset` fallback message, and throttling verified by timing two consecutive uncached calls.
+
+---
+
 ## Issue #36 — Raw submissions table columns came from the first submission only
 
 **Problem:** `allSubmissionKeys` was built from `Object.keys(submissions[0].submittedData)` — a column only appeared if the first submission on the current page happened to have that field filled. Optional fields filled by later submissions never got a column, and since "first submission" changes per page, the column set itself changed as users paginated.
@@ -197,7 +210,8 @@ Resolved as a side effect of #17/PR #43 — the rewritten test file mocks `Email
 | After #24 | 175 |
 | After #32 | 179 |
 | After #33 (GoogleDriveToken) | 183 |
-| After #34, #36, #39 | **183** *(unchanged — a pure rename and two frontend-only fixes with no new backend test surface)* |
+| After #34, #36, #39 | 183 *(unchanged — a pure rename and two frontend-only fixes with no new backend test surface)* |
+| After #35 | **188** |
 
 Every fix included baseline verification before changing anything, real (non-mocked, where practical) test coverage for the fixed logic, and — for the correctness bugs — explicit confirmation that the new test actually fails against the old code before being trusted as a valid regression guard.
 
