@@ -15,10 +15,14 @@ const pastMeets = [
 export default function MeetView() {
   const [copiedId, setCopiedId] = useState(null);
 
-  const handleCopy = (m) => {
-    navigator.clipboard?.writeText(`https://${m.link}`);
-    setCopiedId(m.id);
-    setTimeout(() => setCopiedId(null), 1500);
+  const handleCopy = async (m) => {
+    try {
+      await navigator.clipboard?.writeText(`https://${m.link}`);
+      setCopiedId(m.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch (err) {
+      console.warn('Failed to copy meeting link to clipboard:', err);
+    }
   };
 
   return (
