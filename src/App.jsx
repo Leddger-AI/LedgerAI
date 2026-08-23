@@ -174,7 +174,7 @@ export default function App() {
   const calculatePrimaryNav = (tab) => {
     if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
     if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Active Links', 'Scheduled Forms'].includes(tab)) return 'Templates';
-    if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Bulk Campaign'].includes(tab)) return 'Workspace';
+    if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Meet', 'Bulk Campaign'].includes(tab)) return 'Workspace';
     if (['Analysis', 'Template Analytics', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
     if (['SettingsProfile', 'SettingsDepartments', 'SettingsEmail', 'SettingsAI', 'SettingsIntegrations', 'SettingsAppearance', 'SettingsSecurity'].includes(tab)) return 'Settings';
@@ -218,6 +218,7 @@ export default function App() {
       { id: 'Teams', label: 'Teams', icon: Users },
       { id: 'Sourcing', label: 'Sourcing', icon: UserSearch },
       { id: 'Calendar', label: 'Calendar', icon: Calendar },
+      { id: 'Meet', label: 'Meet', icon: Video },
       { id: 'Bulk Campaign', label: 'Bulk Campaign', icon: FileSpreadsheet }
     ],
     Templates: [
