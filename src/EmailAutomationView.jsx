@@ -1,14 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Send, Mail, Clock, FileSpreadsheet, Trash2, RefreshCw,
   Settings, Loader2, AlertTriangle, CheckCircle2, Plus, X,
-  Zap, Users, Upload
+  Zap, Users, Upload, Eye, FileUp, Save
 } from 'lucide-react';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { getAuthToken } from './supabaseAuth';
+import {
+  extractVars, normHeader, autoMapVariables, substitutePreview as substitutePreviewShared,
+} from './utils/templateBind';
 import './EmailAutomationView.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+// Local aliases keep every existing call-site untouched
+const substitutePreview = substitutePreviewShared;
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 function formatRelativeTime(dateStr) {
   const d = new Date(dateStr);
@@ -40,6 +51,8 @@ export default function EmailAutomationView() {
   const [draftDetailLoading, setDraftDetailLoading] = useState(false);
 
   const [config, setConfig] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccountId, setSelectedAccountId] = useState(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configForm, setConfigForm] = useState({
@@ -75,6 +88,67 @@ export default function EmailAutomationView() {
   const [scheduling, setScheduling] = useState(false);
   const [scheduleSuccess, setScheduleSuccess] = useState(null);
 
+  // Inline template composer (create draft right here — Body page stays optional)
+  const [showComposer, setShowComposer] = useState(false);
+  const [composerSubject, setComposerSubject] = useState('');
+  const [composerBody, setComposerBody] = useState('');
+  const [composerSaving, setComposerSaving] = useState(false);
+  const [composerError, setComposerError] = useState(null);
+
+  // Attached Excel (CSV/XLSX, all columns) shared by composer + send modal
+  const [attachedFile, setAttachedFile] = useState(null); // { name, headers, rows }
+  const [attachedLoading, setAttachedLoading] = useState(false);
+  const [previewIdx, setPreviewIdx] = useState(0);
+
+  // Autocomplete: type d1... or {{d1... to insert attached headers as pills
+  const [autoSuggest, setAutoSuggest] = useState(true);
+  const [suggest, setSuggest] = useState(null); // { field, query, brace }
+  const composerSubjectRef = useRef(null);
+  const composerBodyRef = useRef(null);
+
+  const refreshSuggest = (field) => {
+    if (!autoSuggest) { setSuggest(null); return; }
+    const el = field === 'subject' ? composerSubjectRef.current : composerBodyRef.current;
+    const headers = attachedFile?.headers || [];
+    if (!el || headers.length === 0) { setSuggest(null); return; }
+    const pos = el.selectionStart ?? (field === 'subject' ? composerSubject.length : composerBody.length);
+    const text = (field === 'subject' ? composerSubject : composerBody).slice(0, pos);
+    const brace = /{{([\w.]*)$/.exec(text);
+    const word = brace ? null : /([A-Za-z][\w.]{1,})$/.exec(text);
+    const query = brace ? brace[1] : word ? word[1] : '';
+    if (!query) { setSuggest(null); return; }
+    const q = query.toLowerCase().replace(/_/g, '');
+    const matches = headers.filter(h => {
+      const n = normHeader(h).replace(/_/g, '');
+      return n.includes(q);
+    }).slice(0, 6);
+    setSuggest(matches.length ? { field, query, brace: !!brace, matches } : null);
+  };
+
+  const applySuggestion = (header) => {
+    if (!suggest) return;
+    const { field } = suggest;
+    const el = field === 'subject' ? composerSubjectRef.current : composerBodyRef.current;
+    const get = field === 'subject' ? composerSubject : composerBody;
+    const set = field === 'subject' ? setComposerSubject : setComposerBody;
+    const pos = el?.selectionStart ?? get.length;
+    const before = get.slice(0, pos);
+    const after = get.slice(pos);
+    const m = /{{[\w.]*$/.exec(before) || /[A-Za-z][\w.]*$/.exec(before);
+    const start = m ? pos - m[0].length : pos;
+    const insert = `{{${header}}}`;
+    const next = before.slice(0, start) + insert + after;
+    set(next);
+    setSuggest(null);
+    requestAnimationFrame(() => {
+      if (el) {
+        const c = start + insert.length;
+        el.focus();
+        try { el.setSelectionRange(c, c); } catch (_) { /* ignore */ }
+      }
+    });
+  };
+
   const fetchDrafts = useCallback(async () => {
     setDraftsLoading(true);
     setDraftsError(null);
@@ -100,20 +174,24 @@ export default function EmailAutomationView() {
     try {
       const token = await getAuthToken();
       if (!token) return;
-      const res = await fetch(`${API_BASE_URL}/api/email/config`, {
+      const res = await fetch(`${API_BASE_URL}/api/email/accounts`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
       const data = await res.json();
-      setConfig(data.config);
-      if (data.config) {
+      const list = data.accounts || [];
+      setAccounts(list);
+      const def = list.find(a => a.isDefault) || list[0] || null;
+      setConfig(def);
+      if (def) {
+        setSelectedAccountId(def.id);
         setConfigForm(prev => ({
           ...prev,
-          email: data.config.email || '',
-          authMethod: data.config.authMethod || 'app_password',
-          smtpHost: data.config.smtpHost || 'smtp.gmail.com',
-          smtpPort: data.config.smtpPort || 587,
-          clientId: data.config.clientId || '',
+          email: def.email || '',
+          authMethod: def.authMethod || 'app_password',
+          smtpHost: def.smtpHost || 'smtp.gmail.com',
+          smtpPort: def.smtpPort || 587,
+          clientId: def.clientId || '',
         }));
       }
     } catch (err) {
@@ -185,15 +263,37 @@ export default function EmailAutomationView() {
     try {
       const token = await getAuthToken();
       if (!token) { setConfigStatus({ type: 'error', message: 'Not authenticated.' }); return; }
-      const res = await fetch(`${API_BASE_URL}/api/email/config`, {
-        method: 'PUT',
+      if (!configForm.email) { setConfigStatus({ type: 'error', message: 'Sender email is required.' }); return; }
+      const payload = {
+        email: configForm.email,
+        authMethod: configForm.authMethod,
+        smtpHost: configForm.smtpHost,
+        smtpPort: parseInt(configForm.smtpPort) || 587,
+      };
+      if (configForm.authMethod === 'app_password') {
+        if (configForm.appPassword) payload.appPassword = configForm.appPassword;
+        else if (!config) { setConfigStatus({ type: 'error', message: 'App password is required.' }); setConfigSaving(false); return; }
+      } else {
+        if (configForm.clientId) payload.clientId = configForm.clientId;
+        if (configForm.clientSecret) payload.clientSecret = configForm.clientSecret;
+        if (configForm.refreshToken) payload.refreshToken = configForm.refreshToken;
+        if (!config && (!payload.clientId || !payload.clientSecret || !payload.refreshToken)) {
+          setConfigStatus({ type: 'error', message: 'Client ID, secret and refresh token are required.' }); setConfigSaving(false); return;
+        }
+      }
+      const isUpdate = !!(config && config.id);
+      const url = isUpdate
+        ? `${API_BASE_URL}/api/email/accounts/${config.id}`
+        : `${API_BASE_URL}/api/email/accounts`;
+      const res = await fetch(url, {
+        method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(configForm),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Failed to save config');
-      const data = await res.json();
-      setConfig(data.config);
-      setConfigStatus({ type: 'success', message: 'Email config saved!' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to save config');
+      await fetchConfig();
+      setConfigStatus({ type: 'success', message: 'Email account saved!' });
       setTimeout(() => { setConfigStatus(null); setShowConfigModal(false); }, 1500);
     } catch (err) {
       console.error('Error saving config:', err);
@@ -209,7 +309,11 @@ export default function EmailAutomationView() {
     try {
       const token = await getAuthToken();
       if (!token) { setTestStatus({ type: 'error', message: 'Not authenticated.' }); return; }
-      const res = await fetch(`${API_BASE_URL}/api/email/test`, {
+      const accountId = selectedAccountId || (config && config.id);
+      const url = accountId
+        ? `${API_BASE_URL}/api/email/accounts/${accountId}/test`
+        : `${API_BASE_URL}/api/email/test`;
+      const res = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -238,42 +342,153 @@ export default function EmailAutomationView() {
   const openSendModal = (draft) => {
     setSendDraft(draft);
     setCampaignName(`Campaign — ${draft.subject || 'Untitled'}`);
-    setRecipients([]);
-    setCsvHeaders([]);
-    setVariableMapping({});
+    if (!selectedAccountId && config && config.id) setSelectedAccountId(config.id);
     setSendStatus(null);
     setSendError(null);
     setShowSchedulePicker(false);
     setScheduleDateTime('');
     setScheduleSuccess(null);
+    setPreviewIdx(0);
+    // Reuse the attached Excel if present — no re-upload needed
+    if (attachedFile && attachedFile.rows.length > 0) {
+      applySpreadsheetData(attachedFile.headers, attachedFile.rows, draft);
+    } else {
+      setRecipients([]);
+      setCsvHeaders([]);
+      setVariableMapping({});
+    }
     setShowSendModal(true);
+  };
+
+  // Shared: turn headers+row-objects into recipients + auto variable mapping
+  const applySpreadsheetData = (headers, rows, draftOverride) => {
+    const draft = draftOverride || sendDraft;
+    setCsvHeaders(headers);
+    const emailCol = headers.find(f => normHeader(f).includes('email'));
+    const nameCol = headers.find(f => normHeader(f).includes('name') && !normHeader(f).includes('company'));
+    const parsed = rows.map(row => ({
+      email: emailCol ? String(row[emailCol] ?? '').trim() : '',
+      name: nameCol ? String(row[nameCol] ?? '').trim() : '',
+      variables: { ...row },
+    })).filter(r => r.email);
+    setRecipients(parsed);
+    setPreviewIdx(0);
+    const vars = draft?.variables || [];
+    if (vars.length && headers.length) {
+      setVariableMapping(autoMapVariables(vars.map(v => v.id), headers));
+    } else {
+      setVariableMapping({});
+    }
+  };
+
+  // Parse CSV/XLSX/XLS with ALL columns preserved
+  const parseSpreadsheetFile = (file) => new Promise((resolve, reject) => {
+    const name = (file.name || '').toLowerCase();
+    if (name.endsWith('.csv')) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (!results.meta?.fields) return reject(new Error('No headers found'));
+          resolve({ headers: results.meta.fields, rows: results.data });
+        },
+        error: reject,
+      });
+    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+          if (!json.length) return reject(new Error('No rows found'));
+          resolve({ headers: Object.keys(json[0]), rows: json });
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    } else {
+      reject(new Error('Use .csv, .xlsx or .xls'));
+    }
+  });
+
+  const handleAttachFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAttachedLoading(true);
+    try {
+      const { headers, rows } = await parseSpreadsheetFile(file);
+      setAttachedFile({ name: file.name, headers, rows });
+      applySpreadsheetData(headers, rows);
+    } catch (err) {
+      setSendError(err.message || 'Failed to parse file');
+    } finally {
+      setAttachedLoading(false);
+      if (e.target.value) e.target.value = '';
+    }
+  };
+
+  const handleComposerSave = async () => {
+    setComposerSaving(true);
+    setComposerError(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) { setComposerError('Not authenticated.'); return; }
+      if (!composerSubject.trim() && !composerBody.trim()) { setComposerError('Write a subject or body first.'); return; }
+      const varIds = extractVars(composerSubject, composerBody);
+      const bodyHtml = composerBody.split('\n').map(l => `<p>${escapeHtml(l) || '<br>'}</p>`).join('');
+      const res = await fetch(`${API_BASE_URL}/api/email/drafts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          subject: composerSubject,
+          bodyHtml,
+          variables: varIds.map(id => ({ id, label: `{{${id}}}` })),
+          dataSourceType: attachedFile ? 'upload' : 'none',
+          dataSourceFile: attachedFile ? attachedFile.name : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to save template');
+      setComposerSubject('');
+      setComposerBody('');
+      setShowComposer(false);
+      fetchDrafts();
+      if (data.draft) {
+        const full = { ...data.draft, variables: varIds.map(id => ({ id, label: `{{${id}}}` })) };
+        openSendModal(full);
+      }
+    } catch (err) {
+      setComposerError(err.message);
+    } finally {
+      setComposerSaving(false);
+    }
   };
 
   const handleCsvUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const name = (file.name || '').toLowerCase();
+    if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      // Excel path: reuse shared parser so XLSX works at send time too
+      setAttachedLoading(true);
+      parseSpreadsheetFile(file)
+        .then(({ headers, rows }) => {
+          setAttachedFile({ name: file.name, headers, rows });
+          applySpreadsheetData(headers, rows);
+        })
+        .catch((err) => setSendError(err.message || 'Failed to parse file'))
+        .finally(() => setAttachedLoading(false));
+      if (e.target.value) e.target.value = '';
+      return;
+    }
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: function(results) {
         if (results.meta?.fields) {
-          setCsvHeaders(results.meta.fields);
-          const emailCol = results.meta.fields.find(f => f.toLowerCase().includes('email'));
-          const nameCol = results.meta.fields.find(f => f.toLowerCase().includes('name') && !f.toLowerCase().includes('company'));
-          const parsed = results.data.map(row => ({
-            email: emailCol ? (row[emailCol] || '').trim() : '',
-            name: nameCol ? (row[nameCol] || '').trim() : '',
-            variables: { ...row },
-          })).filter(r => r.email);
-          setRecipients(parsed);
-          if (sendDraft?.variables?.length) {
-            const mapping = {};
-            sendDraft.variables.forEach(v => {
-              const match = results.meta.fields.find(h => h.toLowerCase().replace(/\s+/g, '_') === v.id || h === v.id);
-              if (match) mapping[v.id] = match;
-            });
-            setVariableMapping(mapping);
-          }
+          setAttachedFile({ name: file.name, headers: results.meta.fields, rows: results.data });
+          applySpreadsheetData(results.meta.fields, results.data);
         }
       }
     });
@@ -301,6 +516,8 @@ export default function EmailAutomationView() {
       if (!token) { setSendError('Not authenticated.'); return; }
       if (!sendDraft?._id) { setSendError('No draft selected.'); return; }
       if (recipients.length === 0) { setSendError('Add at least one recipient.'); return; }
+      const unmappedSend = (sendDraft.variables || []).filter(v => !variableMapping[v.id]);
+      if (unmappedSend.length > 0) { setSendError(`Map all variables before sending: ${unmappedSend.map(v => v.label || v.id).join(', ')}`); setSending(false); return; }
       const finalRecipients = recipients.map(r => {
         const mappedVars = {};
         if (sendDraft.variables) {
@@ -320,6 +537,7 @@ export default function EmailAutomationView() {
           draftId: sendDraft._id,
           recipients: finalRecipients,
           campaignName: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
+          accountId: selectedAccountId || (config && config.id) || undefined,
         }),
       });
       const data = await res.json();
@@ -343,6 +561,8 @@ export default function EmailAutomationView() {
       if (!sendDraft?._id) { setSendError('No draft selected.'); return; }
       if (recipients.length === 0) { setSendError('Add at least one recipient.'); return; }
       if (!scheduleDateTime) { setSendError('Pick a date and time.'); return; }
+      const unmappedSched = (sendDraft.variables || []).filter(v => !variableMapping[v.id]);
+      if (unmappedSched.length > 0) { setSendError(`Map all variables before scheduling: ${unmappedSched.map(v => v.label || v.id).join(', ')}`); setScheduling(false); return; }
 
       const finalRecipients = recipients.map(r => {
         const mappedVars = {};
@@ -365,6 +585,7 @@ export default function EmailAutomationView() {
           recipients: finalRecipients,
           campaignName: campaignName || `Scheduled Campaign ${new Date().toLocaleDateString()}`,
           scheduledAt: new Date(scheduleDateTime).toISOString(),
+          accountId: selectedAccountId || (config && config.id) || undefined,
         }),
       });
       const data = await res.json();
@@ -387,13 +608,95 @@ export default function EmailAutomationView() {
               <Send size={20} />
               Email Automation
             </h2>
-            <p className="ea-subtitle">Saved email drafts and automation campaigns</p>
+            <p className="ea-subtitle">Create templates, attach Excel, preview and send — Body page stays optional</p>
           </div>
-          <button className="ea-refresh-btn" onClick={fetchDrafts} disabled={draftsLoading}>
-            <RefreshCw size={16} className={draftsLoading ? 'spin' : ''} />
-            Refresh
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="ea-refresh-btn" onClick={() => setShowComposer(v => !v)}>
+              <Plus size={16} />
+              {showComposer ? 'Close composer' : 'New template'}
+            </button>
+            <button className="ea-refresh-btn" onClick={fetchDrafts} disabled={draftsLoading}>
+              <RefreshCw size={16} className={draftsLoading ? 'spin' : ''} />
+              Refresh
+            </button>
+          </div>
         </div>
+
+        {showComposer && (
+          <div className="ea-draft-detail" style={{ marginBottom: '16px' }}>
+            <div className="ea-draft-detail-header">
+              <h3>New email template</h3>
+            </div>
+            <div className="ea-form-group">
+              <label>Subject (type d1.. or {'{{'} to auto-insert Excel columns)</label>
+              <input
+                ref={composerSubjectRef}
+                type="text"
+                value={composerSubject}
+                onChange={e => { setComposerSubject(e.target.value); requestAnimationFrame(() => refreshSuggest('subject')); }}
+                onSelect={() => refreshSuggest('subject')}
+                onClick={() => refreshSuggest('subject')}
+                onKeyUp={() => refreshSuggest('subject')}
+                placeholder="Quick question about {{company_name}}"
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px' }}
+              />
+            </div>
+            <div className="ea-form-group">
+              <label>Body (type d1.. or {'{{'} to auto-insert Excel columns)</label>
+              <textarea
+                ref={composerBodyRef}
+                value={composerBody}
+                onChange={e => { setComposerBody(e.target.value); requestAnimationFrame(() => refreshSuggest('body')); }}
+                onSelect={() => refreshSuggest('body')}
+                onClick={() => refreshSuggest('body')}
+                onKeyUp={() => refreshSuggest('body')}
+                placeholder={'Hello {{first_name}}, ...'}
+                rows={6}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', fontFamily: 'inherit' }}
+              />
+              {suggest && (
+                <div className="ea-mapping-list" style={{ marginTop: '8px' }}>
+                  {suggest.matches.map(h => {
+                    const row = attachedFile.rows[0] || {};
+                    return (
+                      <div key={h} className="ea-mapping-row" style={{ cursor: 'pointer' }} onClick={() => applySuggestion(h)}>
+                        <span className="ea-mapping-var">{`{{${h}}}`}</span>
+                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{String(row[h] ?? '').slice(0, 40) || '—'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', marginTop: '8px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={autoSuggest} onChange={e => { setAutoSuggest(e.target.checked); setSuggest(null); }} />
+                Auto-suggest Excel columns while typing
+              </label>
+            </div>
+            <div className="ea-form-group">
+              <label>Excel (CSV/XLSX — all columns kept, auto-mapped)</label>
+              <div className="ea-csv-upload">
+                <label className="ea-csv-upload-btn">
+                  <FileUp size={14} />
+                  {attachedLoading ? 'Parsing...' : attachedFile ? attachedFile.name : 'Attach file'}
+                  <input type="file" accept=".csv,.xlsx,.xls" onChange={handleAttachFile} style={{ display: 'none' }} />
+                </label>
+                {attachedFile && (
+                  <span className="ea-chip"><FileSpreadsheet size={12} />{attachedFile.headers.length} cols · {attachedFile.rows.length} rows</span>
+                )}
+              </div>
+            </div>
+            {composerError && (
+              <div className="ea-test-status error"><AlertTriangle size={14} />{composerError}</div>
+            )}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '12px' }}>
+              <button className="ea-cancel-btn" onClick={() => setShowComposer(false)}>Cancel</button>
+              <button className="ea-save-config-btn" onClick={handleComposerSave} disabled={composerSaving}>
+                {composerSaving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
+                {composerSaving ? 'Saving...' : 'Save & continue to send'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {draftsError && (
           <div className="ea-error-banner">
@@ -411,7 +714,7 @@ export default function EmailAutomationView() {
           <div className="ea-empty">
             <Mail size={40} />
             <h3>No saved drafts yet</h3>
-            <p>Create an email body in the Body editor and save it to see it here.</p>
+            <p>Create a template above with “New template”, or in the Body editor — both land here.</p>
           </div>
         ) : (
           <div className="ea-draft-grid">
@@ -753,25 +1056,79 @@ export default function EmailAutomationView() {
                   </div>
 
                   <div className="ea-form-group">
-                    <label>Recipients</label>
+                    <label>Sender Account</label>
+                    <select
+                      value={selectedAccountId || ''}
+                      onChange={e => setSelectedAccountId(e.target.value || null)}
+                    >
+                      {accounts.length === 0 && <option value="">No accounts — add one in Settings</option>}
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>{a.email}{a.isDefault ? ' (default)' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="ea-form-group">
+                    <label>Recipients (Excel: CSV/XLSX, all columns kept)</label>
                     <div className="ea-csv-upload">
                       <label className="ea-csv-upload-btn">
                         <Upload size={14} />
-                        Upload CSV
-                        <input type="file" accept=".csv" onChange={handleCsvUpload} style={{ display: 'none' }} />
+                        {attachedLoading ? 'Parsing...' : 'Upload File'}
+                        <input type="file" accept=".csv,.xlsx,.xls" onChange={handleCsvUpload} style={{ display: 'none' }} />
                       </label>
                       <button className="ea-manual-add-btn" onClick={addManualRecipient}>
                         <Plus size={14} />
                         Add Manually
                       </button>
                     </div>
+                    {attachedFile && (
+                      <div className="ea-chip" style={{ marginTop: '8px' }}>
+                        <FileSpreadsheet size={12} />
+                        {attachedFile.name} · {attachedFile.headers.length} cols · {attachedFile.rows.length} rows
+                      </div>
+                    )}
                   </div>
+
+                  {recipients.length > 0 && sendDraft && (
+                    <div className="ea-form-group">
+                      <label><Eye size={14} style={{ display: 'inline', verticalAlign: '-2px' }} /> Preview with real row</label>
+                      <div className="ea-draft-detail" style={{ margin: 0 }}>
+                        <div style={{ fontWeight: 700, marginBottom: '6px' }}>
+                          {(() => {
+                            const r = recipients[Math.min(previewIdx, recipients.length - 1)];
+                            const mapped = {};
+                            (sendDraft.variables || []).forEach(v => {
+                              const col = variableMapping[v.id];
+                              if (col && r.variables[col] !== undefined) mapped[v.id] = r.variables[col];
+                            });
+                            return substitutePreview(sendDraft.subject, mapped) || 'Untitled';
+                          })()}
+                        </div>
+                        <div
+                          dangerouslySetInnerHTML={{ __html: (() => {
+                            const r = recipients[Math.min(previewIdx, recipients.length - 1)];
+                            const mapped = {};
+                            (sendDraft.variables || []).forEach(v => {
+                              const col = variableMapping[v.id];
+                              if (col && r.variables[col] !== undefined) mapped[v.id] = r.variables[col];
+                            });
+                            return substitutePreview(sendDraft.bodyHtml || stripHtml(sendDraft.bodyHtml || ''), mapped);
+                          })() }}
+                        />
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
+                          <button className="ea-cancel-btn" disabled={previewIdx === 0} onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}>Prev</button>
+                          <span style={{ fontSize: '12px' }}>{Math.min(previewIdx + 1, recipients.length)} / {recipients.length} · {recipients[Math.min(previewIdx, recipients.length - 1)]?.email}</span>
+                          <button className="ea-cancel-btn" disabled={previewIdx >= recipients.length - 1} onClick={() => setPreviewIdx(i => Math.min(recipients.length - 1, i + 1))}>Next</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {recipients.length > 0 && (
                     <>
                       {sendDraft?.variables?.length > 0 && csvHeaders.length > 0 && (
                         <div className="ea-form-group">
-                          <label>Variable Mapping</label>
+                          <label>Variable Mapping (all must bind — Send is blocked until then)</label>
                           <div className="ea-mapping-list">
                             {sendDraft.variables.map(v => (
                               <div key={v.id} className="ea-mapping-row">
@@ -830,6 +1187,25 @@ export default function EmailAutomationView() {
                     <div className="ea-test-status error">
                       <AlertTriangle size={14} />
                       {sendError}
+                    </div>
+                  )}
+
+                  {recipients.length > 0 && sendDraft && (
+                    <div className="ea-test-status" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <Users size={14} />
+                      {(() => {
+                        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        const valid = recipients.filter(r => re.test(r.email || '')).length;
+                        const unmapped = (sendDraft.variables || []).filter(v => !variableMapping[v.id]);
+                        return (
+                          <span>
+                            {recipients.length} rows · {valid} valid emails · {recipients.length - valid} quarantined
+                            {unmapped.length > 0
+                              ? ` · UNMAPPED: ${unmapped.map(v => v.label || v.id).join(', ')}`
+                              : ' · all pills bound'}
+                          </span>
+                        );
+                      })()}
                     </div>
                   )}
 
