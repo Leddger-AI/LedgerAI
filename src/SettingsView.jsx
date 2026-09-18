@@ -17,10 +17,11 @@ export default function SettingsView({
   confidenceThreshold = 60,
   onUpdateSettings,
   onLogout,
+  onAvatarChange,
 }) {
   switch (section) {
     case 'profile':
-      return <ProfileSection user={user} />;
+      return <ProfileSection user={user} onAvatarChange={onAvatarChange} />;
     case 'departments':
       return <DepartmentsSection />;
     case 'email':
@@ -53,6 +54,6 @@ export default function SettingsView({
         />
       );
     default:
-      return <ProfileSection user={user} />;
+      return <ProfileSection user={user} onAvatarChange={onAvatarChange} />;
   }
 }
