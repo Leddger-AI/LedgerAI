@@ -84,6 +84,7 @@ import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
 import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import WelcomeLoader from './components/WelcomeLoader.jsx';
+import SiteIntro from './components/SiteIntro.jsx';
 import LoginDashboard from './pages/LoginDashboard.jsx';
 import GitHubAuthRedirect from './pages/GitHubAuthRedirect.jsx';
 import ActiveLinksView from './pages/ActiveLinksView.jsx';
@@ -263,25 +264,73 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [tokens, setTokens] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Starts false: the fullscreen WelcomeLoader may ONLY appear via an
+  // explicit login (startLoading(true)). Reloads/restores stay silent.
+  const [loading, setLoading] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
   const [apiError, setApiError] = useState(null);
   const [authErrorModal, setAuthErrorModal] = useState(null);
   
-  // Minimum loading display time (7 seconds) for welcome animation
-  const MIN_LOADING_MS = 7000;
+  // Minimum loading display time (5 seconds) for welcome animation — login only
+  const MIN_LOADING_MS = 5000;
+  const MAX_LOADING_MS = 15000;
+  const LOGIN_ANIM_KEY = 'led_login_anim_done';
   const loadingStartRef = useRef(Date.now());
+  const hasShownLoginLoaderRef = useRef(
+    typeof sessionStorage !== 'undefined' && sessionStorage.getItem(LOGIN_ANIM_KEY) === '1'
+  );
+  const expectFreshLoginRef = useRef(false);
+  const lastSignedInUidRef = useRef(null);
+  const stopTimeoutRef = useRef(null);
+  const failsafeRef = useRef(null);
+
+  const clearLoginAnimFlag = useCallback(() => {
+    hasShownLoginLoaderRef.current = false;
+    try { sessionStorage.removeItem(LOGIN_ANIM_KEY); } catch (_) { /* ignore */ }
+  }, []);
   
-  const startLoading = useCallback(() => {
+  const startLoading = useCallback((force = false) => {
+    // Only show fullscreen welcome animation on actual login, once per tab session.
+    // Persisted in sessionStorage so Vite HMR remounts / tab restores can't retrigger it.
+    // Route changes / refetches must not retrigger it.
+    if (!force && hasShownLoginLoaderRef.current) return;
+    hasShownLoginLoaderRef.current = true;
+    try { sessionStorage.setItem(LOGIN_ANIM_KEY, '1'); } catch (_) { /* ignore */ }
+    if (stopTimeoutRef.current) {
+      clearTimeout(stopTimeoutRef.current);
+      stopTimeoutRef.current = null;
+    }
+    if (failsafeRef.current) {
+      clearTimeout(failsafeRef.current);
+      failsafeRef.current = null;
+    }
     loadingStartRef.current = Date.now();
     setLoading(true);
+    // Failsafe: never hang on fullscreen loader (e.g. fetch hangs, lottie CDN down)
+    failsafeRef.current = setTimeout(() => {
+      failsafeRef.current = null;
+      setLoading(false);
+    }, MAX_LOADING_MS);
   }, []);
   
   const stopLoading = useCallback(() => {
     const elapsed = Date.now() - loadingStartRef.current;
-    if (elapsed < MIN_LOADING_MS) {
-      setTimeout(() => setLoading(false), MIN_LOADING_MS - elapsed);
-    } else {
+    if (stopTimeoutRef.current) {
+      clearTimeout(stopTimeoutRef.current);
+      stopTimeoutRef.current = null;
+    }
+    const finish = () => {
+      stopTimeoutRef.current = null;
+      if (failsafeRef.current) {
+        clearTimeout(failsafeRef.current);
+        failsafeRef.current = null;
+      }
       setLoading(false);
+    };
+    if (elapsed < MIN_LOADING_MS) {
+      stopTimeoutRef.current = setTimeout(finish, MIN_LOADING_MS - elapsed);
+    } else {
+      finish();
     }
   }, []);
   
@@ -290,17 +339,17 @@ export default function App() {
 
   // Auth persistence listener (Supabase)
   useEffect(() => {
-    // Check existing session on mount
+    // Check existing session on mount — silent refresh, no fullscreen animation
     getCurrentSession().then(async (session) => {
       if (session) {
         setUser(normalizeUser(session.user));
         setTokens({
           accessToken: session.accessToken
         });
-        startLoading();
         await fetchMeetings(session.accessToken);
         await fetchAlerts(session.accessToken);
-        stopLoading();
+        await mergeProfileAvatar(session.accessToken);
+        setLoading(false);
         setAuthReady(true);
       }
       // If no session, don't set authReady yet — wait for onAuthChange
@@ -310,6 +359,14 @@ export default function App() {
     // Subscribe to auth state changes
     const subscription = onAuthChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
+        clearLoginAnimFlag();
+        lastSignedInUidRef.current = null;
+        expectFreshLoginRef.current = false;
+        if (stopTimeoutRef.current) {
+          clearTimeout(stopTimeoutRef.current);
+          stopTimeoutRef.current = null;
+        }
+        setLoading(false);
         setUser(null);
         setTokens(null);
         setMeetings([]);
@@ -319,16 +376,39 @@ export default function App() {
         return;
       }
 
-      // Only trigger loading animation + data fetch on actual SIGNED_IN
+      // Supabase re-emits SIGNED_IN on tab/window focus when it recovers the
+      // stored session — that is NOT a fresh login. Only animate when:
+      // (a) explicit login gesture set expectFreshLoginRef, or
+      // (b) OAuth redirect just landed (URL hash has tokens), or
+      // (c) a DIFFERENT user signed in.
       if (event === 'SIGNED_IN' && session?.user) {
+        const uid = session.user.id || session.user.email;
+        const isOAuthRedirect = typeof window !== 'undefined' &&
+          (window.location.hash.includes('access_token') || window.location.hash.includes('code='));
+        const isFresh = expectFreshLoginRef.current || isOAuthRedirect ||
+          lastSignedInUidRef.current === null || lastSignedInUidRef.current !== uid;
+        expectFreshLoginRef.current = false;
+        lastSignedInUidRef.current = uid;
+        // Clean OAuth hash so a later tab switch can't look like a fresh redirect
+        if (isOAuthRedirect && typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        }
         setUser(normalizeUser(session.user));
         setTokens({
           accessToken: session.access_token
         });
-        startLoading();
-        await fetchMeetings(session.access_token);
-        await fetchAlerts(session.access_token);
-        stopLoading();
+        if (isFresh) {
+          startLoading(true);
+          await fetchMeetings(session.access_token);
+          await fetchAlerts(session.access_token);
+          await mergeProfileAvatar(session.access_token);
+          stopLoading();
+        } else {
+          await fetchMeetings(session.access_token);
+          await fetchAlerts(session.access_token);
+          await mergeProfileAvatar(session.access_token);
+          setLoading(false);
+        }
         setAuthReady(true);
         return;
       }
@@ -361,7 +441,8 @@ export default function App() {
 
   // --- AUTHENTICATION & SYNC HANDLERS ---
     const handleEmailAuthLogin = async (email, password) => {
-    startLoading();
+    expectFreshLoginRef.current = true;
+    startLoading(true);
     setApiError(null);
     setAuthErrorModal(null);
     try {
@@ -385,7 +466,8 @@ export default function App() {
     }
   };
   const handleLogin = async () => {
-    startLoading();
+    expectFreshLoginRef.current = true;
+    startLoading(true);
     setApiError(null);
     setAuthErrorModal(null);
     try {
@@ -414,7 +496,8 @@ export default function App() {
   };
 
   const handleGitHubLogin = async () => {
-    startLoading();
+    expectFreshLoginRef.current = true;
+    startLoading(true);
     setApiError(null);
     setAuthErrorModal(null);
     try {
@@ -439,6 +522,26 @@ export default function App() {
     }
   };
 
+  // Merge Supabase profiles.avatar_url (Cloudinary) into session user.
+  // Auth metadata alone never carries the uploaded avatar, so without this
+  // the header falls back to dicebear after every refresh.
+  const mergeProfileAvatar = useCallback(async (accessToken) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (data && data.avatar_url) {
+        setUser((prev) => (prev ? { ...prev, photoURL: data.avatar_url } : prev));
+      }
+    } catch (_) { /* avatar is optional — never break auth */ }
+  }, []);
+
+  const handleAvatarChange = useCallback((url) => {
+    setUser((prev) => (prev ? { ...prev, photoURL: url || null } : prev));
+  }, []);
+
   const enterDemoMode = () => {
     const demoUser = {
       displayName: "Sarah Jenkins (Demo Mode)",
@@ -457,6 +560,8 @@ export default function App() {
 
   const handleLogout = async () => {
     try { await supabaseSignOut(); } catch (e) { console.warn('Supabase signOut error:', e); }
+    clearLoginAnimFlag();
+    setLoading(false);
     setUser(null);
     setTokens(null);
     setApiError(null);
@@ -518,10 +623,8 @@ export default function App() {
 
   const handleSyncClick = async () => {
     if (tokens) {
-      startLoading();
       await fetchMeetings(tokens.accessToken);
       await fetchAlerts(tokens.accessToken);
-      stopLoading();
     } else {
       await handleLogin();
     }
@@ -1330,7 +1433,7 @@ export default function App() {
           ) : activeTab === 'Alerts' ? (
             <AlertsView alerts={alerts} onResolveAlert={handleResolveAlert} />
           ) : activeTab === 'SettingsProfile' ? (
-            <SettingsView section="profile" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
+            <SettingsView section="profile" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} onAvatarChange={handleAvatarChange} />
           ) : activeTab === 'SettingsDepartments' ? (
             <SettingsView section="departments" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} />
           ) : activeTab === 'SettingsEmail' ? (
@@ -1482,6 +1585,7 @@ export default function App() {
 
   return (
     <>
+      {showIntro && <SiteIntro onDone={() => setShowIntro(false)} />}
       {location.pathname !== '/welcome' && location.pathname !== '/login' && location.pathname !== '/auth/github' && !location.pathname.startsWith('/dashboard') && (
         <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
       )}
@@ -1558,7 +1662,7 @@ export default function App() {
           
           <Route path="/dashboard/*" element={
             <ProtectedRoute user={user} authReady={authReady}>
-              {loading && meetings.length === 0 && !apiError ? (
+              {loading && !showIntro && meetings.length === 0 && !apiError ? (
                 <WelcomeLoader subtitle="Syncing your calendar and workspace data..." />
               ) : (
                 dashboardUI
