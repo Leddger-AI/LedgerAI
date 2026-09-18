@@ -7,6 +7,7 @@ import {
   Cloud, Loader2, FileUp, AlertTriangle, Save, CheckCircle2
 } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
+import { extractVars, normHeader } from '../utils/templateBind';
 import './EmailBodyEditor.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -62,6 +63,69 @@ export default function EmailBodyEditor() {
   const [saveStatus, setSaveStatus] = useState(null);
   const [savedDraftId, setSavedDraftId] = useState(null);
 
+  // Autocomplete + sheet visibility (same engine as Email page)
+  const [autoSuggestBody, setAutoSuggestBody] = useState(true);
+  const [varFilter, setVarFilter] = useState('');
+  const [attachedSheet, setAttachedSheet] = useState(null); // { name, headers, rows|null, valid, invalid }
+  const [sheetUnmapped, setSheetUnmapped] = useState([]);
+
+  const detectBodyToken = () => {
+    if (!autoSuggestBody) return;
+    try {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const node = sel.anchorNode;
+      const text = (node?.textContent || '').slice(0, sel.anchorOffset);
+      const brace = /{{([\w.]*)$/.exec(text);
+      const word = brace ? null : /([A-Za-z][\w.]{1,})$/.exec(text);
+      const q = brace ? brace[1] : word ? word[1] : '';
+      if (!q) { setVarFilter(''); return; }
+      const hit = variables.some(v =>
+        v.id.replace(/_/g, '').includes(q.toLowerCase().replace(/_/g, '')) ||
+        (v.label || '').toLowerCase().includes(q.toLowerCase())
+      );
+      if (hit) {
+        setVarFilter(q);
+        setShowVariables(true);
+      } else {
+        setVarFilter('');
+      }
+    } catch (_) { /* caret unreadable — ignore */ }
+  };
+
+  const handleEditorInput = () => {
+    calculateMetrics();
+    detectBodyToken();
+  };
+
+  // Insight panels (read-only display sources)
+  const [senderAccounts, setSenderAccounts] = useState([]);
+  const [suppressionCount, setSuppressionCount] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        const [accRes, supRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/email/accounts`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
+          fetch(`${API_BASE_URL}/api/email/suppressions`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (accRes && accRes.ok) {
+          const d = await accRes.json().catch(() => ({}));
+          setSenderAccounts(d.accounts || []);
+        }
+        if (supRes && supRes.ok) {
+          const d = await supRes.json().catch(() => ({}));
+          setSuppressionCount((d.suppressions || []).length);
+        }
+      } catch { /* panels are optional — never break editor */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const [metrics, setMetrics] = useState({
     subjectLength: 0,
     wordCount: 0,
@@ -95,6 +159,16 @@ export default function EmailBodyEditor() {
       readingTime: readTimeSeconds,
       personalization: personalCount
     });
+
+    // Mismatch strip: pills used in body/subject with no matching variable
+    try {
+      const subText = subjectRef.current?.innerText || '';
+      const bodyText = bodyRef.current?.innerText || '';
+      const used = extractVars(subText, bodyText);
+      const known = new Set(variables.map(v => v.id));
+      const missing = used.filter(id => !known.has(id));
+      setSheetUnmapped(missing);
+    } catch (_) { /* ignore */ }
   };
 
   useEffect(() => {
@@ -103,7 +177,10 @@ export default function EmailBodyEditor() {
       bodyRef.current.innerHTML = `
         <p style="margin:0 0 16px 0;">Hello <span class="variable-pill" contenteditable="false">{{first_name}}</span> !</p>
         <p style="margin:0 0 16px 0; line-height: 1.6;">I've been following <span class="variable-pill" contenteditable="false">{{company_name}}</span> for a while and loved your recent post about <span class="variable-pill" contenteditable="false">{{recent_topic}}</span>. It really resonated with how we approach growth at our agency. I'm reaching because I help companies like <span class="variable-pill" contenteditable="false">{{company_name}}</span> scale their outbound systems without the technical headache.</p>
+        <p style="margin:0 0 16px 0; line-height: 1.6;">Quick context on why this matters for <span class="variable-pill" contenteditable="false">{{company_name}}</span>: most teams we talk to in <span class="variable-pill" contenteditable="false">{{company_name}}</span>'s space lose hours every week to manual follow-ups and messy lists. We helped a team similar to yours at <span class="variable-pill" contenteditable="false">{{company_name}}</span> clean up their <span class="variable-pill" contenteditable="false">{{product_name}}</span> workflow and lift replies without adding headcount.</p>
+        <p style="margin:0 0 16px 0; line-height: 1.6;">If it helps, I can share 2-3 ideas tailored to <span class="variable-pill" contenteditable="false">{{first_name}}</span>'s goals around <span class="variable-pill" contenteditable="false">{{recent_topic}}</span> — no pitch, just specifics you can use even if we never speak again.</p>
         <p style="margin:0 0 16px 0;">Do you have 15 minutes next Tuesday to chat?</p>
+        <p style="margin:0 0 16px 0; line-height: 1.6;">P.S. Totally fine if now isn't the time, <span class="variable-pill" contenteditable="false">{{first_name}}</span> — just reply "later" and I'll circle back in a few weeks.</p>
         <p style="margin:0;">Best, <span class="variable-pill" contenteditable="false">{{sender_name}}</span></p>
       `;
     }
@@ -145,6 +222,16 @@ export default function EmailBodyEditor() {
     });
   };
 
+  const emailStatsFor = (headers, rows) => {
+    const emailCol = (headers || []).find(h => normHeader(h).includes('email'));
+    if (!emailCol || !rows) return null;
+    let valid = 0;
+    for (const r of rows) {
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(r[emailCol] ?? '').trim())) valid++;
+    }
+    return { valid, invalid: rows.length - valid };
+  };
+
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -160,6 +247,13 @@ export default function EmailBodyEditor() {
         complete: function(results) {
           if (results.meta && results.meta.fields) {
             addVariablesFromHeaders(results.meta.fields);
+            const rows = results.data || [];
+            setAttachedSheet({
+              name: file.name,
+              headers: results.meta.fields,
+              rows,
+              ...emailStatsFor(results.meta.fields, rows),
+            });
           }
         }
       });
@@ -170,9 +264,16 @@ export default function EmailBodyEditor() {
           const data = new Uint8Array(event.target.result);
           const wb = XLSX.read(data, { type: 'array' });
           const firstSheet = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-          if (rows.length > 0) {
-            addVariablesFromHeaders(rows[0]);
+          const headerRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+          const objRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+          if (headerRows.length > 0) {
+            addVariablesFromHeaders(headerRows[0]);
+            setAttachedSheet({
+              name: file.name,
+              headers: headerRows[0].filter(Boolean).map(String),
+              rows: objRows,
+              ...emailStatsFor(headerRows[0].filter(Boolean).map(String), objRows),
+            });
           }
         } catch (err) {
           console.error('Excel parse error:', err);
@@ -227,6 +328,7 @@ export default function EmailBodyEditor() {
         addVariablesFromHeaders(data.headers);
         setImportSource(fileName);
         setDataSourceType('roster_studio');
+        setAttachedSheet({ name: fileName, headers: data.headers, rows: null });
         setShowRosterModal(false);
       } else {
         setCloudError('No headers found in this spreadsheet.');
@@ -294,6 +396,7 @@ export default function EmailBodyEditor() {
     const html = <span class="variable-pill" contenteditable="false"> + variable.label + </span>&nbsp;;
     document.execCommand('insertHTML', false, html);
     setShowVariables(false);
+    setVarFilter('');
     calculateMetrics();
   };
 
@@ -323,7 +426,7 @@ export default function EmailBodyEditor() {
               ref={subjectRef}
               onBlur={() => handleBlur('subject')}
               onFocus={() => setActiveEditor('subject')}
-              onInput={calculateMetrics}
+              onInput={handleEditorInput}
               placeholder="Subject..."
               suppressContentEditableWarning={true}
             />
@@ -337,8 +440,8 @@ export default function EmailBodyEditor() {
               ref={bodyRef}
               onBlur={() => handleBlur('body')}
               onFocus={() => setActiveEditor('body')}
-              onInput={calculateMetrics}
-              placeholder="Type your email here..."
+              onInput={handleEditorInput}
+              placeholder="Type your email here... (type d1.. or {{ to insert Excel columns)"
               suppressContentEditableWarning={true}
             />
           </div>
@@ -391,7 +494,7 @@ export default function EmailBodyEditor() {
               <div className="variables-dropdown-container">
                 <button 
                   className="variables-btn"
-                  onClick={() => setShowVariables(!showVariables)}
+                  onClick={() => { setVarFilter(''); setShowVariables(!showVariables); }}
                 >
                   <Variable size={16} />
                   Variables
@@ -400,13 +503,29 @@ export default function EmailBodyEditor() {
                 
                 {showVariables && (
                   <div className="variables-dropdown">
-                    {variables.map(v => (
+                    <div style={{ padding: '4px 8px', borderBottom: '1px solid #E2E8F0', marginBottom: '4px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', color: '#64748B' }}>
+                        {varFilter ? `matching “${varFilter}” — click to insert` : 'click to insert at caret'}
+                      </span>
+                      <label style={{ marginLeft: 'auto', fontSize: '11px', color: '#64748B', display: 'flex', gap: '4px', alignItems: 'center', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={autoSuggestBody} onChange={e => { setAutoSuggestBody(e.target.checked); if (!e.target.checked) setVarFilter(''); }} />
+                        auto
+                      </label>
+                    </div>
+                    {variables
+                      .filter(v => {
+                        if (!varFilter) return true;
+                        const q = varFilter.toLowerCase().replace(/_/g, '');
+                        return v.id.replace(/_/g, '').includes(q) || (v.label || '').toLowerCase().includes(varFilter.toLowerCase());
+                      })
+                      .map(v => (
                       <div 
                         key={v.id} 
                         className="variable-option"
                         onMouseDown={(e) => {
                           e.preventDefault(); // Prevent losing focus
                           insertVariable(v);
+                          setVarFilter('');
                         }}
                       >
                         {v.label}
@@ -416,6 +535,44 @@ export default function EmailBodyEditor() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Sheet status strip: columns / rows / email counts / unmapped */}
+          <div className="insight-card" style={{ borderRadius: '0 0 8px 8px', borderTop: '1px dashed #CBD5E1' }}>
+            {!attachedSheet ? (
+              <p className="insight-hint" style={{ margin: 0 }}>Attach an Excel/CSV or Roster sheet to bind columns — type <b>d1..</b> or <b>{`{{`}</b> to auto-insert them as pills.</p>
+            ) : (
+              <>
+                <div className="insight-row">
+                  <span>Sheet</span>
+                  <span className="insight-chip">{attachedSheet.name}</span>
+                </div>
+                <div className="insight-row">
+                  <span>Columns</span>
+                  <span className="insight-chip">{attachedSheet.headers.length}: {attachedSheet.headers.slice(0, 6).join(', ')}{attachedSheet.headers.length > 6 ? '…' : ''}</span>
+                </div>
+                <div className="insight-row">
+                  <span>Rows / emails to send</span>
+                  <span className="insight-chip ok">
+                    {attachedSheet.rows === null
+                      ? 'headers only — rows load at send'
+                      : `${attachedSheet.rows.length} rows · ${attachedSheet.valid ?? '?'} valid`}
+                  </span>
+                </div>
+                {attachedSheet.rows !== null && (attachedSheet.invalid ?? 0) > 0 && (
+                  <div className="insight-row">
+                    <span>Quarantined</span>
+                    <span className="insight-chip warn">{attachedSheet.invalid} bad emails excluded at send</span>
+                  </div>
+                )}
+                <div className="insight-row">
+                  <span>Unmapped pills</span>
+                  {sheetUnmapped.length === 0
+                    ? <span className="insight-chip ok">all bound</span>
+                    : <span className="insight-chip bad">{sheetUnmapped.map(id => `{{${id}}}`).join(', ')}</span>}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -610,12 +767,54 @@ export default function EmailBodyEditor() {
                   setVariables(DEFAULT_VARIABLES);
                   setImportSource(null);
                   setCloudSelectedId(null);
+                  setAttachedSheet(null);
+                  setVarFilter('');
                 }}
               >
                 <X size={12} /> Clear
               </button>
             </div>
           )}
+        </div>
+
+        {/* Source live map */}
+        <div className="insight-card">
+          <h4 className="insight-title"><FileSpreadsheet size={14} /> Source Live Map</h4>
+          <div className="insight-row">
+            <span>File</span>
+            <span className="insight-chip">{importSource || 'None yet'}</span>
+          </div>
+          <div className="insight-row">
+            <span>Variables</span>
+            <span className="insight-chip ok">{variables.length} total</span>
+          </div>
+          <div className="insight-row">
+            <span>Custom</span>
+            <span className={`insight-chip ${variables.length > DEFAULT_VARIABLES.length ? 'ok' : ''}`}>{Math.max(0, variables.length - DEFAULT_VARIABLES.length)} added</span>
+          </div>
+          <p className="insight-hint">Import a file to map columns → pills. Unmapped pills send raw.</p>
+        </div>
+
+        {/* Deliverability */}
+        <div className="insight-card">
+          <h4 className="insight-title"><CheckCircle2 size={14} /> Deliverability</h4>
+          <div className="insight-row">
+            <span>Sender</span>
+            <span className="insight-chip">{senderAccounts.length === 0 ? 'Not set' : (senderAccounts.find(a => a.isDefault) || senderAccounts[0]).email}</span>
+          </div>
+          <div className="insight-row">
+            <span>Accounts</span>
+            <span className="insight-chip">{senderAccounts.length}</span>
+          </div>
+          <div className="insight-row">
+            <span>Suppressed</span>
+            <span className={`insight-chip ${suppressionCount ? 'warn' : ''}`}>{suppressionCount === null ? '—' : suppressionCount}</span>
+          </div>
+          <div className="insight-row">
+            <span>Subject</span>
+            <span className={`insight-chip ${metrics.subjectLength > 0 && metrics.subjectLength < 60 ? 'ok' : 'warn'}`}>{metrics.subjectLength} chars</span>
+          </div>
+          <p className="insight-hint">Unsubscribe footer + List-Unsubscribe are auto-added on send.</p>
         </div>
         </div>
         {/* End Sidebar Column */}
