@@ -1,6 +1,21 @@
-import React, { useState } from 'react';
-import { User, Globe, Link, Mail, BookOpen, Star, Target, MessageSquare, ClipboardList, Clock, Layers, Monitor, Smartphone, Camera, FileUp } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { User, Globe, Link, Mail, BookOpen, Star, Target, MessageSquare, ClipboardList, Clock, Layers, Monitor, Smartphone, Tablet, Camera, FileUp } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
+import { fieldDefs, SECTION_TITLES } from '../utils/formFields';
+import {
+  migrateToBlocks, createBlock, newBlockId, blockToField, blocksToToggles, validateFormConfig,
+} from '../utils/formSchema';
+import FieldPalette from '../components/FieldPalette';
+import SortableBlock from '../components/SortableBlock';
+import FieldInspector from '../components/FieldInspector';
+import LayersPanel from '../components/LayersPanel';
 import './TemplateBuilder.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -25,8 +40,37 @@ const DEFAULT_TOGGLES = {
   actionItems: true
 };
 
+const REGISTRY_ORDER = fieldDefs('student').map((d) => d.toggle);
+
+function registryBlockFor(toggleKey) {
+  const def = fieldDefs('student').find((d) => d.toggle === toggleKey);
+  if (!def) return null;
+  return {
+    uuid: `fld-${def.id}`,
+    type: def.type,
+    groupUuid: `sec-${def.section}`,
+    groupType: def.section,
+    payload: {
+      label: def.label,
+      ...(def.placeholder ? { placeholder: def.placeholder } : {}),
+      isRequired: false,
+    },
+    style: { labelPosition: 'top', width: 'full' },
+  };
+}
+
+function sectionTitle(key) {
+  return SECTION_TITLES[key] || key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 export default function StudentTemplateBuilder() {
-  const [toggles, setToggles] = useState(DEFAULT_TOGGLES);
+  const location = useLocation();
+  // Blocks are the source of truth: order, labels, widths, validation.
+  // Toggles/fields are derived at save time for backward compatibility.
+  const [blocks, setBlocks] = useState(() => migrateToBlocks('student', { toggles: DEFAULT_TOGGLES }).blocks);
+  const [draftSettings, setDraftSettings] = useState({});
+  const [selectedUuid, setSelectedUuid] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [previewMode, setPreviewMode] = useState('desktop');
   const [formTitle, setFormTitle] = useState('Student Evaluation Form');
   const [emailFormat, setEmailFormat] = useState('@[branch].sreenidhi.edu.in');
@@ -34,23 +78,148 @@ export default function StudentTemplateBuilder() {
   // Draft Generation State
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('Draft saved.');
+  // UUID of the draft being edited (null = new draft). Re-saving PATCHes
+  // the same draft instead of creating duplicates.
+  const [existingDraftId, setExistingDraftId] = useState(null);
+
+  // Registry toggle state derives from blocks (on = block present)
+  const toggles = useMemo(() => {
+    const on = blocksToToggles(blocks);
+    const full = {};
+    for (const key of REGISTRY_ORDER) full[key] = !!on[key];
+    return full;
+  }, [blocks]);
+
+  // Hydrate from a draft opened via DraftsView → Edit (router state)
+  useEffect(() => {
+    const draft = location.state?.draft;
+    if (!draft || draft.templateType !== 'student') return;
+    const t = setTimeout(() => {
+      const migrated = migrateToBlocks('student', draft.config || {});
+      setBlocks(migrated.blocks);
+      setDraftSettings(migrated.settings || {});
+      setSelectedUuid(null);
+      setExistingDraftId(draft.draftId || null);
+      if (draft.title) setFormTitle(draft.title);
+      if (draft.config?.emailFormat) setEmailFormat(draft.config.emailFormat);
+      setSaveMsg('Draft loaded — saving will update it.');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2500);
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const toggleField = (key) => {
-    setToggles(prev => ({ ...prev, [key]: !prev[key] }));
+    const uuid = `fld-${key}`;
+    if (blocks.some((b) => b.uuid === uuid)) {
+      setBlocks((prev) => prev.filter((b) => b.uuid !== uuid));
+      if (selectedUuid === uuid) setSelectedUuid(null);
+      return;
+    }
+    const fresh = registryBlockFor(key);
+    if (!fresh) return;
+    // Insert at registry position so re-enabled fields land where expected
+    setBlocks((prev) => {
+      const order = REGISTRY_ORDER.indexOf(key);
+      let idx = prev.length;
+      for (let i = 0; i < prev.length; i += 1) {
+        const id = prev[i].uuid.startsWith('fld-') ? prev[i].uuid.slice(4) : null;
+        const pos = id ? REGISTRY_ORDER.indexOf(id) : -1;
+        if (pos !== -1 && pos > order) { idx = i; break; }
+      }
+      return [...prev.slice(0, idx), fresh, ...prev.slice(idx)];
+    });
   };
 
+  const addBlock = (type, spawn = {}) => {
+    const fresh = createBlock(type, {
+      groupType: 'general',
+      groupUuid: 'sec-general',
+      payload: spawn.payload,
+      style: spawn.style,
+    });
+    setBlocks((prev) => [...prev, fresh]);
+    setSelectedUuid(fresh.uuid);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    setIsDragging(false);
+    if (!over || active.id === over.id) return;
+    setBlocks((prev) => {
+      const oldIndex = prev.findIndex((b) => b.uuid === active.id);
+      const newIndex = prev.findIndex((b) => b.uuid === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      const moved = arrayMove(prev, oldIndex, newIndex);
+      // Adopt the section of the drop target so headers stay truthful
+      const targetSection = prev[newIndex].groupType;
+      return moved.map((b) => (b.uuid === active.id ? { ...b, groupType: targetSection } : b));
+    });
+  };
+
+  const deleteBlock = (uuid) => {
+    setBlocks((prev) => prev.filter((b) => b.uuid !== uuid));
+    if (selectedUuid === uuid) setSelectedUuid(null);
+  };
+
+  const duplicateBlock = (uuid) => {
+    const src = blocks.find((b) => b.uuid === uuid);
+    if (!src) return;
+    const copy = {
+      ...src,
+      uuid: newBlockId(),
+      groupUuid: newBlockId(),
+      payload: { ...src.payload, label: `${src.payload?.label || src.type} (copy)` },
+      style: { ...(src.style || {}) },
+    };
+    setBlocks((prev) => {
+      const idx = prev.findIndex((b) => b.uuid === uuid);
+      return [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)];
+    });
+    setSelectedUuid(copy.uuid);
+  };
+
+  const toggleHidden = (uuid) => {
+    setBlocks((prev) => prev.map((b) => (
+      b.uuid === uuid ? { ...b, style: { ...(b.style || {}), hidden: !(b.style || {}).hidden || undefined } } : b
+    )));
+  };
+
+  const selectedBlock = blocks.find((b) => b.uuid === selectedUuid) || null;
+
   const handleSaveDraft = async () => {
+    const check = validateFormConfig({ blocks, settings: draftSettings });
+    if (!check.ok) {
+      alert(`Cannot save — fix these first:\n${check.errors.slice(0, 5).join('\n')}`);
+      return;
+    }
     setIsSaving(true);
     try {
       const config = {
         toggles,
-        emailFormat
+        emailFormat,
+        blocks,
+        fields: blocks.map(blockToField),
+        settings: draftSettings,
       };
 
       const token = await getAuthToken();
-      
-      const response = await fetch(`${API_BASE_URL}/api/drafts`, {
-        method: 'POST',
+      if (!token) return;
+
+      // PATCH the same UUID when editing; POST only for brand-new drafts
+      const url = existingDraftId
+        ? `${API_BASE_URL}/api/drafts/${existingDraftId}`
+        : `${API_BASE_URL}/api/drafts`;
+
+      const response = await fetch(url, {
+        method: existingDraftId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -64,11 +233,13 @@ export default function StudentTemplateBuilder() {
 
       const data = await response.json();
       if (response.ok) {
+        if (data.draftId) setExistingDraftId(data.draftId);
+        setSaveMsg(existingDraftId ? 'Draft updated.' : 'Draft saved.');
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 2500);
       } else {
         console.error('Failed to save draft:', data.error);
-        alert('Failed to save draft.');
+        alert(data.error || 'Failed to save draft.');
       }
     } catch (err) {
       console.error(err);
@@ -78,64 +249,41 @@ export default function StudentTemplateBuilder() {
     }
   };
 
-  const renderCompoundEmail = (formatStr, placeholder = "john.doe") => {
-    if (!formatStr) return <input type="email" className="form-input" placeholder={placeholder + "@college.edu"} disabled />;
-
-    const parts = formatStr.split(/(\[.*?\])/g).filter(Boolean);
-    
-    return (
-      <div className="compound-input-group">
-        <input type="text" className="compound-input-field" placeholder={placeholder} style={{ flex: 2 }} disabled />
-        
-        {parts.map((part, index) => {
-          if (part.startsWith('[') && part.endsWith(']')) {
-            const fieldName = part.slice(1, -1);
-            return (
-              <input 
-                key={index}
-                type="text" 
-                className="compound-input-field" 
-                placeholder={fieldName} 
-                style={{ flex: 1, minWidth: '60px', borderLeft: '1px solid #E5E5E5', borderRight: '1px solid #E5E5E5' }} 
-                disabled
-              />
-            );
-          }
-          return (
-            <div key={index} className="compound-input-addon">
-              {part}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const hasAnyBasic = toggles.fullName || toggles.rollNo || toggles.collegeEmail || toggles.github || toggles.linkedin || toggles.portfolio || toggles.projects || toggles.profilePhoto || toggles.resume;
-  const hasAnyMentorship = toggles.programPhase || toggles.meetingFreq;
-  const hasAnyRating = toggles.techSkills || toggles.softSkills || toggles.goals;
-  const hasAnyFeedback = toggles.learningDiff || toggles.keyStrengths || toggles.actionItems;
-  const hasAnyField = hasAnyBasic || hasAnyMentorship || hasAnyRating || hasAnyFeedback;
+  // Group blocks by section, preserving first-appearance order
+  const groups = useMemo(() => {
+    const out = [];
+    const seen = new Map();
+    for (const b of blocks) {
+      const key = b.groupType || 'general';
+      if (!seen.has(key)) {
+        seen.set(key, []);
+        out.push([key, seen.get(key)]);
+      }
+      seen.get(key).push(b);
+    }
+    return out;
+  }, [blocks]);
 
   return (
     <div className="template-builder-container">
       {showSuccess && (
         <div className="success-overlay">
           <video src="/Sucess.webm" autoPlay muted className="success-video" />
+          <p className="success-text">{saveMsg}</p>
         </div>
       )}
-      
+
       {/* LEFT PANEL - Sidebar Controls */}
       <div className="tb-sidebar">
         <div className="tb-sidebar-header">
           <h1 className="tb-sidebar-title">Student Template</h1>
-          <p className="tb-sidebar-desc">Select the fields you want mentors to fill out.</p>
-          
+          <p className="tb-sidebar-desc">Toggle fields, add new ones, then drag them into order on the canvas.</p>
+
           <div style={{ marginTop: '24px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Form Title</label>
-            <input 
-              type="text" 
-              className="form-input" 
+            <input
+              type="text"
+              className="form-input"
               style={{ width: '100%', backgroundColor: '#FFFFFF', border: '1px solid #E5E5E5' }}
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
@@ -145,30 +293,32 @@ export default function StudentTemplateBuilder() {
           <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
             <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B', marginBottom: '12px' }}>Save Form</h4>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                className="form-btn primary" 
+              <button
+                className="form-btn primary"
                 style={{ width: '100%' }}
                 onClick={handleSaveDraft}
                 disabled={isSaving}
               >
-                {isSaving ? 'Saving...' : 'Save as Draft'}
+                {isSaving ? 'Saving...' : (existingDraftId ? 'Update Draft' : 'Save as Draft')}
               </button>
             </div>
           </div>
         </div>
 
+        <FieldPalette onAdd={addBlock} />
+
         {/* Category: Basic Details */}
         <div className="tb-category">
           <h3 className="tb-category-title">Basic Details</h3>
-          
+
           <ToggleRow label="Profile Photo" icon={<Camera size={16}/>} active={toggles.profilePhoto} onClick={() => toggleField('profilePhoto')} />
           <ToggleRow label="Full Name" icon={<User size={16}/>} active={toggles.fullName} onClick={() => toggleField('fullName')} />
           <ToggleRow label="Roll Number" icon={<ClipboardList size={16}/>} active={toggles.rollNo} onClick={() => toggleField('rollNo')} />
           <ToggleRow label="College Email" icon={<Mail size={16}/>} active={toggles.collegeEmail} onClick={() => toggleField('collegeEmail')}>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>Email Format Template</label>
-            <input 
-              type="text" 
-              className="form-input" 
+            <input
+              type="text"
+              className="form-input"
               style={{ width: '100%', fontSize: '12px', padding: '6px 10px' }}
               placeholder="e.g. @[branch].college.edu"
               value={emailFormat}
@@ -206,118 +356,94 @@ export default function StudentTemplateBuilder() {
         </div>
       </div>
 
-      {/* RIGHT PANEL - LIVE PREVIEW */}
+      {/* CENTER - SORTABLE CANVAS */}
       <div className="tb-preview-panel">
-        
+
         {/* Floating Device Toggle */}
         <div className="device-toggle-container">
-          <div 
+          <div
             className={`device-toggle-btn ${previewMode === 'desktop' ? 'active' : ''}`}
             onClick={() => setPreviewMode('desktop')}
           >
             <Monitor size={16} />
           </div>
-          <div 
+          <div
             className={`device-toggle-btn ${previewMode === 'mobile' ? 'active' : ''}`}
             onClick={() => setPreviewMode('mobile')}
           >
             <Smartphone size={16} />
           </div>
+          <div
+            className={`device-toggle-btn ${previewMode === 'tablet' ? 'active' : ''}`}
+            onClick={() => setPreviewMode('tablet')}
+          >
+            <Tablet size={16} />
+          </div>
         </div>
 
         <div className={`device-frame ${previewMode}`}>
-          <div className="form-paper">
-            
+          <div className="form-paper canvas-guide-wrap">
+            {isDragging && <div className="canvas-guide" />}
             <div className="form-paper-header">
               <h1 className="form-paper-title">{formTitle || 'Untitled Form'}</h1>
-              <p className="form-paper-subtitle">Mentor Assessment Template</p>
+              <p className="form-paper-subtitle">Mentor Assessment Template — click a field to edit, drag to reorder</p>
             </div>
-
-            {!hasAnyField && (
-              <div className="form-empty-state">
-                <ClipboardList size={48} />
-                <p>Toggle fields on the left to build your template.</p>
-              </div>
-            )}
-
-            {/* Basic Details Section */}
-            {hasAnyBasic && (
-              <div className="form-section">
-                <h3 className="form-section-title">Basic Details</h3>
-                
-                {toggles.profilePhoto && (
-                  <div className="form-field full" style={{ marginBottom: '24px' }}>
-                    <div className="photo-box">
-                      <Camera size={24} />
-                      <span style={{ fontSize: '10px', marginTop: '4px' }}>Upload Photo</span>
-                    </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={() => setIsDragging(true)} onDragEnd={handleDragEnd} onDragCancel={() => setIsDragging(false)}>
+              <SortableContext items={blocks.map((b) => b.uuid)} strategy={verticalListSortingStrategy}>
+                {groups.map(([section, items]) => (
+                  <div key={section}>
+                    <h3 className="canvas-section-title">{sectionTitle(section)}</h3>
+                    {items.map((block) => (
+                      <SortableBlock
+                        key={block.uuid}
+                        block={block}
+                        selected={selectedUuid === block.uuid}
+                        onSelect={setSelectedUuid}
+                        onDelete={deleteBlock}
+                        onDuplicate={duplicateBlock}
+                        emailFormat={emailFormat}
+                      />
+                    ))}
                   </div>
-                )}
-                
-                <div className="form-grid-2">
-                  {toggles.fullName && <InputField label="Full Name" placeholder="e.g. John Doe" />}
-                  {toggles.rollNo && <InputField label="Roll Number" placeholder="e.g. CS2024-001" />}
-                  {toggles.collegeEmail && (
-                    <div className="form-field full">
-                      <label className="form-label">College Email</label>
-                      {renderCompoundEmail(emailFormat, "john.doe")}
-                    </div>
-                  )}
-                  {toggles.github && <InputField label="GitHub URL" placeholder="https://github.com/..." />}
-                  {toggles.linkedin && <InputField label="LinkedIn URL" placeholder="https://linkedin.com/in/..." />}
-                  {toggles.portfolio && <InputField label="Portfolio" placeholder="Link to portfolio..." full={!toggles.projects} />}
-                  {toggles.projects && <InputField label="Projects" placeholder="Link to projects..." full={!toggles.portfolio} />}
-                  {toggles.resume && (
-                    <div className="form-field full">
-                      <label className="form-label">Resume / CV Upload</label>
-                      <div className="upload-box">
-                        <FileUp size={24} />
-                        <div>Drag and drop your resume here, or click to browse</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                ))}
+              </SortableContext>
+            </DndContext>
+            {blocks.length === 0 && (
+              <div className="form-empty-state">
+                <p>Canvas is empty — toggle fields on the left or add new ones above.</p>
               </div>
             )}
-
-            {/* Mentorship Section */}
-            {hasAnyMentorship && (
-              <div className="form-section">
-                <h3 className="form-section-title">Mentorship Details</h3>
-                <div className="form-grid-2">
-                  {toggles.programPhase && <InputField label="Program Phase" placeholder="e.g. Mid-term evaluation" />}
-                  {toggles.meetingFreq && <InputField label="Meeting Frequency" placeholder="e.g. Weekly, Bi-weekly" />}
-                </div>
-              </div>
-            )}
-
-            {/* Ratings Section */}
-            {hasAnyRating && (
-              <div className="form-section">
-                <h3 className="form-section-title">Performance Ratings</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {toggles.techSkills && <RatingField label="Technical Skill Progress" />}
-                  {toggles.softSkills && <RatingField label="Soft Skills & Communication" />}
-                  {toggles.goals && <RatingField label="Goal Achievement" />}
-                </div>
-              </div>
-            )}
-
-            {/* Feedback Section */}
-            {hasAnyFeedback && (
-              <div className="form-section">
-                <h3 className="form-section-title">Qualitative Feedback</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {toggles.learningDiff && <TextareaField label="Identify any learning difficulties or challenges:" />}
-                  {toggles.keyStrengths && <TextareaField label="Highlight the student's key strengths:" />}
-                  {toggles.actionItems && <TextareaField label="Action Items / Next Steps:" />}
-                </div>
-              </div>
-            )}
-
           </div>
         </div>
       </div>
+
+      {/* RIGHT - INSPECTOR (selection) or LAYERS (overview) */}
+      {selectedBlock ? (
+        <FieldInspector
+          block={selectedBlock}
+          onChange={(updated) => setBlocks((prev) => prev.map((b) => (b.uuid === updated.uuid ? updated : b)))}
+          onClose={() => setSelectedUuid(null)}
+        />
+      ) : (
+        <div className="tb-inspector">
+          <div className="tb-inspector-header">
+            <div>
+              <h3 className="tb-inspector-title">Canvas</h3>
+              <span className="canvas-block-type">{blocks.length} block{blocks.length === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+          <LayersPanel
+            blocks={blocks}
+            selectedUuid={selectedUuid}
+            onSelect={setSelectedUuid}
+            onToggleHidden={toggleHidden}
+            onDelete={deleteBlock}
+          />
+          {blocks.length > 0 && (
+            <p className="inspector-hint" style={{ marginTop: '12px' }}>Select any block or layer to edit its content and style.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -343,42 +469,3 @@ function ToggleRow({ label, icon, active, onClick, children }) {
     </div>
   );
 }
-
-// Subcomponents for the Live Preview
-function InputField({ label, placeholder, full }) {
-  return (
-    <div className={`form-field ${full ? 'full' : ''}`}>
-      <label className="form-label">{label}</label>
-      <input type="text" className="form-input" placeholder={placeholder} disabled />
-    </div>
-  );
-}
-
-function TextareaField({ label }) {
-  return (
-    <div className="form-field full">
-      <label className="form-label">{label}</label>
-      <textarea className="form-textarea" placeholder="Type feedback here..." disabled />
-    </div>
-  );
-}
-
-function RatingField({ label }) {
-  return (
-    <div className="form-field full">
-      <label className="form-label">{label}</label>
-      <div className="form-rating-container">
-        <span style={{ fontSize: '12px', color: '#888' }}>Needs Work</span>
-        <div className="form-rating-scale">
-          <div className="form-rating-line"></div>
-          {[1, 2, 3, 4, 5].map(num => (
-            <div key={num} className={`form-rating-dot ${num === 3 ? 'active' : ''}`}>{num}</div>
-          ))}
-        </div>
-        <span style={{ fontSize: '12px', color: '#888' }}>Excellent</span>
-      </div>
-    </div>
-  );
-}
-
-
