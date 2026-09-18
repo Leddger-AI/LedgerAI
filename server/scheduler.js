@@ -23,6 +23,7 @@ async function getAgenda() {
     const EmailDraft = require('./models/EmailDraft');
     const EmailAccount = require('./models/EmailAccount');
     const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
+    const { substituteTemplateVars } = require('./utils/emailTemplate');
     const supabase = require('./supabaseClient');
 
     const campaign = await EmailCampaign.findById(campaignId);
@@ -57,20 +58,37 @@ async function getAgenda() {
     // Build transporter
     const transporter = await buildTransporterFromAccount(account);
 
+    // Suppression filter (shared with immediate send)
+    let suppressedSet = new Set();
+    try {
+      const EmailSuppression = require('./models/EmailSuppression');
+      const docs = await EmailSuppression.find({ ownerUid: campaign.ownerUid }).select('email').lean();
+      suppressedSet = new Set((docs || []).map(d => String(d.email).toLowerCase()));
+    } catch (_) { /* suppression optional — send anyway */ }
+
     // Send emails
     let sentCount = 0;
     let failedCount = 0;
 
     for (const recipient of campaign.recipients) {
       if (recipient.status === 'sent') continue;
+      if (suppressedSet.has(String(recipient.email).toLowerCase())) {
+        recipient.status = 'failed';
+        recipient.error = 'suppressed (unsubscribed/bounced)';
+        failedCount++;
+        continue;
+      }
       try {
-        let subject = draft.subject || '';
-        let bodyHtml = draft.bodyHtml || '';
-
-        for (const [key, value] of Object.entries(recipient.variables || {})) {
-          const placeholder = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-          subject = subject.replace(placeholder, value || '');
-          bodyHtml = bodyHtml.replace(placeholder, value || '');
+        const subject = substituteTemplateVars(draft.subject, recipient.variables);
+        let bodyHtml = substituteTemplateVars(draft.bodyHtml, recipient.variables);
+        const leftover = /{{\s*[A-Za-z0-9_. ]+?\s*}}/.exec(subject + ' ' + bodyHtml);
+        if (leftover) {
+          throw new Error(`Unmapped variable ${leftover[0]} — bind every {{pill}} to a column before sending`);
+        }
+        const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+        const unsubUrl = `${frontendUrl}/unsubscribe?campaign=${campaign._id}&email=${encodeURIComponent(recipient.email)}`;
+        if (bodyHtml && !bodyHtml.includes('unsubscribe')) {
+          bodyHtml += `<br><br><p style="font-size:12px;color:#888;">Don't want these emails? <a href="${unsubUrl}">Unsubscribe</a></p>`;
         }
 
         await transporter.sendMail({
@@ -78,6 +96,10 @@ async function getAgenda() {
           to: recipient.email,
           subject,
           html: bodyHtml,
+          headers: {
+            'List-Unsubscribe': `<${unsubUrl}>, <mailto:${account.email}?subject=unsubscribe>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         });
 
         recipient.status = 'sent';
@@ -133,6 +155,85 @@ async function getAgenda() {
     }
   });
 
+  // Define the send analytics report job (Phase 5)
+  agenda.define('send analytics report', { priority: 'normal', concurrency: 1 }, async (job) => {
+    const { reportId } = job.attrs.data;
+    const AnalyticsReport = require('./models/AnalyticsReport');
+    const EmailAccount = require('./models/EmailAccount');
+    const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
+    const {
+      buildOverviewContent,
+      buildTemplateContent,
+    } = require('./utils/analyticsExport');
+
+    const report = await AnalyticsReport.findById(reportId);
+    if (!report) {
+      console.error(`[Scheduler] Analytics report ${reportId} not found`);
+      return;
+    }
+    if (report.status !== 'active') {
+      console.log(`[Scheduler] Analytics report ${reportId} is ${report.status}, skipping run`);
+      return;
+    }
+
+    const run = { runAt: new Date(), status: 'success', error: null, recipients: report.recipientEmails.length };
+    try {
+      // Build the report file content.
+      let content, mimeType, ext, baseName;
+      if (report.scope === 'template') {
+        const result = await buildTemplateContent(report.ownerUid, report.draftId, report.format);
+        if (!result) throw new Error('Template not found for scheduled report');
+        ({ content, mimeType, ext, baseName } = result);
+      } else {
+        const result = await buildOverviewContent(report.ownerUid, report.format);
+        ({ content, mimeType, ext } = result);
+        baseName = 'analytics-overview';
+      }
+
+      const filename = `${baseName}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+
+      // Resolve a transporter: prefer the user's configured email account,
+      // fall back to the global Gmail OAuth2 transporter.
+      let transporter;
+      let fromEmail;
+      const account = await resolveEmailAccount(EmailAccount, report.ownerUid, null);
+      if (account) {
+        transporter = await buildTransporterFromAccount(account);
+        fromEmail = account.email;
+      } else {
+        const { createTransporter } = require('./utils/emailService');
+        transporter = await createTransporter();
+        fromEmail = process.env.GOOGLE_EMAIL;
+      }
+
+      const subject = `Leddger-AI Analytics Report: ${report.name}`;
+      const html = `
+        <h2>${report.name}</h2>
+        <p>Your scheduled <strong>${report.frequency}</strong> analytics report is attached.</p>
+        <p>Scope: ${report.scope}${report.scope === 'template' ? ` (${report.draftId})` : ''} &middot; Format: ${report.format.toUpperCase()}</p>
+        <p style="color:#64748b;font-size:12px;">Generated ${new Date().toLocaleString()} by Leddger-AI</p>
+      `;
+
+      const attachments = [{
+        filename,
+        content: Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8'),
+      }];
+
+      for (const to of report.recipientEmails) {
+        await transporter.sendMail({ from: fromEmail, to, subject, html, attachments });
+      }
+
+      console.log(`[Scheduler] Analytics report ${reportId} sent to ${report.recipientEmails.length} recipient(s)`);
+    } catch (err) {
+      run.status = 'failed';
+      run.error = err.message;
+      console.error(`[Scheduler] Analytics report ${reportId} failed:`, err.message);
+    }
+
+    report.pushRun(run);
+    await report.save();
+  });
+
   await agenda.start();
   initialized = true;
   console.log('✅ Agenda scheduler started');
@@ -164,6 +265,29 @@ async function cancelDraftActivation(draftId) {
   console.log(`[Scheduler] Draft ${draftId} activation cancelled`);
 }
 
+// --- Analytics scheduled reports (Phase 5) ---
+
+const REPORT_INTERVALS = {
+  daily: '1 day',
+  weekly: '1 week',
+  monthly: '1 month',
+};
+
+async function scheduleAnalyticsReport(reportId, frequency) {
+  const interval = REPORT_INTERVALS[frequency] || REPORT_INTERVALS.daily;
+  const a = await getAgenda();
+  // Cancel any prior instance for this report before (re)scheduling.
+  await a.cancel({ name: 'send analytics report', 'data.reportId': reportId });
+  await a.every(interval, 'send analytics report', { reportId });
+  console.log(`[Scheduler] Analytics report ${reportId} scheduled ${frequency}`);
+}
+
+async function cancelAnalyticsReport(reportId) {
+  const a = await getAgenda();
+  await a.cancel({ name: 'send analytics report', 'data.reportId': reportId });
+  console.log(`[Scheduler] Analytics report ${reportId} cancelled`);
+}
+
 async function stopAgenda() {
   if (agenda) {
     await agenda.stop();
@@ -171,4 +295,13 @@ async function stopAgenda() {
   }
 }
 
-module.exports = { getAgenda, scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation };
+module.exports = {
+  getAgenda,
+  scheduleCampaign,
+  cancelScheduledCampaign,
+  stopAgenda,
+  scheduleDraftActivation,
+  cancelDraftActivation,
+  scheduleAnalyticsReport,
+  cancelAnalyticsReport,
+};

@@ -437,8 +437,28 @@ describe('Email Campaign Send', () => {
       .send({
         draftId: draft._id.toString(),
         recipients: [
-          { email: 'good@test.com', variables: {} },
-          { email: 'bad@test.com', variables: {} },
+          { email: 'good@test.com', variables: { name: 'Good' } },
+          { email: 'bad@test.com', variables: { name: 'Bad' } },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.sentCount).toBe(1);
+    expect(res.body.failedCount).toBe(1);
+  });
+
+  test('E21b: POST /api/email/send fails recipients with unmapped {{variables}} instead of mailing raw', async () => {
+    const draft = await createDraft();
+    await createAccount();
+
+    const res = await request(app)
+      .post('/api/email/send')
+      .set('x-test-uid', 'test-user-uid')
+      .send({
+        draftId: draft._id.toString(),
+        recipients: [
+          { email: 'mapped@test.com', variables: { name: 'Mapped' } },
+          { email: 'unmapped@test.com', variables: {} },
         ],
       });
 

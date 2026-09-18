@@ -126,11 +126,29 @@ function checkCorsConfig() {
   return { ok: true, msg: `CORS_ORIGINS set (${count} origin(s))` };
 }
 
+function checkEncryptionKey() {
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw) {
+    return { ok: false, msg: 'ENCRYPTION_KEY not set — EmailAccounts + Drive tokens will fail (AES-256-GCM)' };
+  }
+  let buf;
+  try {
+    buf = Buffer.from(raw, 'hex');
+  } catch (_) {
+    return { ok: false, msg: 'ENCRYPTION_KEY is not valid hex' };
+  }
+  if (buf.length !== 32) {
+    return { ok: false, msg: `ENCRYPTION_KEY must be 32 bytes hex (got ${buf.length} bytes)` };
+  }
+  return { ok: true, msg: 'Present (32 bytes, AES-256-GCM ready)' };
+}
+
 function checkEnvVars() {
   const required = [
     'MONGODB_URI',
     'SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
+    'ENCRYPTION_KEY',
     'GOOGLE_CLIENT_ID',
     'GOOGLE_CLIENT_SECRET',
     'GOOGLE_REFRESH_TOKEN',
@@ -151,6 +169,7 @@ async function runStartupChecks() {
   const checks = [
     { name: 'MongoDB', fn: checkMongoDB },
     { name: 'Supabase', fn: checkSupabase },
+    { name: 'Encryption', fn: checkEncryptionKey },
     { name: 'Redis', fn: checkRedis },
     { name: 'Cloudinary', fn: checkCloudinary },
     { name: 'Gmail OAuth2', fn: checkGmailOAuth2 },
