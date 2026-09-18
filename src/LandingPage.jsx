@@ -35,6 +35,8 @@ import secureAccessImg from './assets/secure_access.png';
 import teamsWorkImg from './assets/teams_work.png';
 import InteractiveTour from './InteractiveTour';
 import LiveProductTour from './LiveProductTour';
+import EmailFlowTour from './EmailFlowTour';
+import TemplateFlowTour from './TemplateFlowTour';
 import CollaboratorNetwork from './CollaboratorNetwork';
 
 export default function LandingPage({ onStartDashboard, loading, apiError, onClearError }) {
@@ -279,6 +281,16 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
       {/* LIVE PRODUCT TOUR FRAME (New 2-Page Hub) */}
       <section className="cz-alt-section cz-alt-gray" style={{ padding: '80px 20px' }}>
         <LiveProductTour />
+      </section>
+
+      {/* EMAIL FLOW LIVE SHOWCASE — sidebar pages: Body, Automation, Excel */}
+      <section style={{ padding: '80px 20px' }}>
+        <EmailFlowTour />
+      </section>
+
+      {/* TEMPLATE FLOW LIVE SHOWCASE — sidebar pages: builder, Schedule */}
+      <section style={{ padding: '0 20px 80px 20px' }}>
+        <TemplateFlowTour />
       </section>
 
       {/* PHASE 4: COMBINED FEATURES SECTION */}

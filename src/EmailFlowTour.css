@@ -1,0 +1,536 @@
+/* EmailFlowTour — light stage on the beige landing page.
+   Deliberately NOT a copy of InteractiveTour (dark cards + neon):
+   white cards, dark arrow cursor, one scene at a time. */
+
+.eft-wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.eft-head { margin-bottom: 28px; }
+
+.eft-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #141414;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
+}
+
+.eft-hl { color: #0E9384; }
+
+.eft-sub {
+  color: rgba(20, 20, 20, 0.65);
+  font-size: 15px;
+  margin: 0;
+}
+
+/* Split editorial layout: compact stage + copy column.
+   Fully automatic — user cannot click anything, cursor only. */
+.eft-wrap.split-left {
+  max-width: 1400px;
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 48px;
+  align-items: center;
+  text-align: left;
+  pointer-events: none;
+}
+
+.eft-stagebox { min-width: 0; }
+
+.eft-copy .eft-title { font-size: 2rem; }
+
+.eft-point {
+  border-left: 3px solid rgba(20, 20, 20, 0.12);
+  padding: 10px 0 10px 16px;
+  margin-top: 16px;
+  transition: border-color 0.3s ease;
+}
+
+.eft-point.on { border-color: #0E9384; }
+
+.eft-point b { display: block; font-size: 14px; color: #141414; }
+.eft-point span { font-size: 13px; color: rgba(20, 20, 20, 0.65); }
+.eft-point i { font-style: normal; color: #2563EB; font-weight: 700; }
+
+.eft-caption.live { text-align: left; margin-top: 20px; }
+
+@media (max-width: 860px) {
+  .eft-wrap.split-left { grid-template-columns: 1fr; }
+}
+.eft-app {
+  position: relative;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  background: #fff;
+  border: 1px solid rgba(20, 20, 20, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(20, 20, 20, 0.12);
+  min-height: 480px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.eft-side {
+  background: #F8FAFC;
+  border-right: 1px solid rgba(20, 20, 20, 0.08);
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eft-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748B;
+  transition: all 0.25s ease;
+}
+
+.eft-item.active { background: #fff; color: #141414; box-shadow: 0 1px 4px rgba(20, 20, 20, 0.08); }
+
+.eft-replay.side { margin-top: auto; justify-content: flex-start; }
+
+.eft-main {
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: eftIn 0.35s ease;
+  min-height: 480px;
+  font-size: 15px;
+}
+
+.eft-drafts { display: flex; gap: 10px; }
+
+.eft-draftcard {
+  flex: 1;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  transition: all 0.3s ease;
+}
+
+.eft-draftcard span { color: #64748B; font-size: 12px; }
+.eft-draftcard.dim { opacity: 0.55; }
+.eft-draftcard.picked { border-color: #0E9384; box-shadow: 0 0 0 2px rgba(14, 147, 132, 0.15); }
+
+.eft-sendbtn.static { align-self: flex-start; background: #64748B; }
+
+@media (max-width: 640px) {
+  .eft-app { grid-template-columns: 1fr; }
+  .eft-side { flex-direction: row; border-right: none; border-bottom: 1px solid rgba(20, 20, 20, 0.08); overflow-x: auto; }
+  .eft-replay.side { margin-top: 0; margin-left: auto; }
+}
+
+.eft-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748B;
+  background: transparent;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.3s ease;
+}
+
+.eft-tab.active {
+  background: #fff;
+  color: #141414;
+  box-shadow: 0 -2px 8px rgba(20, 20, 20, 0.06);
+}
+
+.eft-tabs .eft-replay { margin-left: auto; margin-bottom: 6px; }
+
+.eft-page { width: 100%; max-width: 560px; text-align: left; animation: eftIn 0.35s ease; }
+
+.eft-subject.lit, .eft-body.lit { border-color: #0E9384; }
+
+.eft-sheetrow { display: flex; gap: 12px; align-items: center; margin: 14px 0; flex-wrap: wrap; }
+
+.eft-drop.mini { margin-bottom: 0; padding: 12px 16px; font-size: 13px; }
+
+.eft-formrow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+.eft-fields { display: flex; flex-direction: column; gap: 8px; }
+
+.eft-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94A3B8;
+  transition: all 0.3s ease;
+}
+
+.eft-field.on { color: #141414; border-color: #0E9384; }
+
+.eft-knob {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(20, 20, 20, 0.12);
+  position: relative;
+  transition: background 0.3s ease;
+  flex-shrink: 0;
+}
+
+.eft-knob::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.3s ease;
+}
+
+.eft-knob.on { background: #0E9384; }
+.eft-knob.on::after { transform: translateX(16px); }
+
+.eft-formprev {
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: #64748B;
+  background: #F8FAFC;
+  transition: border-color 0.3s ease;
+}
+
+.eft-formprev.lit { border-color: #0E9384; color: #141414; }
+
+.eft-linkbox.lit { border-color: #0E9384; }
+
+@media (max-width: 640px) {
+  .eft-formrow { grid-template-columns: 1fr; }
+  .eft-tabs { margin: -32px -16px 20px -16px; }
+}
+
+.eft-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 20, 20, 0.15);
+  background: #fff;
+  color: #141414;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.eft-step.active {
+  background: #141414;
+  color: #fff;
+  border-color: #141414;
+}
+
+.eft-step.done { border-color: #0E9384; color: #0E9384; }
+
+.eft-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(20, 20, 20, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.eft-step.active .eft-dot { background: rgba(255, 255, 255, 0.2); }
+
+.eft-replay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px dashed rgba(20, 20, 20, 0.3);
+  background: transparent;
+  color: #141414;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.eft-stage {
+  position: relative;
+  background: #fff;
+  border: 1px solid rgba(20, 20, 20, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(20, 20, 20, 0.12);
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+  overflow: hidden;
+}
+
+.eft-card {
+  width: 100%;
+  max-width: 560px;
+  text-align: left;
+  animation: eftIn 0.4s ease;
+}
+
+@keyframes eftIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.eft-subject {
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin-bottom: 12px;
+  background: #F8FAFC;
+}
+
+.eft-body {
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 15px;
+  line-height: 1.7;
+  min-height: 150px;
+}
+
+.eft-pill {
+  display: inline-block;
+  background: #EFF6FF;
+  color: #2563EB;
+  border-radius: 12px;
+  padding: 1px 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eft-pop { animation: eftPop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+@keyframes eftPop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.eft-caret {
+  display: inline-block;
+  width: 2px;
+  height: 18px;
+  background: #141414;
+  vertical-align: -3px;
+  animation: eftBlink 1s step-end infinite;
+}
+
+@keyframes eftBlink { 50% { opacity: 0; } }
+
+.eft-drop {
+  border: 2px dashed #CBD5E1;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #64748B;
+  font-weight: 600;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+}
+
+.eft-drop.over { border-color: #0E9384; color: #0E9384; background: #F0FDF9; }
+
+.eft-grid { border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; }
+
+.eft-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-top: 1px solid #F1F5F9;
+}
+
+.eft-row:first-child { border-top: none; }
+
+.eft-head-row { background: #F8FAFC; font-weight: 700; }
+
+.eft-row-in { animation: eftIn 0.4s ease both; }
+
+.eft-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #059669;
+  background: #ECFDF5;
+}
+
+.eft-center { text-align: center; }
+
+.eft-linkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 22px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.eft-linktext { color: #0E9384; animation: eftIn 0.4s ease; }
+
+.eft-dim { color: #94A3B8; }
+
+.eft-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.eft-knob {
+  width: 48px;
+  height: 26px;
+  border-radius: 13px;
+  background: rgba(20, 20, 20, 0.12);
+  position: relative;
+  transition: background 0.3s ease;
+}
+
+.eft-knob::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.eft-toggle.on .eft-knob { background: #0E9384; }
+.eft-toggle.on .eft-knob::after { transform: translateX(22px); }
+
+.eft-preview {
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  background: #F8FAFC;
+}
+
+.eft-sendbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #141414;
+  color: #fff;
+  font-weight: 700;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.eft-sendbtn.done { background: #059669; }
+
+.eft-bar {
+  height: 8px;
+  background: #EDF2F7;
+  border-radius: 4px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.eft-fill {
+  height: 100%;
+  width: 0%;
+  background: #059669;
+  border-radius: 4px;
+  animation: eftFill 1.4s ease-out forwards;
+}
+
+@keyframes eftFill { to { width: 100%; } }
+
+/* Dark arrow cursor built for the light stage */
+.eft-cursor {
+  position: absolute;
+  transform: translate(-2px, -2px);
+  transition: top 1.2s cubic-bezier(0.4, 0, 0.2, 1), left 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 2px 6px rgba(20, 20, 20, 0.35));
+  z-index: 5;
+  pointer-events: none;
+}
+
+.eft-click {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 30px;
+  height: 30px;
+  border: 2px solid #141414;
+  border-radius: 50%;
+  opacity: 0;
+  animation: eftClick 0.6s ease-out;
+}
+
+@keyframes eftClick {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.eft-caption {
+  margin-top: 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(20, 20, 20, 0.7);
+}
+
+@media (max-width: 640px) {
+  .eft-stage { padding: 32px 16px; min-height: 320px; }
+  .eft-title { font-size: 1.6rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eft-card, .eft-row-in, .eft-fill, .eft-pop { animation: none; }
+  .eft-cursor { display: none; }
+}
