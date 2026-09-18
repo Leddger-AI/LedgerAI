@@ -17,6 +17,7 @@ const EmailCampaign = require('./models/EmailCampaign');
 const EmailAccount = require('./models/EmailAccount');
 const TemplateData = require('./models/TemplateData');
 const TemplateSubmission = require('./models/TemplateSubmission');
+const AnalyticsReport = require('./models/AnalyticsReport');
 const {
   getOverviewStats,
   getTemplatesWithStats,
@@ -25,6 +26,15 @@ const {
   getSubmissionTrends,
   getTemplateTypeDistribution,
 } = require('./utils/analyticsUtils');
+const {
+  buildOverviewExportData,
+  overviewToCsv,
+  overviewToJson,
+  buildTemplateExportData,
+  templateToCsv,
+  templateToJson,
+  slugify,
+} = require('./utils/analyticsExport');
 const { analyzeTemplateGitHub } = require('./utils/githubAnalyzer');
 const {
   getAuthUrl,
@@ -37,9 +47,13 @@ const {
 const { uploadCSVToDrive, uploadJSONToDrive } = require('./utils/googleDriveUpload');
 const { encrypt } = require('./utils/crypto');
 const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
+const { substituteTemplateVars, isValidEmail } = require('./utils/emailTemplate');
+const EmailSuppression = require('./models/EmailSuppression');
+const MeetingRate = require('./models/MeetingRate');
+const { logAudit } = require('./utils/audit');
 const { sendFormSubmissionEmail, buildSubmissionEmailHtml, sendOtpEmail } = require('./utils/emailService');
 const { createOtpChallenge, verifyOtpChallenge } = require('./utils/otp');
-const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation } = require('./scheduler');
+const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation, scheduleAnalyticsReport, cancelAnalyticsReport } = require('./scheduler');
 const { v4: uuidv4 } = require('uuid');
 const { runStartupChecks } = require('./startupCheck');
 
@@ -83,7 +97,7 @@ const getOrCreateUser = async (userId, email) => {
   
   const { data: created, error } = await supabase
     .from('profiles')
-    .insert({ id: userId, email: email || null, departments: [] })
+    .insert({ id: userId, email: email || null, departments: [], role: 'owner' })
     .select('*')
     .single();
   
@@ -138,6 +152,80 @@ app.post('/api/user/departments', verifyToken, async (req, res) => {
 });
 
 /**
+ * GET /api/audit-log
+ * Own audit trail, newest first. Append-only, no edit/delete API.
+ */
+app.get('/api/audit-log', verifyToken, async (req, res) => {
+  try {
+    const AuditLog = require('./models/AuditLog');
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const logs = await AuditLog.find({ ownerUid: req.user.uid })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+    res.json({ logs });
+  } catch (error) {
+    console.error('Error fetching audit log:', error);
+    res.status(500).json({ error: 'Failed to fetch audit log' });
+  }
+});
+
+/**
+ * GET /api/user/export (DSR Article 15)
+ * One JSON with all user data across Supabase + Mongo.
+ */
+app.get('/api/user/export', verifyToken, async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const tables = ['profiles', 'form_drafts', 'form_submissions', 'meetings', 'alerts', 'candidates', 'email_send_log'];
+    const dump = {};
+    for (const t of tables) {
+      try {
+        const key = t === 'profiles' ? 'id' : 'user_id';
+        const { data } = await supabase.from(t).select('*').eq(key, uid).limit(1000);
+        dump[t] = data || [];
+      } catch (_) {
+        dump[t] = [];
+      }
+    }
+    const AuditLog = require('./models/AuditLog');
+    const [emailDrafts, emailCampaigns, suppressions, rates, audits] = await Promise.all([
+      EmailDraft.find({ ownerUid: uid }).lean().catch(() => []),
+      EmailCampaign.find({ ownerUid: uid }).lean().catch(() => []),
+      EmailSuppression.find({ ownerUid: uid }).lean().catch(() => []),
+      MeetingRate.find({ ownerUid: uid }).lean().catch(() => []),
+      AuditLog.find({ ownerUid: uid }).sort({ createdAt: -1 }).limit(1000).lean().catch(() => []),
+    ]);
+    dump.emailDrafts = emailDrafts;
+    dump.emailCampaigns = emailCampaigns;
+    dump.suppressions = suppressions;
+    dump.meetingRates = rates;
+    dump.auditLog = audits;
+    logAudit(uid, 'dsr.export', 'user', uid, { tables: Object.keys(dump) });
+    res.json({ user_id: uid, exported_at: new Date().toISOString(), data: dump });
+  } catch (error) {
+    console.error('Error exporting user data:', error);
+    res.status(500).json({ error: 'Failed to export user data' });
+  }
+});
+
+/**
+ * GET /api/user/retention — jurisdiction policies (static, versioned).
+ */
+app.get('/api/user/retention', verifyToken, async (req, res) => {
+  res.json({
+    version: '2026-01',
+    policies: [
+      { jurisdiction: 'EU/GDPR', unsuccessfulApplicantsMonths: 12, hiredMonths: 36, dsrDays: 30 },
+      { jurisdiction: 'US', unsuccessfulApplicantsMonths: 36, dsrDays: 45 },
+      { jurisdiction: 'IN/DPDP', unsuccessfulApplicantsMonths: 12, dsrDays: 30 },
+    ],
+    deleteEndpoints: ['DELETE /api/user/data (keeps auth)', 'DELETE /api/user/account (full erasure)'],
+    exportEndpoint: 'GET /api/user/export',
+  });
+});
+
+/**
  * POST /api/drafts
  * Create a new form draft (requires auth)
  */
@@ -179,6 +267,7 @@ app.post('/api/drafts', verifyToken, async (req, res) => {
     ).catch(err => console.error('MongoDB sync error (TemplateData):', err));
 
     res.json({ message: 'Draft created', draftId: newDraft.draft_id });
+    logAudit(req.user.uid, 'draft.created', 'form_draft', newDraft.draft_id, { title });
   } catch (error) {
     console.error('Error creating draft:', error);
     res.status(500).json({ error: 'Failed to create draft' });
@@ -240,6 +329,7 @@ app.delete('/api/drafts/:draftId', verifyToken, async (req, res) => {
       .catch(err => console.error('MongoDB sync error (delete submissions):', err));
 
     res.json({ message: 'Draft deleted successfully' });
+    logAudit(req.user.uid, 'draft.deleted', 'form_draft', req.params.draftId, null);
   } catch (error) {
     console.error('Error deleting draft:', error);
     res.status(500).json({ error: 'Failed to delete draft' });
@@ -931,9 +1021,117 @@ app.delete('/api/meetings/:id', verifyToken, async (req, res) => {
       .eq('user_id', req.user.uid);
     if (error) throw error;
     res.json({ message: 'Meeting deleted' });
+    logAudit(req.user.uid, 'meeting.deleted', 'meeting', req.params.id, null);
   } catch (error) {
     console.error('Error deleting meeting:', error);
     res.status(500).json({ error: 'Failed to delete meeting' });
+  }
+});
+
+// --- Meeting Rates (finance-grade cost) ---
+const DEFAULT_HOURLY_RATE = 75;
+
+app.get('/api/rates', verifyToken, async (req, res) => {
+  try {
+    const rates = await MeetingRate.find({ ownerUid: req.user.uid }).sort({ dept: 1, level: 1 });
+    res.json({ rates, defaultHourlyRate: DEFAULT_HOURLY_RATE });
+  } catch (error) {
+    console.error('Error fetching rates:', error);
+    res.status(500).json({ error: 'Failed to fetch rates' });
+  }
+});
+
+app.post('/api/rates', verifyToken, async (req, res) => {
+  try {
+    const { dept, level, region, hourlyRate } = req.body || {};
+    if (hourlyRate === undefined || Number(hourlyRate) < 0) {
+      return res.status(400).json({ error: 'hourlyRate (>=0) is required' });
+    }
+    const doc = await MeetingRate.findOneAndUpdate(
+      {
+        ownerUid: req.user.uid,
+        dept: dept || 'default',
+        level: level || 'default',
+        region: region || 'default',
+      },
+      { hourlyRate: Number(hourlyRate), updatedAt: new Date() },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    logAudit(req.user.uid, 'rate.upserted', 'meeting_rate', doc._id, { hourlyRate: doc.hourlyRate });
+    res.status(201).json({ rate: doc });
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ error: 'Rate already exists for this dept/level/region' });
+    console.error('Error saving rate:', error);
+    res.status(500).json({ error: 'Failed to save rate' });
+  }
+});
+
+app.delete('/api/rates/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid rate id format' });
+    const r = await MeetingRate.findOneAndDelete({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!r) return res.status(404).json({ error: 'Rate not found' });
+    logAudit(req.user.uid, 'rate.deleted', 'meeting_rate', req.params.id, null);
+    res.json({ message: 'Rate deleted' });
+  } catch (error) {
+    console.error('Error deleting rate:', error);
+    res.status(500).json({ error: 'Failed to delete rate' });
+  }
+});
+
+// Cost preview: uses matching rate or default. Never writes.
+app.post('/api/meetings/cost', verifyToken, async (req, res) => {
+  try {
+    const { durationMinutes, attendeeCount, dept, level, region } = req.body || {};
+    if (!durationMinutes || Number(durationMinutes) <= 0) {
+      return res.status(400).json({ error: 'durationMinutes (>0) is required' });
+    }
+    const rate = await MeetingRate.findOne({
+      ownerUid: req.user.uid,
+      dept: dept || 'default',
+      level: level || 'default',
+      region: region || 'default',
+    }).lean();
+    const hourly = rate ? rate.hourlyRate : DEFAULT_HOURLY_RATE;
+    const hours = Number(durationMinutes) / 60;
+    const attendees = attendeeCount === undefined ? 1 : Number(attendeeCount);
+    const cost = Math.round(hours * hourly * attendees * 100) / 100;
+    res.json({ cost, hourlyRate: hourly, matched: !!rate, defaultHourlyRate: DEFAULT_HOURLY_RATE });
+  } catch (error) {
+    console.error('Error calculating cost:', error);
+    res.status(500).json({ error: 'Failed to calculate cost' });
+  }
+});
+
+// AI attribution override ledger: human corrects AI tag. Old+new kept in audit.
+app.put('/api/meetings/:id/attribution', verifyToken, async (req, res) => {
+  try {
+    const { aiProject, overrideReason } = req.body || {};
+    if (!aiProject) return res.status(400).json({ error: 'aiProject is required' });
+    const { data: existing, error: fetchError } = await supabase
+      .from('meetings')
+      .select('id,ai_project,ai_confidence')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.uid)
+      .single();
+    if (fetchError) return res.status(404).json({ error: 'Meeting not found' });
+    const { data, error } = await supabase
+      .from('meetings')
+      .update({ ai_project: aiProject, requires_human_review: false })
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.uid)
+      .select('*')
+      .single();
+    if (error) throw error;
+    logAudit(req.user.uid, 'meeting.attribution_overridden', 'meeting', req.params.id, {
+      oldProject: existing?.ai_project || null,
+      newProject: aiProject,
+      overrideReason: overrideReason || null,
+    });
+    res.json({ meeting: data });
+  } catch (error) {
+    console.error('Error overriding attribution:', error);
+    res.status(500).json({ error: 'Failed to override attribution' });
   }
 });
 
@@ -1055,6 +1253,9 @@ app.get('/api/email/drafts', verifyToken, async (req, res) => {
 
 app.get('/api/email/drafts/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid draft id format' });
+    }
     const draft = await EmailDraft.findOne({ _id: req.params.id, ownerUid: req.user.uid });
     if (!draft) {
       return res.status(404).json({ error: 'Draft not found' });
@@ -1068,6 +1269,9 @@ app.get('/api/email/drafts/:id', verifyToken, async (req, res) => {
 
 app.put('/api/email/drafts/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid draft id format' });
+    }
     const { subject, bodyHtml, variables, dataSourceType, dataSourceFile, dataSourceSheetId } = req.body;
     const draft = await EmailDraft.findOne({ _id: req.params.id, ownerUid: req.user.uid });
     if (!draft) {
@@ -1092,6 +1296,9 @@ app.put('/api/email/drafts/:id', verifyToken, async (req, res) => {
 
 app.delete('/api/email/drafts/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid draft id format' });
+    }
     const result = await EmailDraft.deleteOne({ _id: req.params.id, ownerUid: req.user.uid });
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Draft not found or unauthorized' });
@@ -1104,6 +1311,10 @@ app.delete('/api/email/drafts/:id', verifyToken, async (req, res) => {
 });
 
 // --- Email Accounts (Multi-Account, Encrypted) ---
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+}
 
 async function migrateLegacyEmailConfig(userId) {
   const existing = await EmailAccount.findOne({ ownerUid: userId });
@@ -1201,6 +1412,9 @@ app.post('/api/email/accounts', verifyToken, async (req, res) => {
 
 app.put('/api/email/accounts/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid account id format' });
+    }
     const { label, smtpHost, smtpPort, appPassword, refreshToken, clientId, clientSecret } = req.body;
 
     const account = await EmailAccount.findOne({ _id: req.params.id, ownerUid: req.user.uid });
@@ -1227,6 +1441,9 @@ app.put('/api/email/accounts/:id', verifyToken, async (req, res) => {
 
 app.delete('/api/email/accounts/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid account id format' });
+    }
     const account = await EmailAccount.findOneAndDelete({ _id: req.params.id, ownerUid: req.user.uid });
     if (!account) {
       return res.status(404).json({ error: 'Email account not found' });
@@ -1249,6 +1466,9 @@ app.delete('/api/email/accounts/:id', verifyToken, async (req, res) => {
 
 app.put('/api/email/accounts/:id/default', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid account id format' });
+    }
     await EmailAccount.updateMany({ ownerUid: req.user.uid }, { isDefault: false });
     const account = await EmailAccount.findOneAndUpdate(
       { _id: req.params.id, ownerUid: req.user.uid },
@@ -1267,6 +1487,9 @@ app.put('/api/email/accounts/:id/default', verifyToken, async (req, res) => {
 
 app.post('/api/email/accounts/:id/test', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid account id format' });
+    }
     const account = await EmailAccount.findOne({ _id: req.params.id, ownerUid: req.user.uid });
     if (!account) {
       return res.status(404).json({ error: 'Email account not found' });
@@ -1317,13 +1540,26 @@ app.post('/api/email/test', verifyToken, async (req, res) => {
 
 app.post('/api/email/send', verifyToken, async (req, res) => {
   try {
-    const { draftId, recipients, campaignName, accountId } = req.body;
+    const { draftId, recipients, campaignName, accountId, async: asyncSend } = req.body;
 
     if (!draftId) {
       return res.status(400).json({ error: 'draftId is required' });
     }
+    if (!isValidObjectId(draftId)) {
+      return res.status(400).json({ error: 'Invalid draftId format' });
+    }
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'recipients array is required' });
+    }
+    if (recipients.length > 500) {
+      return res.status(400).json({ error: 'Too many recipients (max 500 per campaign). Split into smaller batches.' });
+    }
+    const badEmails = recipients.filter(r => !isValidEmail(r.email)).map(r => r.email);
+    if (badEmails.length > 0) {
+      return res.status(400).json({ error: `Invalid recipient email(s): ${badEmails.slice(0, 5).join(', ')}${badEmails.length > 5 ? ` (+${badEmails.length - 5} more)` : ''}` });
+    }
+    if (accountId && !isValidObjectId(accountId)) {
+      return res.status(400).json({ error: 'Invalid accountId format' });
     }
 
     const draft = await EmailDraft.findOne({ _id: draftId, ownerUid: req.user.uid });
@@ -1337,13 +1573,65 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
     }
 
+    // Daily rate limit: max 2000 sends per user per 24h (Gmail Workspace ceiling)
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recent = await EmailCampaign.aggregate([
+      { $match: { ownerUid: req.user.uid, createdAt: { $gte: dayAgo } } },
+      { $group: { _id: null, total: { $sum: '$sentCount' } } },
+    ]);
+    const sentLast24h = (recent[0] && recent[0].total) || 0;
+    if (sentLast24h + recipients.length > 2000) {
+      return res.status(429).json({ error: `Daily send limit reached (sent ${sentLast24h}/2000 in last 24h). Try again tomorrow or split the batch.` });
+    }
+
+    // Suppression filter: skip unsubscribed/bounced
+    const suppressedDocs = await EmailSuppression.find({ ownerUid: req.user.uid }).select('email').lean();
+    const suppressedSet = new Set((suppressedDocs || []).map(d => String(d.email).toLowerCase()));
+    const mailable = [];
+    let suppressedCount = 0;
+    for (const r of recipients) {
+      if (suppressedSet.has(String(r.email).toLowerCase())) suppressedCount++;
+      else mailable.push(r);
+    }
+    if (mailable.length === 0 && suppressedCount > 0) {
+      return res.status(400).json({ error: `All ${suppressedCount} recipient(s) are suppressed (unsubscribed/bounced).` });
+    }
+
+    // Background queue: async=true or large batch (>100) -> Agenda now
+    if (asyncSend === true || mailable.length > 100) {
+      const queued = await EmailCampaign.create({
+        ownerUid: req.user.uid,
+        name: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
+        draftId,
+        accountId: account._id,
+        status: 'scheduled',
+        scheduledAt: new Date(),
+        recipients: mailable.map(r => ({
+          email: r.email,
+          name: r.name || '',
+          variables: r.variables || {},
+          status: 'pending',
+        })),
+      });
+      await scheduleCampaign(queued._id.toString(), new Date());
+      logAudit(req.user.uid, 'email.queued', 'email_campaign', queued._id, { queuedCount: mailable.length });
+      return res.status(202).json({
+        message: 'Campaign queued for background sending',
+        campaignId: queued._id,
+        queuedCount: mailable.length,
+        suppressedCount,
+        totalRecipients: recipients.length,
+      });
+    }
+
     // Create campaign
     const campaign = await EmailCampaign.create({
       ownerUid: req.user.uid,
       name: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
       draftId,
+      accountId: account._id,
       status: 'sending',
-      recipients: recipients.map(r => ({
+      recipients: mailable.map(r => ({
         email: r.email,
         name: r.name || '',
         variables: r.variables || {},
@@ -1360,14 +1648,18 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
 
     for (const recipient of campaign.recipients) {
       try {
-        // Substitute variables in subject and body
-        let subject = draft.subject || '';
-        let bodyHtml = draft.bodyHtml || '';
-
-        for (const [key, value] of Object.entries(recipient.variables)) {
-          const placeholder = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-          subject = subject.replace(placeholder, value || '');
-          bodyHtml = bodyHtml.replace(placeholder, value || '');
+        // Substitute variables in subject and body (regex-safe)
+        const subject = substituteTemplateVars(draft.subject, recipient.variables);
+        let bodyHtml = substituteTemplateVars(draft.bodyHtml, recipient.variables);
+        // Safety net: never mail raw {{placeholders}} — fail loudly instead
+        const leftover = /{{\s*[A-Za-z0-9_. ]+?\s*}}/.exec(subject + ' ' + bodyHtml);
+        if (leftover) {
+          throw new Error(`Unmapped variable ${leftover[0]} — bind every {{pill}} to a column before sending`);
+        }
+        const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+        const unsubUrl = `${frontendUrl}/unsubscribe?campaign=${campaign._id}&email=${encodeURIComponent(recipient.email)}`;
+        if (bodyHtml && !bodyHtml.includes('unsubscribe')) {
+          bodyHtml += `<br><br><p style="font-size:12px;color:#888;">Don't want these emails? <a href="${unsubUrl}">Unsubscribe</a></p>`;
         }
 
         await transporter.sendMail({
@@ -1375,6 +1667,10 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
           to: recipient.email,
           subject,
           html: bodyHtml,
+          headers: {
+            'List-Unsubscribe': `<${unsubUrl}>, <mailto:${account.email}?subject=unsubscribe>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         });
 
         recipient.status = 'sent';
@@ -1412,11 +1708,74 @@ app.post('/api/email/send', verifyToken, async (req, res) => {
       campaignId: campaign._id,
       sentCount,
       failedCount,
+      suppressedCount,
       totalRecipients: recipients.length,
     });
+    logAudit(req.user.uid, 'email.sent', 'email_campaign', campaign._id, { sentCount, failedCount, suppressedCount });
   } catch (error) {
     console.error('Error sending email campaign:', error);
     res.status(500).json({ error: 'Failed to send campaign: ' + error.message });
+  }
+});
+
+// --- Suppression List (unsubscribe / bounce) ---
+
+app.get('/api/email/suppressions', verifyToken, async (req, res) => {
+  try {
+    const list = await EmailSuppression.find({ ownerUid: req.user.uid }).sort({ createdAt: -1 }).limit(500);
+    res.json({ suppressions: list });
+  } catch (error) {
+    console.error('Error fetching suppressions:', error);
+    res.status(500).json({ error: 'Failed to fetch suppressions' });
+  }
+});
+
+app.post('/api/email/suppressions', verifyToken, async (req, res) => {
+  try {
+    const { email, reason } = req.body || {};
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Valid email is required' });
+    const doc = await EmailSuppression.findOneAndUpdate(
+      { ownerUid: req.user.uid, email: String(email).toLowerCase().trim() },
+      { reason: reason || 'manual' },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.status(201).json({ suppression: doc });
+  } catch (error) {
+    console.error('Error adding suppression:', error);
+    res.status(500).json({ error: 'Failed to add suppression' });
+  }
+});
+
+app.delete('/api/email/suppressions/:email', verifyToken, async (req, res) => {
+  try {
+    await EmailSuppression.deleteOne({ ownerUid: req.user.uid, email: String(req.params.email).toLowerCase() });
+    res.json({ message: 'Removed from suppression list' });
+  } catch (error) {
+    console.error('Error removing suppression:', error);
+    res.status(500).json({ error: 'Failed to remove suppression' });
+  }
+});
+
+// Public one-click unsubscribe (linked from List-Unsubscribe header/footer)
+app.post('/api/email/unsubscribe', async (req, res) => {
+  try {
+    const { email, campaignId } = req.body || {};
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Valid email is required' });
+    let ownerUid = null;
+    if (campaignId && isValidObjectId(campaignId)) {
+      const camp = await EmailCampaign.findById(campaignId).select('ownerUid').lean();
+      if (camp) ownerUid = camp.ownerUid;
+    }
+    if (!ownerUid) return res.status(400).json({ error: 'campaignId is required to identify the sender' });
+    await EmailSuppression.findOneAndUpdate(
+      { ownerUid, email: String(email).toLowerCase().trim() },
+      { reason: 'unsubscribed', campaignId: isValidObjectId(campaignId) ? campaignId : null },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ message: 'Unsubscribed successfully' });
+  } catch (error) {
+    console.error('Error unsubscribing:', error);
+    res.status(500).json({ error: 'Failed to unsubscribe' });
   }
 });
 
@@ -1470,6 +1829,9 @@ app.get('/api/email/campaigns', verifyToken, async (req, res) => {
 
 app.get('/api/email/campaigns/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid campaign id format' });
+    }
     const campaign = await EmailCampaign.findOne({ _id: req.params.id, ownerUid: req.user.uid })
       .populate('draftId');
     if (!campaign) {
@@ -1489,9 +1851,18 @@ app.post('/api/email/schedule', verifyToken, async (req, res) => {
     const { draftId, recipients, campaignName, scheduledAt, accountId } = req.body;
 
     if (!draftId) return res.status(400).json({ error: 'draftId is required' });
+    if (!isValidObjectId(draftId)) return res.status(400).json({ error: 'Invalid draftId format' });
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'recipients array is required' });
     }
+    if (recipients.length > 500) {
+      return res.status(400).json({ error: 'Too many recipients (max 500 per campaign). Split into smaller batches.' });
+    }
+    const badScheduleEmails = recipients.filter(r => !isValidEmail(r.email));
+    if (badScheduleEmails.length > 0) {
+      return res.status(400).json({ error: `Invalid recipient email(s): ${badScheduleEmails.slice(0, 5).map(r => r.email).join(', ')}` });
+    }
+    if (accountId && !isValidObjectId(accountId)) return res.status(400).json({ error: 'Invalid accountId format' });
     if (!scheduledAt) return res.status(400).json({ error: 'scheduledAt is required' });
 
     const sendDate = new Date(scheduledAt);
@@ -1527,6 +1898,7 @@ app.post('/api/email/schedule', verifyToken, async (req, res) => {
     });
 
     await scheduleCampaign(campaign._id.toString(), sendDate);
+    logAudit(req.user.uid, 'email.scheduled', 'email_campaign', campaign._id, { scheduledAt: sendDate.toISOString() });
 
     res.json({
       message: 'Campaign scheduled successfully',
@@ -1556,6 +1928,9 @@ app.get('/api/email/scheduled', verifyToken, async (req, res) => {
 
 app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.campaignId)) {
+      return res.status(400).json({ error: 'Invalid campaign id format' });
+    }
     const campaign = await EmailCampaign.findOne({
       _id: req.params.campaignId,
       ownerUid: req.user.uid,
@@ -1635,20 +2010,40 @@ function configureCloudinary() {
  */
 async function compressToTargetSize(buffer, maxBytes = 50 * 1024, dimension = 256) {
   const sharp = require('sharp');
-  let quality = 80;
-  let output = buffer;
+  // Strategy: keep quality HIGH (90) and shrink DIMENSIONS first.
+  // Quality is only lowered as a last resort, so big uploads land in KB
+  // by getting smaller — not uglier.
+  const meta = await sharp(buffer).metadata().catch(() => ({}));
+  const srcW = meta.width || dimension;
+  const srcH = meta.height || dimension;
+  const startDim = Math.min(dimension, Math.max(srcW, srcH));
 
-  while (quality >= 20) {
+  let dim = startDim;
+  let quality = 90;
+  let output = buffer;
+  let outDim = dim;
+
+  // Phase 1: fixed high quality, step dimensions down (256 -> 224 -> ... -> 128)
+  while (dim >= 128) {
     output = await sharp(buffer)
-      .resize(dimension, dimension, { fit: 'cover', position: 'center' })
+      .resize(dim, dim, { fit: 'cover', position: 'center' })
       .webp({ quality, effort: 4 })
       .toBuffer();
-
+    outDim = dim;
     if (output.length <= maxBytes) break;
-    quality -= 10;
+    dim -= 32;
   }
 
-  return output;
+  // Phase 2 (rare, tiny images still over target): trim quality, keep size
+  while (output.length > maxBytes && quality > 60) {
+    quality -= 10;
+    output = await sharp(buffer)
+      .resize(outDim, outDim, { fit: 'cover', position: 'center' })
+      .webp({ quality, effort: 4 })
+      .toBuffer();
+  }
+
+  return { buffer: output, width: outDim, height: outDim, quality };
 }
 
 // GET /api/cloudinary/status — check if Cloudinary is configured
@@ -1682,16 +2077,21 @@ app.post('/api/cloudinary/avatar', verifyToken, (req, res, next) => { getUpload(
     const userId = req.user.uid;
     const publicId = `avatars/${userId}`;
 
-    // Compress image to WebP, 256x256, under 50KB
-    const compressedBuffer = await compressToTargetSize(req.file.buffer, 50 * 1024, 256);
+    // Compress: any size in -> KB out, dimensions shrink first, quality stays high.
+    // Re-uploads overwrite the same public_id, so changing the image replaces it.
+    const compressed = await compressToTargetSize(req.file.buffer, 50 * 1024, 512);
+    const compressedBuffer = compressed.buffer;
     const sizeKb = Math.ceil(compressedBuffer.length / 1024);
 
-    // Upload to Cloudinary with user-scoped public_id (overwrite: true replaces old avatar)
+    // Upload to Cloudinary with user-scoped public_id.
+    // overwrite + invalidate: changing the image replaces the old one
+    // everywhere (no stale CDN copy).
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           public_id: publicId,
           overwrite: true,
+          invalidate: true,
           resource_type: 'image',
           format: 'webp',
         },
@@ -1703,12 +2103,13 @@ app.post('/api/cloudinary/avatar', verifyToken, (req, res, next) => { getUpload(
       uploadStream.end(compressedBuffer);
     });
 
-    // Update Supabase profiles table with new avatar_url
+    // Update Supabase profiles table with new avatar_url (upsert so
+    // first-time users without a profiles row don't silently lose the URL)
     try {
-      await supabase
+      const { error: profileErr } = await supabase
         .from('profiles')
-        .update({ avatar_url: uploadResult.secure_url, updated_at: new Date().toISOString() })
-        .eq('id', userId);
+        .upsert({ id: userId, email: req.user.email || null, avatar_url: uploadResult.secure_url, updated_at: new Date().toISOString() });
+      if (profileErr) console.warn('Failed to update profile avatar_url in Supabase:', profileErr.message);
     } catch (supabaseErr) {
       console.warn('Failed to update profile avatar_url in Supabase:', supabaseErr.message);
     }
@@ -1718,8 +2119,9 @@ app.post('/api/cloudinary/avatar', verifyToken, (req, res, next) => { getUpload(
       public_id: uploadResult.public_id,
       format: 'webp',
       size_kb: sizeKb,
-      width: 256,
-      height: 256,
+      width: compressed.width,
+      height: compressed.height,
+      quality: compressed.quality,
     });
   } catch (error) {
     console.error('Avatar upload error:', error);
@@ -1833,6 +2235,7 @@ app.get('/api/user/profile', verifyToken, async (req, res) => {
       avatar_url: profile?.avatar_url || null,
       timezone: profile?.timezone || null,
       departments: profile?.departments || [],
+      role: profile?.role || 'owner',
     });
   } catch (error) {
     console.error('Error fetching profile:', error);
@@ -1954,7 +2357,11 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
       { name: 'EmailConfig', model: EmailConfig },
       { name: 'EmailDraft', model: EmailDraft },
       { name: 'EmailCampaign', model: EmailCampaign },
+      { name: 'EmailSuppression', model: EmailSuppression },
+      { name: 'MeetingRate', model: MeetingRate },
+      { name: 'AuditLog', model: require('./models/AuditLog') },
       { name: 'Spreadsheet', model: Spreadsheet },
+      { name: 'AnalyticsReport', model: AnalyticsReport },
     ];
     for (const { name, model } of mongoModels) {
       const result = await model.deleteMany({ ownerUid: userId });
@@ -2018,7 +2425,11 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
       { name: 'EmailConfig', model: EmailConfig },
       { name: 'EmailDraft', model: EmailDraft },
       { name: 'EmailCampaign', model: EmailCampaign },
+      { name: 'EmailSuppression', model: EmailSuppression },
+      { name: 'MeetingRate', model: MeetingRate },
+      { name: 'AuditLog', model: require('./models/AuditLog') },
       { name: 'Spreadsheet', model: Spreadsheet },
+      { name: 'AnalyticsReport', model: AnalyticsReport },
     ];
     for (const { name, model } of mongoModels) {
       const result = await model.deleteMany({ ownerUid: userId });
@@ -2339,34 +2750,14 @@ app.post('/api/analytics/export/overview/drive', verifyToken, async (req, res) =
   try {
     const { format = 'csv', convertToSheet = true } = req.body;
 
-    const [overview, templates, trendsData] = await Promise.all([
-      getOverviewStats(req.user.uid),
-      getTemplatesWithStats(req.user.uid),
-      getSubmissionTrends(req.user.uid, 30),
-    ]);
-
-    const typeDist = await getTemplateTypeDistribution(req.user.uid);
-    const exportData = { overview, templates, trends: trendsData, typeDistribution: typeDist };
+    const exportData = await buildOverviewExportData(req.user.uid);
 
     if (format === 'json') {
-      const jsonContent = JSON.stringify(exportData, null, 2);
+      const jsonContent = overviewToJson(exportData);
       const result = await uploadJSONToDrive(req.user.uid, jsonContent, `analytics-overview-${Date.now()}.json`);
       res.json({ success: true, ...result });
     } else {
-      const rows = [
-        ['Metric', 'Value'],
-        ['Total Templates', overview.totalTemplates],
-        ['Active Links', overview.activeLinks],
-        ['Total Submissions', overview.totalSubmissions],
-        ['Avg Fields/Template', overview.avgFieldsPerTemplate],
-        [],
-        ['Draft ID', 'Title', 'Type', 'Status', 'Submissions', 'Last Submission'],
-        ...templates.map(t => [
-          t.draftId, t.title, t.templateType, t.status,
-          t.submissionCount, t.lastSubmissionAt ? new Date(t.lastSubmissionAt).toISOString() : 'N/A',
-        ]),
-      ];
-      const csvContent = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const csvContent = overviewToCsv(exportData);
       const result = await uploadCSVToDrive(req.user.uid, csvContent, `analytics-overview-${Date.now()}.csv`, convertToSheet);
       res.json({ success: true, ...result });
     }
@@ -2387,30 +2778,19 @@ app.post('/api/analytics/templates/:draftId/export/drive', verifyToken, async (r
   try {
     const { format = 'csv', convertToSheet = true } = req.body;
 
-    const detail = await getTemplateDetail(req.user.uid, req.params.draftId);
-    if (!detail) {
+    const exportData = await buildTemplateExportData(req.user.uid, req.params.draftId);
+    if (!exportData) {
       return res.status(404).json({ error: 'Template not found' });
     }
 
-    const subResult = await getTemplateSubmissions(req.user.uid, req.params.draftId, 1, 10000);
-    const submissions = subResult.submissions;
-
     if (format === 'json') {
-      const jsonContent = JSON.stringify({ detail, submissions }, null, 2);
+      const jsonContent = templateToJson(exportData);
       const result = await uploadJSONToDrive(req.user.uid, jsonContent, `template-${req.params.draftId}-${Date.now()}.json`);
       res.json({ success: true, ...result });
     } else {
-      const allKeys = [...new Set(submissions.flatMap(s => Object.keys(s.submittedData || {})))];
-      const headerRow = ['Submission ID', 'Submitted At', ...allKeys];
-      const dataRows = submissions.map(s => [
-        s.submissionId,
-        new Date(s.submittedAt).toISOString(),
-        ...allKeys.map(k => s.submittedData?.[k] ?? ''),
-      ]);
-      const csvContent = [headerRow, ...dataRows]
-        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-      const result = await uploadCSVToDrive(req.user.uid, csvContent, `template-${detail.title.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}.csv`, convertToSheet);
+      const csvContent = templateToCsv(exportData);
+      const baseName = slugify(exportData.detail.title);
+      const result = await uploadCSVToDrive(req.user.uid, csvContent, `template-${baseName}-${Date.now()}.csv`, convertToSheet);
       res.json({ success: true, ...result });
     }
   } catch (error) {
@@ -2419,6 +2799,205 @@ app.post('/api/analytics/templates/:draftId/export/drive', verifyToken, async (r
       return res.status(400).json({ error: error.message });
     }
     res.status(500).json({ error: 'Failed to export to Google Drive' });
+  }
+});
+
+// ===========================================================================
+// Analytics Phase 5 — Local Download Exports (CSV / JSON / PDF)
+// ===========================================================================
+
+const VALID_EXPORT_FORMATS = ['csv', 'json', 'pdf'];
+
+function resolveExportFormat(query) {
+  const format = String(query.format || 'csv').toLowerCase();
+  return VALID_EXPORT_FORMATS.includes(format) ? format : 'csv';
+}
+
+function sendExportFile(res, content, mimeType, filename) {
+  const isBuffer = Buffer.isBuffer(content);
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  if (isBuffer) {
+    res.setHeader('Content-Length', content.length);
+    res.send(content);
+  } else {
+    res.setHeader('Content-Length', Buffer.byteLength(content));
+    res.send(content);
+  }
+}
+
+/**
+ * GET /api/analytics/export/overview?format=csv|json|pdf
+ * Download the overview analytics report as a local file.
+ */
+app.get('/api/analytics/export/overview', verifyToken, async (req, res) => {
+  try {
+    const format = resolveExportFormat(req.query);
+    const data = await buildOverviewExportData(req.user.uid);
+
+    if (format === 'json') {
+      sendExportFile(res, overviewToJson(data), 'application/json', `analytics-overview-${Date.now()}.json`);
+    } else if (format === 'pdf') {
+      const { overviewToPdf } = require('./utils/analyticsExport');
+      const pdf = await overviewToPdf(data);
+      sendExportFile(res, pdf, 'application/pdf', `analytics-overview-${Date.now()}.pdf`);
+    } else {
+      sendExportFile(res, overviewToCsv(data), 'text/csv', `analytics-overview-${Date.now()}.csv`);
+    }
+  } catch (error) {
+    console.error('Error downloading overview export:', error);
+    res.status(500).json({ error: 'Failed to generate export' });
+  }
+});
+
+/**
+ * GET /api/analytics/export/templates/:draftId?format=csv|json|pdf
+ * Download a per-template analytics report as a local file.
+ */
+app.get('/api/analytics/export/templates/:draftId', verifyToken, async (req, res) => {
+  try {
+    const format = resolveExportFormat(req.query);
+    const data = await buildTemplateExportData(req.user.uid, req.params.draftId);
+    if (!data) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    const baseName = slugify(data.detail.title);
+
+    if (format === 'json') {
+      sendExportFile(res, templateToJson(data), 'application/json', `template-${baseName}-${Date.now()}.json`);
+    } else if (format === 'pdf') {
+      const { templateToPdf } = require('./utils/analyticsExport');
+      const pdf = await templateToPdf(data);
+      sendExportFile(res, pdf, 'application/pdf', `template-${baseName}-${Date.now()}.pdf`);
+    } else {
+      sendExportFile(res, templateToCsv(data), 'text/csv', `template-${baseName}-${Date.now()}.csv`);
+    }
+  } catch (error) {
+    console.error('Error downloading template export:', error);
+    res.status(500).json({ error: 'Failed to generate export' });
+  }
+});
+
+// ===========================================================================
+// Analytics Phase 5 — Scheduled Reports (recurring email delivery)
+// ===========================================================================
+
+const VALID_REPORT_FREQUENCIES = ['daily', 'weekly', 'monthly'];
+const VALID_REPORT_SCOPES = ['overview', 'template'];
+
+/**
+ * POST /api/analytics/reports
+ * Create a scheduled, recurring analytics report emailed to the user.
+ */
+app.post('/api/analytics/reports', verifyToken, async (req, res) => {
+  try {
+    const { name, frequency, scope, draftId, format, recipientEmails } = req.body;
+
+    if (!VALID_REPORT_FREQUENCIES.includes(frequency)) {
+      return res.status(400).json({ error: 'frequency must be one of: daily, weekly, monthly' });
+    }
+    if (!VALID_REPORT_SCOPES.includes(scope)) {
+      return res.status(400).json({ error: 'scope must be one of: overview, template' });
+    }
+    if (scope === 'template' && !draftId) {
+      return res.status(400).json({ error: 'draftId is required when scope is "template"' });
+    }
+    if (scope === 'template') {
+      const exists = await TemplateData.findOne({ ownerUid: req.user.uid, draftId });
+      if (!exists) return res.status(404).json({ error: 'Template not found' });
+    }
+    if (!Array.isArray(recipientEmails) || recipientEmails.length === 0) {
+      return res.status(400).json({ error: 'recipientEmails must be a non-empty array' });
+    }
+
+    const report = await AnalyticsReport.create({
+      ownerUid: req.user.uid,
+      name: name || `${scope} report`,
+      frequency,
+      scope,
+      draftId: scope === 'template' ? draftId : null,
+      format: VALID_EXPORT_FORMATS.includes(format) ? format : 'csv',
+      recipientEmails,
+      status: 'active',
+    });
+
+    await scheduleAnalyticsReport(report._id.toString(), frequency);
+
+    res.json({ message: 'Scheduled report created', report });
+  } catch (error) {
+    console.error('Error creating analytics report:', error);
+    res.status(500).json({ error: 'Failed to create scheduled report' });
+  }
+});
+
+/**
+ * GET /api/analytics/reports
+ * List all scheduled reports for the authenticated user.
+ */
+app.get('/api/analytics/reports', verifyToken, async (req, res) => {
+  try {
+    const reports = await AnalyticsReport.find({ ownerUid: req.user.uid }).sort({ createdAt: -1 });
+    res.json({ reports });
+  } catch (error) {
+    console.error('Error fetching analytics reports:', error);
+    res.status(500).json({ error: 'Failed to fetch scheduled reports' });
+  }
+});
+
+/**
+ * PUT /api/analytics/reports/:id
+ * Update a scheduled report (pause/resume, edit recipients/frequency/format).
+ * Reschedules the Agenda job when frequency changes or the report is resumed.
+ */
+app.put('/api/analytics/reports/:id', verifyToken, async (req, res) => {
+  try {
+    const report = await AnalyticsReport.findOne({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    const { name, frequency, format, recipientEmails, status } = req.body;
+
+    if (name !== undefined) report.name = name;
+    if (VALID_EXPORT_FORMATS.includes(format)) report.format = format;
+    if (Array.isArray(recipientEmails) && recipientEmails.length > 0) report.recipientEmails = recipientEmails;
+
+    const freqChanged = VALID_REPORT_FREQUENCIES.includes(frequency) && frequency !== report.frequency;
+    if (freqChanged) report.frequency = frequency;
+
+    if (status && ['active', 'paused'].includes(status)) {
+      report.status = status;
+    }
+
+    await report.save();
+
+    // Reschedule: cancel any existing job, then schedule again if active.
+    await cancelAnalyticsReport(report._id.toString());
+    if (report.status === 'active') {
+      await scheduleAnalyticsReport(report._id.toString(), report.frequency);
+    }
+
+    res.json({ message: 'Scheduled report updated', report });
+  } catch (error) {
+    console.error('Error updating analytics report:', error);
+    res.status(500).json({ error: 'Failed to update scheduled report' });
+  }
+});
+
+/**
+ * DELETE /api/analytics/reports/:id
+ * Delete a scheduled report and cancel its Agenda job.
+ */
+app.delete('/api/analytics/reports/:id', verifyToken, async (req, res) => {
+  try {
+    const report = await AnalyticsReport.findOne({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    await cancelAnalyticsReport(report._id.toString());
+    await AnalyticsReport.deleteOne({ _id: report._id });
+
+    res.json({ message: 'Scheduled report deleted' });
+  } catch (error) {
+    console.error('Error deleting analytics report:', error);
+    res.status(500).json({ error: 'Failed to delete scheduled report' });
   }
 });
 
