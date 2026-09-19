@@ -7,23 +7,14 @@ import {
   Calendar,
   FileText,
   GraduationCap,
-  Bell,
   Settings,
   AlertTriangle,
-  Search,
-  ArrowUpRight,
-  ArrowDownRight,
-  ChevronDown,
   Clock,
   Brain,
-  CheckCircle2,
-  Edit2,
   Sparkles,
   AlertCircle,
   TrendingUp,
   X,
-  LogOut,
-  RefreshCw,
   Send,
   BarChart3,
   UserSearch,
@@ -31,12 +22,8 @@ import {
   Download,
   FileSpreadsheet,
   Table2,
-  ChevronsRight,
-  ChevronsLeft,
   Mail,
-  Inbox as InboxIcon,
   File,
-  Trash2,
   ChevronUp,
   FolderOpen,
   User,
@@ -44,41 +31,38 @@ import {
   Shield,
   Plug,
   Palette,
-  Lock
+  Lock,
+  Scale,
+  Timer,
+  Wallet
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  BarChart,
-  Bar,
-  Cell
-} from 'recharts';
 import './App.css';
-import { supabase } from './supabaseClient';
-import { loginWithGoogleAndCalendar, loginWithEmail, loginWithGitHub, onAuthChange, signOut as supabaseSignOut, getCurrentSession } from './supabaseAuth';
-import LandingPage from './LandingPage.jsx';
+import { loginWithGoogleAndCalendar, loginWithGitHub, onAuthChange, signOut as supabaseSignOut, getCurrentSession, getAuthToken } from './supabaseAuth';
 import Navbar from './Navbar.jsx';
-import KnowledgeBase from './KnowledgeBase.jsx';
 import ProjectsView from './ProjectsView.jsx';
 import TeamsView from './TeamsView.jsx';
 import CalendarView from './CalendarView.jsx';
-import ReportsView from './ReportsView.jsx';
 import AlertsView from './AlertsView.jsx';
 import SettingsView from './SettingsView.jsx';
-import SourcingView from './SourcingView.jsx';
-import BulkCampaignView from './BulkCampaignView.jsx';
-import RosterStudioView from './RosterStudioView.jsx';
 import FilesView from './FilesView.jsx';
 import MeetView from './MeetView.jsx';
 import ExportView from './ExportView.jsx';
-import EmailAutomationView from './EmailAutomationView.jsx';
-import AnalysisView from './AnalysisView.jsx';
+// Heavy route views load lazily so the initial chunk stays small
+const LandingPage = lazy(() => import('./LandingPage.jsx'));
+const KnowledgeBase = lazy(() => import('./KnowledgeBase.jsx'));
+const ReportsView = lazy(() => import('./ReportsView.jsx'));
+const SourcingView = lazy(() => import('./SourcingView.jsx'));
+const BulkCampaignView = lazy(() => import('./BulkCampaignView.jsx'));
+const RosterStudioView = lazy(() => import('./RosterStudioView.jsx'));
+const EmailAutomationView = lazy(() => import('./EmailAutomationView.jsx'));
+const AnalysisView = lazy(() => import('./AnalysisView.jsx'));
 import AnalyticsPage from './pages/AnalyticsPage.jsx';
+import AttributionQueue from './pages/AttributionQueue.jsx';
+import LiveTicker from './pages/LiveTicker.jsx';
+import Budgets from './pages/Budgets.jsx';
+import OverviewDashboard from './pages/OverviewDashboard.jsx';
+import DashboardHome from './pages/DashboardHome.jsx';
+import PreviewStudio from './pages/PreviewStudio.jsx';
 import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
 import EmployeeTemplateBuilder from './pages/EmployeeTemplateBuilder.jsx';
 import TeamTemplateBuilder from './pages/TeamTemplateBuilder.jsx';
@@ -117,22 +101,13 @@ const PublicFormView = lazy(() => import('./pages/PublicFormView.jsx'));
 const DraftsView = lazy(() => import('./pages/DraftsView.jsx'));
 
 
-// Pre-defined avatars from public sources
-const avatars = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100&q=80',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&h=100&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&h=100&q=80',
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=100&h=100&q=80',
-  'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=100&h=100&q=80'
-];
-
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
   const PATH_TAB_MAP = {
-    '/dashboard': 'Dashboard',
+    '/dashboard': 'Home',
+    '/dashboard/command-center': 'Command Center',
     '/dashboard/templates/student': 'Student Template',
     '/dashboard/templates/employee': 'Employee Template',
     '/dashboard/templates/team': 'Team Template',
@@ -151,6 +126,9 @@ export default function App() {
     '/dashboard/schedule': 'Schedule',
     '/dashboard/analysis': 'Analysis',
     '/dashboard/template-analytics': 'Template Analytics',
+    '/dashboard/attribution': 'Attribution',
+    '/dashboard/live-ticker': 'Live Ticker',
+    '/dashboard/budgets': 'Budgets',
     '/dashboard/alerts': 'Alerts',
     '/dashboard/settings/profile': 'SettingsProfile',
     '/dashboard/settings/departments': 'SettingsDepartments',
@@ -163,6 +141,7 @@ export default function App() {
     '/dashboard/templates/drafts': 'Drafts',
     '/dashboard/templates/active': 'Active Links',
     '/dashboard/templates/scheduled': 'Scheduled Forms',
+    '/dashboard/templates/studio': 'Preview Studio',
     '/dashboard/templates/email-body': 'Email Body'
   };
 
@@ -170,12 +149,12 @@ export default function App() {
     Object.entries(PATH_TAB_MAP).map(([path, tab]) => [tab, path])
   );
 
-  const activeTab = PATH_TAB_MAP[location.pathname] || 'Dashboard';
-  
+  const activeTab = PATH_TAB_MAP[location.pathname] || 'Home';
+
   const calculatePrimaryNav = (tab) => {
-    if (['Dashboard', 'Alerts'].includes(tab)) return 'Home';
-    if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Active Links', 'Scheduled Forms'].includes(tab)) return 'Templates';
-    if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Bulk Campaign'].includes(tab)) return 'Workspace';
+    if (['Home', 'Command Center', 'Alerts', 'Attribution', 'Live Ticker', 'Budgets'].includes(tab)) return 'Home';
+    if (['Student Template', 'Employee Template', 'Team Template', 'Drafts', 'Active Links', 'Scheduled Forms', 'Preview Studio'].includes(tab)) return 'Templates';
+    if (['Projects', 'Teams', 'Sourcing', 'Calendar', 'Meet', 'Bulk Campaign'].includes(tab)) return 'Workspace';
     if (['Analysis', 'Template Analytics', 'Reports', 'Export'].includes(tab)) return 'Analytics';
     if (['Knowledge Base'].includes(tab)) return 'Intelligence';
     if (['SettingsProfile', 'SettingsDepartments', 'SettingsEmail', 'SettingsAI', 'SettingsIntegrations', 'SettingsAppearance', 'SettingsSecurity'].includes(tab)) return 'Settings';
@@ -184,8 +163,7 @@ export default function App() {
   };
   
   const activePrimaryNav = calculatePrimaryNav(activeTab);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  
+
   const PRIMARY_NAVS = [
     { id: 'Home', icon: LayoutDashboard },
     { id: 'Inbox', icon: Mail },
@@ -198,14 +176,14 @@ export default function App() {
 
   const SECONDARY_NAVS = {
     Home: [
-      { id: 'Dashboard', label: 'Overview', icon: LayoutDashboard },
+      { id: 'Home', label: 'Home', icon: LayoutDashboard },
+      { id: 'Command Center', label: 'Command Center', icon: BarChart3 },
+      { id: 'Attribution', label: 'Attribution Queue', icon: Scale },
+      { id: 'Live Ticker', label: 'Live Ticker', icon: Timer },
+      { id: 'Budgets', label: 'Budgets', icon: Wallet },
       { id: 'Alerts', label: 'Alerts', icon: AlertTriangle }
     ],
     Inbox: [
-      { id: 'Assigned', label: 'Assigned to me', icon: Users, count: 50 },
-      { id: 'Unassigned', label: 'Unassigned', icon: FileText, count: 2 },
-      { id: 'AllOpen', label: 'All open', icon: CheckCircle2, count: 2 },
-      { id: 'divider1', isDivider: true },
       { id: 'Email Automation', label: 'Email', icon: Mail, count: 46 },
       { id: 'Email Body', label: 'Body', icon: FileText },
       { id: 'Roster Studio', label: 'Roster Studio', icon: Table2 },
@@ -219,6 +197,7 @@ export default function App() {
       { id: 'Teams', label: 'Teams', icon: Users },
       { id: 'Sourcing', label: 'Sourcing', icon: UserSearch },
       { id: 'Calendar', label: 'Calendar', icon: Calendar },
+      { id: 'Meet', label: 'Meet', icon: Video },
       { id: 'Bulk Campaign', label: 'Bulk Campaign', icon: FileSpreadsheet }
     ],
     Templates: [
@@ -228,7 +207,8 @@ export default function App() {
       { id: 'dividerTemplates1', isDivider: true },
       { id: 'Drafts', label: 'Drafts', icon: File },
       { id: 'Active Links', label: 'Active', icon: Send },
-      { id: 'Scheduled Forms', label: 'Schedule', icon: Clock }
+      { id: 'Scheduled Forms', label: 'Schedule', icon: Clock },
+      { id: 'Preview Studio', label: 'Preview Studio', icon: Sparkles }
     ],
     Analytics: [
       { id: 'Template Analytics', label: 'Template Analytics', icon: BarChart3 },
@@ -251,10 +231,7 @@ export default function App() {
     ]
   };
 
-  const searchQueryState = useState('');
-  const [searchQuery, setSearchQuery] = searchQueryState;
-  const [datePreset, setDatePreset] = useState('This Month');
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePreset] = useState('This Month');
 
   // Interactive Modal State
   const [selectedMeeting, setSelectedMeeting] = useState(null);
@@ -263,7 +240,7 @@ export default function App() {
   // Authentication & API state
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
-  const [tokens, setTokens] = useState(null);
+  const [, setTokens] = useState(null);
   // Starts false: the fullscreen WelcomeLoader may ONLY appear via an
   // explicit login (startLoading(true)). Reloads/restores stay silent.
   const [loading, setLoading] = useState(false);
@@ -336,6 +313,23 @@ export default function App() {
   
   // Custom interactive data stats
   const [meetings, setMeetings] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+
+  // Single cleanup path for sign-out (listener + manual logout share it so
+  // no modal, banner, or per-user state leaks to the next session).
+  // (Declared before the auth listener effect that uses it.)
+  const resetAuthState = useCallback(() => {
+    setLoading(false);
+    setUser(null);
+    setTokens(null);
+    setMeetings([]);
+    setAlerts([]);
+    setSelectedMeeting(null);
+    setModalProject('');
+    setApiError(null);
+    setAuthErrorModal(null);
+    localStorage.removeItem('authUser');
+  }, []);
 
   // Auth persistence listener (Supabase)
   useEffect(() => {
@@ -366,12 +360,7 @@ export default function App() {
           clearTimeout(stopTimeoutRef.current);
           stopTimeoutRef.current = null;
         }
-        setLoading(false);
-        setUser(null);
-        setTokens(null);
-        setMeetings([]);
-        setAlerts([]);
-        localStorage.removeItem('authUser');
+        resetAuthState();
         setAuthReady(true);
         return;
       }
@@ -428,7 +417,11 @@ export default function App() {
         setLoading(false);
         const localUser = localStorage.getItem('authUser');
         if (localUser && localUser.includes("Demo Mode")) {
-          setUser(JSON.parse(localUser));
+          try {
+            setUser(JSON.parse(localUser));
+          } catch {
+            localStorage.removeItem('authUser');
+          }
         }
         setAuthReady(true);
       }
@@ -437,34 +430,9 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const [alerts, setAlerts] = useState([]);
-
   // --- AUTHENTICATION & SYNC HANDLERS ---
-    const handleEmailAuthLogin = async (email, password) => {
-    expectFreshLoginRef.current = true;
-    startLoading(true);
-    setApiError(null);
-    setAuthErrorModal(null);
-    try {
-      const data = await loginWithEmail(email, password);
-      setUser(normalizeUser(data.user));
-      setTokens({
-        accessToken: data.accessToken
-      });
-      localStorage.setItem('authUser', JSON.stringify({
-        displayName: data.user?.user_metadata?.full_name || data.user?.user_metadata?.name || data.user?.email || email,
-        photoURL: data.user?.user_metadata?.avatar_url || data.user?.user_metadata?.picture || null,
-        email: data.user?.email || email
-      }));
-      return true;
-    } catch (err) {
-      console.error("Email Login Error:", err);
-      setApiError("Authentication failed: " + err.message);
-      return false;
-    } finally {
-      stopLoading();
-    }
-  };
+  // NOTE: email/password login lives in supabaseAuth.loginWithEmail but has
+  // no UI wired (LoginDashboard is Google/GitHub only), so no handler here.
   const handleLogin = async () => {
     expectFreshLoginRef.current = true;
     startLoading(true);
@@ -561,26 +529,30 @@ export default function App() {
   const handleLogout = async () => {
     try { await supabaseSignOut(); } catch (e) { console.warn('Supabase signOut error:', e); }
     clearLoginAnimFlag();
-    setLoading(false);
-    setUser(null);
-    setTokens(null);
-    setApiError(null);
-    localStorage.removeItem('authUser');
-    setMeetings([]);
-    setAlerts([]);
+    resetAuthState();
     navigate('/');
   };
 
+  const isDemoToken = (t) => t === 'demo-access-token';
+
   const fetchMeetings = async (accessToken) => {
+    if (isDemoToken(accessToken)) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/meetings`, {
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });
+      // Dead session (expired/revoked token): don't linger logged-in on
+      // empty data — sign out so the login screen explains itself.
+      if (response.status === 401) {
+        handleLogout();
+        return;
+      }
       if (response.ok) {
         const data = await response.json();
         if (data.meetings && data.meetings.length > 0) {
           const mapped = data.meetings.map((m, idx) => ({
             id: m.id || idx,
+            start_time: m.start_time || null,
             title: m.title,
             duration: m.duration_minutes ? `${Math.floor(m.duration_minutes / 60)}h ${m.duration_minutes % 60}m` : '1h 0m',
             attendeeCount: Array.isArray(m.attendees) ? m.attendees.length : 0,
@@ -593,16 +565,21 @@ export default function App() {
           setMeetings(mapped);
         }
       }
-    } catch (err) {
+    } catch {
       console.warn('Failed to fetch meetings from Supabase, using mock data.');
     }
   };
 
   const fetchAlerts = async (accessToken) => {
+    if (isDemoToken(accessToken)) return;
     try {
       const response = await fetch(`${API_BASE_URL}/api/alerts`, {
         headers: { 'Authorization': `Bearer ${accessToken}` },
       });
+      if (response.status === 401) {
+        handleLogout();
+        return;
+      }
       if (response.ok) {
         const data = await response.json();
         if (data.alerts && data.alerts.length > 0) {
@@ -616,36 +593,30 @@ export default function App() {
           setAlerts(mapped);
         }
       }
-    } catch (err) {
+    } catch {
       console.warn('Failed to fetch alerts from Supabase, using mock data.');
-    }
-  };
-
-  const handleSyncClick = async () => {
-    if (tokens) {
-      await fetchMeetings(tokens.accessToken);
-      await fetchAlerts(tokens.accessToken);
-    } else {
-      await handleLogin();
     }
   };
 
   // --- DYNAMIC DATA PRESETS BASED ON DATE ---
   const dynamicData = useMemo(() => {
-    // Calculate stats directly from our state meetings
+    // Calculate stats directly from our state meetings.
+    // accuracy is null (rendered as "—") when there are no meetings — never
+    // a fake placeholder. costOverTime buckets real meeting costs by date.
     const totalCost = Math.round(meetings.reduce((acc, m) => acc + m.cost, 0));
-    const accuracy = meetings.length > 0 
+    const accuracy = meetings.length > 0
       ? Math.round(meetings.reduce((acc, m) => acc + m.confidence, 0) / meetings.length)
-      : 92;
+      : null;
     const anomalies = meetings.filter(m => m.status === 'needs_review' || m.confidence < 60).length;
-    
+
     // Parse unattributed hours (unassigned or operations with low confidence)
     const unattributedMinutes = meetings
       .filter(m => m.project === 'Unassigned' || m.project === 'Internal Operations')
       .reduce((acc, m) => {
         // parse duration like "2h 30m" or "45m"
-        const hoursMatch = m.duration.match(/(\d+)h/);
-        const minsMatch = m.duration.match(/(\d+)m/);
+        const dur = m.duration || '';
+        const hoursMatch = dur.match(/(\d+)h/);
+        const minsMatch = dur.match(/(\d+)m/);
         const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
         const mins = minsMatch ? parseInt(minsMatch[1]) : 0;
         return acc + (hours * 60 + mins);
@@ -663,29 +634,52 @@ export default function App() {
       cost: Math.round(projectCostMap[name])
     }));
 
-    // Mock trend line showing cost distribution over time based on the active dataset's total cost
-    const costOverTime = datePreset === 'Last 7 Days' ? [
-      { date: 'Mon', cost: Math.round(totalCost * 0.12) },
-      { date: 'Tue', cost: Math.round(totalCost * 0.15) },
-      { date: 'Wed', cost: Math.round(totalCost * 0.17) },
-      { date: 'Thu', cost: Math.round(totalCost * 0.14) },
-      { date: 'Fri', cost: Math.round(totalCost * 0.22) },
-      { date: 'Sat', cost: Math.round(totalCost * 0.08) },
-      { date: 'Sun', cost: Math.round(totalCost * 0.12) }
-    ] : datePreset === 'Last 30 Days' ? [
-      { date: 'Wk 1', cost: Math.round(totalCost * 0.22) },
-      { date: 'Wk 2', cost: Math.round(totalCost * 0.25) },
-      { date: 'Wk 3', cost: Math.round(totalCost * 0.28) },
-      { date: 'Wk 4', cost: Math.round(totalCost * 0.25) }
-    ] : [
-      { date: 'May 01', cost: Math.round(totalCost * 0.18) },
-      { date: 'May 08', cost: Math.round(totalCost * 0.21) },
-      { date: 'May 15', cost: Math.round(totalCost * 0.24) },
-      { date: 'May 22', cost: Math.round(totalCost * 0.22) },
-      { date: 'May 29', cost: Math.round(totalCost * 0.27) },
-      { date: 'Jun 05', cost: Math.round(totalCost * 0.29) },
-      { date: 'Jun 12', cost: Math.round(totalCost * 0.32) }
-    ];
+    // Real trend: bucket meeting costs by start_time. Meetings without a
+    // parseable date are skipped; no data at all yields an empty array so
+    // charts render their empty state instead of a fabricated curve.
+    const dated = meetings
+      .map(m => ({ cost: Number(m.cost) || 0, t: m.start_time ? new Date(m.start_time).getTime() : NaN }))
+      .filter(d => !Number.isNaN(d.t));
+    const dayLabel = (t) => new Date(t).toLocaleDateString('en-US', { weekday: 'short' });
+    let costOverTime = [];
+    if (dated.length > 0) {
+      if (datePreset === 'Last 7 Days') {
+        const days = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date();
+          d.setHours(0, 0, 0, 0);
+          d.setDate(d.getDate() - (6 - i));
+          return d.getTime();
+        });
+        costOverTime = days.map(dayStart => ({
+          date: dayLabel(dayStart),
+          cost: Math.round(dated.filter(d => d.t >= dayStart && d.t < dayStart + 86400000).reduce((a, d) => a + d.cost, 0)),
+        }));
+      } else if (datePreset === 'Last 30 Days') {
+        const now = Date.now();
+        costOverTime = [0, 1, 2, 3].map(w => {
+          const from = now - (4 - w) * 7 * 86400000;
+          const to = from + 7 * 86400000;
+          return {
+            date: `Wk ${w + 1}`,
+            cost: Math.round(dated.filter(d => d.t >= from && d.t < to).reduce((a, d) => a + d.cost, 0)),
+          };
+        });
+      } else {
+        const nowD = new Date();
+        const monthStart = new Date(nowD.getFullYear(), nowD.getMonth(), 1).getTime();
+        const monthEnd = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 0, 23, 59, 59).getTime();
+        const inMonth = dated.filter(d => d.t >= monthStart && d.t <= monthEnd);
+        costOverTime = [0, 1, 2, 3, 4].map(w => {
+          const from = monthStart + w * 7 * 86400000;
+          const to = Math.min(from + 7 * 86400000 - 1, monthEnd);
+          if (from > monthEnd) return null;
+          return {
+            date: `Wk ${w + 1}`,
+            cost: Math.round(inMonth.filter(d => d.t >= from && d.t <= to).reduce((a, d) => a + d.cost, 0)),
+          };
+        }).filter(Boolean);
+      }
+    }
 
     return {
       totalCost,
@@ -707,31 +701,49 @@ export default function App() {
     })).sort((a, b) => b.cost - a.cost);
   }, [dynamicData]);
 
-  // --- ACTIONS ---
-  const handleApprove = (id) => {
+  // --- ACTIONS (persisted to the backend, then mirrored locally) ---
+  const persistAttribution = async (meetingId, project, reason) => {
+    try {
+      const token = await getAuthToken();
+      if (!token || isDemoToken(token)) return false;
+      const res = await fetch(`${API_BASE_URL}/api/meetings/${meetingId}/attribution`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ aiProject: project, overrideReason: reason || null }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const markMeetingApproved = (id, project) => {
     setMeetings(prev =>
-      prev.map(m => (m.id === id ? { ...m, status: 'approved', confidence: 100 } : m))
+      prev.map(m =>
+        m.id === id
+          ? { ...m, ...(project ? { project } : {}), status: 'approved', confidence: 100 }
+          : m
+      )
     );
   };
 
-  const handleResolveAlert = (id) => {
+  const handleResolveAlert = async (id) => {
     setAlerts(prev => prev.map(a => (a.id === id ? { ...a, resolved: true } : a)));
-  };
-
-  const openEditModal = (meeting) => {
-    setSelectedMeeting(meeting);
-    setModalProject(meeting.project === 'Unassigned' ? 'Project Phoenix' : meeting.project);
+    try {
+      const token = await getAuthToken();
+      if (!token || isDemoToken(token)) return;
+      await fetch(`${API_BASE_URL}/api/alerts/${id}/resolve`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch { /* optimistic update already applied */ }
   };
 
   const saveEditModal = () => {
     if (selectedMeeting) {
-      setMeetings(prev =>
-        prev.map(m =>
-          m.id === selectedMeeting.id
-            ? { ...m, project: modalProject, status: 'approved', confidence: 100 }
-            : m
-        )
-      );
+      const id = selectedMeeting.id;
+      markMeetingApproved(id, modalProject);
+      persistAttribution(id, modalProject, 'manual reattribution');
       setSelectedMeeting(null);
     }
   };
@@ -740,13 +752,8 @@ export default function App() {
   const [confidenceThreshold, setConfidenceThreshold] = useState(60);
 
   const handleUpdateMeetingProject = (meetingId, project) => {
-    setMeetings(prev =>
-      prev.map(m =>
-        m.id === meetingId
-          ? { ...m, project, status: 'approved', confidence: 100 }
-          : m
-      )
-    );
+    markMeetingApproved(meetingId, project);
+    persistAttribution(meetingId, project, 'updated from projects view');
   };
 
   const handleAddMeeting = (newMeeting) => {
@@ -771,14 +778,6 @@ export default function App() {
       enterDemoMode();
     }
   };
-
-  // Filter meetings by search query
-  const filteredMeetings = useMemo(() => {
-    return meetings.filter(m =>
-      m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.project.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [meetings, searchQuery]);
 
   // Count active alerts
   const activeAlertsCount = useMemo(() => {
@@ -912,478 +911,22 @@ export default function App() {
           )}
           
           {/* Main Dashboard Panel */}
-          {activeTab === 'Dashboard' ? (
-            <>
-              {/* Header Title */}
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">
-                    <Sparkles size={20} style={{ color: 'var(--color-cyan)' }} />
-                    HR Cost Intelligence Dashboard
-                  </h2>
-                  <p className="section-subtitle">Real-time AI attributions and calendar cost analysis</p>
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'right' }}>
-                  Last synced: <span style={{ color: 'var(--color-cyan)', fontWeight: '600' }}>Just now</span>
-                </div>
-              </div>
-
-              {/* --- KPI METRIC CARDS --- */}
-              <div className="kpi-grid">
-
-                {/* 1. Total Meeting Cost */}
-                <div className="glass-panel kpi-card">
-                  <div className="kpi-header">
-                    <span className="kpi-title">Total Meeting Cost</span>
-                    <div className="kpi-icon-wrapper cyan">
-                      <Clock size={16} />
-                    </div>
-                  </div>
-                  <div className="kpi-body">
-                    <span className="kpi-value">${dynamicData.totalCost.toLocaleString()}</span>
-                    <span className="kpi-trend positive">
-                      <ArrowUpRight size={12} />
-                      12.4%
-                    </span>
-                  </div>
-                  {/* Inline Sparkline SVG */}
-                  <div className="kpi-sparkline">
-                    <svg className="sparkline-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id="cyanSparklineGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#16A34A" stopOpacity="0.4" />
-                          <stop offset="100%" stopColor="#16A34A" stopOpacity="0" />
-                        </linearGradient>
-                      </defs>
-                      <path
-                        d="M0,25 Q15,10 30,22 T60,5 T80,18 T100,8 L100,30 L0,30 Z"
-                        fill="url(#cyanSparklineGrad)"
-                      />
-                      <path
-                        d="M0,25 Q15,10 30,22 T60,5 T80,18 T100,8"
-                        fill="none"
-                        stroke="#16A34A"
-                        strokeWidth="1.5"
-                      />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* 2. AI Attribution Accuracy */}
-                <div className="glass-panel kpi-card">
-                  <div className="kpi-header">
-                    <span className="kpi-title">AI Attribution Accuracy</span>
-                    <div className="kpi-icon-wrapper purple">
-                      <Brain size={16} />
-                    </div>
-                  </div>
-                  <div className="kpi-body">
-                    <span className="kpi-value">{dynamicData.accuracy}%</span>
-                    <span className="kpi-trend positive">
-                      <ArrowUpRight size={12} />
-                      +0.8%
-                    </span>
-                  </div>
-                  {/* Gauge/Progress Arc */}
-                  <div style={{ position: 'absolute', right: '16px', bottom: '16px', width: '38px', height: '38px' }}>
-                    <svg viewBox="0 0 36 36" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-                      <path
-                        className="circle-bg"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        fill="none"
-                        stroke="rgba(20,20,20,0.1)"
-                        strokeWidth="3.5"
-                      />
-                      <path
-                        className="circle"
-                        strokeDasharray={`${dynamicData.accuracy}, 100`}
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        fill="none"
-                        stroke="#16A34A"
-                        strokeWidth="3.5"
-                        strokeLinecap="round"
-                        style={{ filter: 'drop-shadow(0 0 3px #16A34A)' }}
-                      />
-                    </svg>
-                    <div style={{
-                      position: 'absolute',
-                      top: '0',
-                      left: '0',
-                      right: '0',
-                      bottom: '0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '9px',
-                      fontWeight: '700',
-                      color: 'var(--color-purple)'
-                    }}>
-                      GOAL
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Anomalies Detected */}
-                <div className="glass-panel kpi-card">
-                  <div className="kpi-header">
-                    <span className="kpi-title">Anomalies Detected</span>
-                    <div className="kpi-icon-wrapper" style={{ color: 'var(--color-pink)' }}>
-                      <AlertTriangle size={16} />
-                    </div>
-                  </div>
-                  <div className="kpi-body">
-                    <span className="kpi-value">{dynamicData.anomalies}</span>
-                    <span className="kpi-trend negative" style={{ color: 'var(--color-pink)', backgroundColor: 'rgba(244, 63, 94, 0.1)' }}>
-                      <ArrowUpRight size={12} />
-                      +2
-                    </span>
-                  </div>
-                  <div style={{ position: 'absolute', right: '20px', bottom: '20px' }}>
-                    <div className="pulse-danger-dot" style={{ width: '12px', height: '12px' }} />
-                  </div>
-                </div>
-
-                {/* 4. Unattributed Hours */}
-                <div className="glass-panel kpi-card">
-                  <div className="kpi-header">
-                    <span className="kpi-title">Unattributed Hours</span>
-                    <div className="kpi-icon-wrapper" style={{ color: 'var(--color-warning)' }}>
-                      <Clock size={16} />
-                    </div>
-                  </div>
-                  <div className="kpi-body">
-                    <span className="kpi-value">{dynamicData.unattributedHours}h</span>
-                    <span className="kpi-trend warning">
-                      <ArrowDownRight size={12} />
-                      -4.2h
-                    </span>
-                  </div>
-                  <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', height: '4px', backgroundColor: 'rgba(20,20,20,0.06)' }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${Math.min(100, (dynamicData.unattributedHours / 30) * 100)}%`,
-                        backgroundColor: 'var(--color-warning)',
-                        boxShadow: '0 0 6px var(--color-warning)'
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* --- MAIN DATA VISUALIZATION AREA --- */}
-              <div className="charts-main-grid">
-
-                {/* Real-time HR Expenditure by Project (Grouped Bar Chart) */}
-                <div className="glass-panel chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Real-time HR Expenditure by Project</h3>
-                      <span className="chart-card-subtitle">Cost breakdown of active initiatives</span>
-                    </div>
-                  </div>
-                  <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart
-                        data={dynamicData.expenditureByProject}
-                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                      >
-                        <defs>
-                          <linearGradient id="barGradientCyan" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#16A34A" stopOpacity={0.9} />
-                            <stop offset="100%" stopColor="#16A34A" stopOpacity={0.35} />
-                          </linearGradient>
-                          <linearGradient id="barGradientPurple" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#F97316" stopOpacity={0.9} />
-                            <stop offset="100%" stopColor="#F97316" stopOpacity={0.35} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(20,20,20,0.08)" vertical={false} />
-                        <XAxis
-                          dataKey="name"
-                          stroke="var(--text-muted)"
-                          fontSize={11}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <YAxis
-                          stroke="var(--text-muted)"
-                          fontSize={11}
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={(value) => `$${value / 1000}k`}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'var(--bg-card)',
-                            borderColor: 'var(--border-color)',
-                            borderRadius: '8px',
-                            color: 'var(--text-primary)',
-                            fontSize: '12px'
-                          }}
-                          formatter={(value) => [`$${value.toLocaleString()}`, 'Meeting Cost']}
-                        />
-                        <Bar dataKey="cost" radius={[4, 4, 0, 0]} maxBarSize={45}>
-                          {dynamicData.expenditureByProject.map((entry, index) => (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={index % 2 === 0 ? 'url(#barGradientCyan)' : 'url(#barGradientPurple)'}
-                            />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Top Project Spends list */}
-                <div className="glass-panel chart-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Top Project Spends</h3>
-                      <span className="chart-card-subtitle">Highest cost initiatives ranked</span>
-                    </div>
-                  </div>
-                  <div className="top-spends-list">
-                    {projectSpendsSum.map((project) => (
-                      <div className="spend-item" key={project.name}>
-                        <div className="spend-info">
-                          <span className="spend-name">{project.name}</span>
-                          <span className="spend-amount">${project.cost.toLocaleString()}</span>
-                        </div>
-                        <div className="spend-bar-bg">
-                          <div
-                            className={`spend-bar-fill ${project.colorClass}`}
-                            style={{ width: `${project.percentage}%` }}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {project.percentage}% of overall spend
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Meeting Cost Over Time Line Chart */}
-              <div className="glass-panel full-width-chart-card">
-                <div className="chart-card-header">
-                  <div>
-                    <h3 className="chart-card-title">Meeting Cost Over Time</h3>
-                    <span className="chart-card-subtitle">Expenditure trends across current date range</span>
-                  </div>
-                  <div className="date-selector" style={{ padding: '4px 10px', fontSize: '11px' }}>
-                    <TrendingUp size={12} />
-                    <span>Cost Growth Tracking</span>
-                  </div>
-                </div>
-                <div className="chart-wrapper" style={{ minHeight: '220px' }}>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart
-                      data={dynamicData.costOverTime}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#16A34A" stopOpacity={0.25} />
-                          <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="areaColorPurple" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#F97316" stopOpacity={0.25} />
-                          <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(20,20,20,0.06)" vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        stroke="var(--text-muted)"
-                        fontSize={11}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        stroke="var(--text-muted)"
-                        fontSize={11}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) => `$${value}`}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'var(--bg-card)',
-                          borderColor: 'var(--border-color)',
-                          borderRadius: '8px',
-                          color: 'var(--text-primary)',
-                          fontSize: '12px'
-                        }}
-                        formatter={(value) => [`$${value.toLocaleString()}`, 'Total Cost']}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="cost"
-                        stroke="#16A34A"
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#areaColor)"
-                        style={{ filter: 'drop-shadow(0 0 4px var(--chart-green-glow))' }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* --- LOWER GRID: Activity & Alerts --- */}
-              <div className="lower-sections-grid">
-
-                {/* Recent Calendar Activity & AI Attribution Table */}
-                <div className="glass-panel table-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Recent Calendar Activity & AI Attribution</h3>
-                      <span className="chart-card-subtitle">Recent calendar synced meetings with auto-attribution</span>
-                    </div>
-                  </div>
-
-                  <div className="table-container">
-                    <table className="custom-table">
-                      <thead>
-                        <tr>
-                          <th>Meeting Title</th>
-                          <th>Attendees</th>
-                          <th>Est. Cost</th>
-                          <th>AI Attribution</th>
-                          <th>Confidence</th>
-                          <th style={{ textAlign: 'right' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredMeetings.length > 0 ? (
-                          filteredMeetings.map((meeting) => (
-                            <tr key={meeting.id}>
-                              <td>
-                                <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{meeting.title}</div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                                  <Clock size={12} /> {meeting.duration} • {meeting.time}
-                                </div>
-                              </td>
-                              <td>
-                                <div className="avatar-group">
-                                  {Array.from({ length: Math.min(meeting.attendeeCount, 4) }).map((_, i) => (
-                                    <img
-                                      key={i}
-                                      src={avatars[(meeting.id + i) % avatars.length]}
-                                      alt="Attendee"
-                                      className="avatar-group-item"
-                                    />
-                                  ))}
-                                  {meeting.attendeeCount > 4 && (
-                                    <div className="avatar-group-more">+{meeting.attendeeCount - 4}</div>
-                                  )}
-                                </div>
-                              </td>
-                              <td style={{ fontFamily: 'var(--font-display)', fontWeight: '600' }}>
-                                ${meeting.cost.toLocaleString()}
-                              </td>
-                              <td>
-                                <span className="project-badge">
-                                  {meeting.project}
-                                </span>
-                              </td>
-                              <td>
-                                <span className={`confidence-badge ${meeting.confidence >= 85 ? 'high' : meeting.confidence >= 60 ? 'medium' : 'low'
-                                  }`}>
-                                  {meeting.confidence}%
-                                </span>
-                              </td>
-                              <td style={{ textAlign: 'right' }}>
-                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                                  {meeting.status === 'approved' ? (
-                                    <span className="confidence-badge high" style={{ border: 'none' }}>
-                                      <CheckCircle2 size={13} style={{ marginRight: '4px' }} />
-                                      Attributed
-                                    </span>
-                                  ) : (
-                                    <>
-                                      <button
-                                        className="table-action-btn"
-                                        onClick={() => handleApprove(meeting.id)}
-                                        style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--color-success)' }}
-                                      >
-                                        Approve
-                                      </button>
-                                      <button
-                                        className="table-action-btn"
-                                        onClick={() => openEditModal(meeting)}
-                                      >
-                                        <Edit2 size={12} />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-                              No meetings found matching your search.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Alerts & Recommendations feed */}
-                <div className="glass-panel table-card">
-                  <div className="chart-card-header">
-                    <div>
-                      <h3 className="chart-card-title">Alerts & Recommendations</h3>
-                      <span className="chart-card-subtitle">Flagged anomalies and budget warnings</span>
-                    </div>
-                    {activeAlertsCount > 0 && (
-                      <span className="confidence-badge low" style={{ padding: '2px 8px' }}>
-                        {activeAlertsCount} Action Required
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="alerts-feed">
-                    {alerts.filter(a => !a.resolved).length > 0 ? (
-                      alerts.filter(a => !a.resolved).map((alert) => (
-                        <div className={`glass-panel alert-item ${alert.type}`} key={alert.id}>
-                          <div className={`alert-icon-wrapper ${alert.type}`}>
-                            {alert.type === 'danger' && <AlertTriangle size={18} />}
-                            {alert.type === 'warning' && <AlertCircle size={18} />}
-                            {alert.type === 'info' && <Sparkles size={18} />}
-                          </div>
-                          <div className="alert-content">
-                            <h4 className="alert-title">{alert.title}</h4>
-                            <p className="alert-desc">{alert.desc}</p>
-                            <div className="alert-actions">
-                              <button
-                                className="alert-btn primary"
-                                onClick={() => handleResolveAlert(alert.id)}
-                              >
-                                {alert.type === 'warning' ? 'Resolve Tagging' : 'Review & Dismiss'}
-                              </button>
-                              <button className="alert-btn secondary">Mute</button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="no-alerts">
-                        <CheckCircle2 size={32} style={{ color: 'var(--color-success)', marginBottom: '8px' }} />
-                        <div>All anomalies resolved. No budget overruns detected.</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </>
+          {activeTab === 'Home' ? (
+            <DashboardHome
+              user={user}
+              meetings={meetings}
+              dynamicData={dynamicData}
+              projectSpendsSum={projectSpendsSum}
+              alertsCount={activeAlertsCount}
+              onNavigate={handleNavClick}
+            />
+          ) : activeTab === 'Command Center' ? (
+            <OverviewDashboard
+              dynamicData={dynamicData}
+              projectSpendsSum={projectSpendsSum}
+              meetings={meetings}
+              onNavigate={handleNavClick}
+            />
           ) : activeTab === 'Knowledge Base' ? (
             <KnowledgeBase />
           ) : activeTab === 'Student Template' ? (
@@ -1400,6 +943,8 @@ export default function App() {
             <ActiveLinksView />
           ) : activeTab === 'Scheduled Forms' ? (
             <ScheduledFormsView />
+          ) : activeTab === 'Preview Studio' ? (
+            <PreviewStudio />
           ) : activeTab === 'Projects' ? (
             <ProjectsView meetings={meetings} onUpdateMeetingProject={handleUpdateMeetingProject} />
           ) : activeTab === 'Teams' ? (
@@ -1417,7 +962,7 @@ export default function App() {
           ) : activeTab === 'Files' ? (
             <FilesView />
           ) : activeTab === 'Meet' ? (
-            <MeetView meetings={meetings} />
+            <MeetView meetings={meetings} onNavigate={handleNavClick} />
           ) : activeTab === 'Export' ? (
             <ExportView meetings={meetings} />
           ) : activeTab === 'Email Automation' ? (
@@ -1432,6 +977,12 @@ export default function App() {
             <AnalysisView meetings={meetings} />
           ) : activeTab === 'Alerts' ? (
             <AlertsView alerts={alerts} onResolveAlert={handleResolveAlert} />
+          ) : activeTab === 'Attribution' ? (
+            <AttributionQueue />
+          ) : activeTab === 'Live Ticker' ? (
+            <LiveTicker />
+          ) : activeTab === 'Budgets' ? (
+            <Budgets />
           ) : activeTab === 'SettingsProfile' ? (
             <SettingsView section="profile" user={user} defaultRate={defaultRate} confidenceThreshold={confidenceThreshold} onUpdateSettings={handleUpdateSettings} onResetData={handleResetData} onToggleDemo={handleToggleDemo} demoActive={!!(user && user.displayName && user.displayName.includes("Demo Mode"))} onLogout={handleLogout} onAvatarChange={handleAvatarChange} />
           ) : activeTab === 'SettingsDepartments' ? (
@@ -1452,14 +1003,14 @@ export default function App() {
               <Sparkles size={48} style={{ color: 'var(--color-cyan)', marginBottom: '16px', filter: 'drop-shadow(0 0 8px var(--color-cyan-glow))' }} />
               <h2 style={{ fontFamily: 'var(--font-display)', marginBottom: '8px' }}>{activeTab} Workspace</h2>
               <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', margin: '0 auto 24px auto', fontSize: '14px' }}>
-                This dashboard section is mock-configured. Click back to the "Dashboard" in the sidebar to view live analytics.
+                This dashboard section is mock-configured. Click back to "Home" in the sidebar to view live analytics.
               </p>
               <button
                 className="table-action-btn"
                 style={{ padding: '8px 20px', fontSize: '13px' }}
-                onClick={() => setActiveTab('Dashboard')}
+                onClick={() => handleNavClick('Home')}
               >
-                Return to Dashboard
+                Return to Home
               </button>
             </div>
           )}
@@ -1662,7 +1213,7 @@ export default function App() {
           
           <Route path="/dashboard/*" element={
             <ProtectedRoute user={user} authReady={authReady}>
-              {loading && !showIntro && meetings.length === 0 && !apiError ? (
+              {loading && !showIntro && !apiError ? (
                 <WelcomeLoader subtitle="Syncing your calendar and workspace data..." />
               ) : (
                 dashboardUI
