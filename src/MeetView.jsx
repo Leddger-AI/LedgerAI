@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Video, Calendar, Clock, Users, Copy, Check, PlusCircle, Link2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Video, Calendar, Clock, Users, Check, PlusCircle, Link2 } from 'lucide-react';
 
 const upcomingMeets = [
   { id: 1, candidate: 'Ava Thompson', role: 'Senior Frontend Engineer', time: 'Today, 3:00 PM', duration: '45m', type: 'Technical Interview', link: 'meet.ledgerai.app/ava-thompson-fe' },
@@ -12,13 +12,25 @@ const pastMeets = [
   { id: 5, candidate: 'Sofia Ramirez', role: 'Backend / Rust Engineer', time: '3 days ago', outcome: 'Not moving forward' }
 ];
 
-export default function MeetView() {
+export default function MeetView({ onNavigate }) {
   const [copiedId, setCopiedId] = useState(null);
+  const copyTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
 
   const handleCopy = (m) => {
-    navigator.clipboard?.writeText(`https://${m.link}`);
-    setCopiedId(m.id);
-    setTimeout(() => setCopiedId(null), 1500);
+    if (!navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(`https://${m.link}`).then(() => {
+      setCopiedId(m.id);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedId(null), 1500);
+    }).catch(() => {});
+  };
+
+  const handleJoin = (m) => {
+    if (m.link) window.open(`https://${m.link}`, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -30,10 +42,15 @@ export default function MeetView() {
             Candidate Meetings
           </h2>
           <p className="section-subtitle">Schedule and manage interviews with candidates sourced from your application templates</p>
+          <span className="confidence-badge low" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }}>
+            Sample preview
+          </span>
         </div>
         <button
+          type="button"
           className="table-action-btn"
           style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: 'rgba(20, 20, 20, 0.06)', borderColor: 'var(--border-color)' }}
+          onClick={() => onNavigate && onNavigate('Calendar')}
         >
           <PlusCircle size={16} />
           <span>Schedule Meeting</span>
@@ -88,7 +105,7 @@ export default function MeetView() {
                   <div style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--text-primary)' }}>{m.time}</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.duration}</div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => handleCopy(m)}
                   style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-secondary)' }}
                 >
@@ -96,8 +113,10 @@ export default function MeetView() {
                   {copiedId === m.id ? 'Copied' : 'Copy Link'}
                 </button>
                 <button
+                  type="button"
                   className="table-action-btn"
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', fontSize: '12px', backgroundColor: 'var(--color-success-glow)', borderColor: 'transparent', color: 'var(--color-success)' }}
+                  onClick={() => handleJoin(m)}
                 >
                   <Video size={13} />
                   Join
