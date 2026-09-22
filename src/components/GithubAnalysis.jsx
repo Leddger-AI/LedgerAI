@@ -76,10 +76,13 @@ export default function GithubAnalysis({ githubUsername, projectIdea, experience
   };
 
   useEffect(() => {
+    let cancelled = false;
     const seed = githubUsername || 'candidate';
     const { grid, sum } = generateDeterministicGrid(seed);
-    setCommitActivity(grid);
-    setTotalCommits(sum);
+    if (!cancelled) {
+      setCommitActivity(grid);
+      setTotalCommits(sum);
+    }
 
     if (!githubUsername) {
       let defaultLangs = [
@@ -103,8 +106,10 @@ export default function GithubAnalysis({ githubUsername, projectIdea, experience
       setLoading(true);
       try {
         const response = await fetch(`https://api.github.com/users/${githubUsername}/repos?per_page=100&sort=updated`);
+        if (cancelled) return;
         if (response.ok) {
           const list = await response.json();
+          if (cancelled) return;
           if (list && list.length > 0) {
             const langCounts = {};
             let totalLangs = 0;
@@ -134,14 +139,15 @@ export default function GithubAnalysis({ githubUsername, projectIdea, experience
         } else {
           fallbackMock();
         }
-      } catch (err) {
+      } catch {
         fallbackMock();
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     const fallbackMock = () => {
+      if (cancelled) return;
       let defaultLangs = [
         { name: 'TypeScript', percentage: 65, color: '#00f0ff' },
         { name: 'Python', percentage: 25, color: '#b55fe6' },
@@ -159,6 +165,7 @@ export default function GithubAnalysis({ githubUsername, projectIdea, experience
     };
 
     fetchGithubData();
+    return () => { cancelled = true; };
   }, [githubUsername, projectIdea, experience]);
 
   if (loading) {
@@ -254,8 +261,11 @@ export default function GithubAnalysis({ githubUsername, projectIdea, experience
 
       {/* 3. AI Analysis Summary Card */}
       <div style={{ backgroundColor: '#1C1E20', border: '1px solid rgba(255, 255, 255, 0.04)', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <h4 style={{ margin: '0', fontSize: '11px', fontWeight: '700', color: '#FFFFFF', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        <h4 style={{ margin: '0', fontSize: '11px', fontWeight: '700', color: '#FFFFFF', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
           AI Attribution Summary
+          <span style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0', textTransform: 'none', backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', padding: '2px 8px', borderRadius: '999px' }}>
+            Heuristic estimate
+          </span>
         </h4>
 
         {aiReport && (
