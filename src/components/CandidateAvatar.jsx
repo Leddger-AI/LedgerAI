@@ -9,21 +9,24 @@ export default function CandidateAvatar({ githubUsername, manualAvatar }) {
       return;
     }
 
+    let cancelled = false;
     const fetchGithubAvatar = async () => {
       try {
         const response = await fetch(`https://api.github.com/users/${githubUsername}`);
+        if (cancelled) return;
         if (response.ok) {
           const data = await response.json();
           setAvatarUrl(data.avatar_url);
         } else {
           setAvatarUrl(null);
         }
-      } catch (err) {
-        setAvatarUrl(null);
+      } catch {
+        if (!cancelled) setAvatarUrl(null);
       }
     };
 
     fetchGithubAvatar();
+    return () => { cancelled = true; };
   }, [githubUsername]);
 
   const displaySrc = manualAvatar || avatarUrl;
