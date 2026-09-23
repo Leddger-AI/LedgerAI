@@ -8,7 +8,11 @@ function getKey() {
   if (!raw) {
     throw new Error('ENCRYPTION_KEY env var not set. Generate one with: node -e "console.log(crypto.randomBytes(32).toString(\'hex\'))"');
   }
-  return Buffer.from(raw, 'hex');
+  const key = Buffer.from(raw, 'hex');
+  if (key.length !== 32) {
+    throw new Error(`ENCRYPTION_KEY must be 64 hex chars (32 bytes), got ${key.length} bytes.`);
+  }
+  return key;
 }
 
 function encrypt(text) {
