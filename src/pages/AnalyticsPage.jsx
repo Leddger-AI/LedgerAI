@@ -1,21 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  BarChart3, TrendingUp, Users, FileText, RefreshCw, ChevronDown,
-  Loader2, AlertCircle, ArrowLeft, Clock, CheckCircle2, Eye, HardDrive, ExternalLink,
+  BarChart3, TrendingUp, Users, FileText, RefreshCw,
+  Loader2, AlertCircle, CheckCircle2, Eye, HardDrive, ExternalLink,
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  BarChart, Bar, PieChart, Pie, Cell,
+  PieChart, Pie, Cell,
 } from 'recharts';
 import { getAuthToken } from '../supabaseAuth';
 import TemplateDetailAnalytics from './TemplateDetailAnalytics';
+import AnalyticsExportMenu from '../components/AnalyticsExportMenu';
+import ScheduledReportsPanel from '../components/ScheduledReportsPanel';
 import './AnalyticsPage.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const PIE_COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#6366F1'];
 
-export default function AnalyticsPage({ user }) {
+export default function AnalyticsPage() {
   const [overview, setOverview] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [trends, setTrends] = useState([]);
@@ -41,6 +43,7 @@ export default function AnalyticsPage({ user }) {
       setOverview(data);
     } catch (err) {
       console.error('Overview fetch error:', err);
+      throw err;
     }
   }, []);
 
@@ -56,6 +59,7 @@ export default function AnalyticsPage({ user }) {
       setTemplates(data.templates || []);
     } catch (err) {
       console.error('Templates fetch error:', err);
+      throw err;
     }
   }, []);
 
@@ -72,6 +76,7 @@ export default function AnalyticsPage({ user }) {
       setTypeDistribution(data.typeDistribution || []);
     } catch (err) {
       console.error('Trends fetch error:', err);
+      throw err;
     }
   }, [dateRange]);
 
@@ -192,6 +197,7 @@ export default function AnalyticsPage({ user }) {
             {driveLoading ? <Loader2 size={14} className="spin" /> : <HardDrive size={14} />}
             {driveLoading ? 'Saving...' : 'Save to Drive'}
           </button>
+          <AnalyticsExportMenu endpoint="/api/analytics/export/overview" />
         </div>
       </div>
 
@@ -284,7 +290,7 @@ export default function AnalyticsPage({ user }) {
                     dataKey="date"
                     stroke="var(--text-muted, #888)"
                     fontSize={10}
-                    tickFormatter={(d) => d.slice(5)}
+                    tickFormatter={(d) => String(d ?? '').slice(5)}
                   />
                   <YAxis stroke="var(--text-muted, #888)" fontSize={11} allowDecimals={false} />
                   <Tooltip
@@ -428,6 +434,9 @@ export default function AnalyticsPage({ user }) {
           </div>
         )}
       </div>
+
+      {/* Scheduled Reports */}
+      <ScheduledReportsPanel templates={templates} />
     </div>
   );
 }
