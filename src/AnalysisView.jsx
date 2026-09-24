@@ -41,6 +41,9 @@ export default function AnalysisView({ meetings }) {
             Recruiting Analysis
           </h2>
           <p className="section-subtitle">Pipeline conversion, source quality, and time-to-hire trends across your recruiting funnel</p>
+          <span className="confidence-badge low" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }}>
+            Sample preview
+          </span>
         </div>
       </div>
 
