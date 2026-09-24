@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Send, Clock, Copy, ExternalLink, Link2, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Clock, Copy, ExternalLink, Link2, AlertCircle } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
 import './ActiveLinksView.css';
 
@@ -7,14 +7,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const FormPreviewCard = ({ draft }) => {
   const { title, expiresAt, config, draftId } = draft;
-  const isExpired = new Date(expiresAt) < new Date();
+  const expiresDate = expiresAt ? new Date(expiresAt) : null;
+  const hasExpiry = expiresDate && !Number.isNaN(expiresDate.getTime());
+  const isExpired = hasExpiry ? expiresDate < new Date() : false;
   
   // Try to parse the config safely
   let fields = [];
   try {
     const parsedConfig = typeof config === 'string' ? JSON.parse(config) : config;
     fields = parsedConfig.fields || [];
-  } catch (e) {
+  } catch {
     console.error("Failed to parse config for draft", draftId);
   }
 
@@ -30,7 +32,7 @@ const FormPreviewCard = ({ draft }) => {
           color: isExpired ? '#991B1B' : '#065F46'
         }}>
           {isExpired ? <AlertCircle size={14} /> : <Clock size={14} />}
-          {isExpired ? 'Expired' : `Expires: ${new Date(expiresAt).toLocaleString()}`}
+          {isExpired ? 'Expired' : hasExpiry ? `Expires: ${expiresDate.toLocaleString()}` : 'No expiry'}
         </div>
       </div>
       
@@ -65,10 +67,11 @@ const FormPreviewCard = ({ draft }) => {
             value={liveLink} 
             readOnly 
           />
-          <button 
+          <button
+            type="button"
             className="form-preview-copy-btn"
             title="Copy Link"
-            onClick={() => navigator.clipboard.writeText(liveLink)}
+            onClick={() => navigator.clipboard?.writeText(liveLink)?.catch(() => {})}
           >
             <Copy size={14} />
           </button>
