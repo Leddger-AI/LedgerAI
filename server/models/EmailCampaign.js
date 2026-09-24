@@ -74,4 +74,8 @@ const EmailCampaignSchema = new mongoose.Schema({
   },
 });
 
+// Hot paths filter by owner (+status/+recency) — compound indexes cover them
+EmailCampaignSchema.index({ ownerUid: 1, createdAt: -1 });
+EmailCampaignSchema.index({ ownerUid: 1, status: 1 });
+
 module.exports = mongoose.model('EmailCampaign', EmailCampaignSchema);
