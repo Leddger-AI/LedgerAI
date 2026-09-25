@@ -1,9 +1,9 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { 
-  Paperclip, AlignLeft, ChevronDown, Bold, Italic, Underline, 
-  List, ListOrdered, Sparkles, Variable, X, UploadCloud, FileSpreadsheet,
+import {
+  AlignLeft, ChevronDown, Bold, Italic, Underline,
+  List, ListOrdered, Variable, X, UploadCloud, FileSpreadsheet,
   Cloud, Loader2, FileUp, AlertTriangle, Save, CheckCircle2
 } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
@@ -62,6 +62,11 @@ export default function EmailBodyEditor() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
   const [savedDraftId, setSavedDraftId] = useState(null);
+  const saveTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
 
   // Autocomplete + sheet visibility (same engine as Email page)
   const [autoSuggestBody, setAutoSuggestBody] = useState(true);
@@ -375,7 +380,8 @@ export default function EmailBodyEditor() {
       const data = await res.json();
       if (data.draft?._id) setSavedDraftId(data.draft._id);
       setSaveStatus({ type: 'success', message: savedDraftId ? 'Draft updated successfully!' : 'Draft saved successfully!' });
-      setTimeout(() => setSaveStatus(null), 3000);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
       console.error('Error saving draft:', err);
       setSaveStatus({ type: 'error', message: 'Failed to save draft.' });
@@ -393,7 +399,11 @@ export default function EmailBodyEditor() {
       saveSelection();
     }
     
-    const html = <span class="variable-pill" contenteditable="false"> + variable.label + </span>&nbsp;;
+    // insertHTML needs a *string* of HTML (the old code passed a JSX
+    // expression, which execCommand coerces to "[object Object]"). Escape
+    // the label so a malicious variable name can't inject markup.
+    const safeLabel = String(variable.label ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const html = `<span class="variable-pill" contenteditable="false">${safeLabel}</span>&nbsp;`;
     document.execCommand('insertHTML', false, html);
     setShowVariables(false);
     setVarFilter('');
@@ -449,10 +459,6 @@ export default function EmailBodyEditor() {
           {/* Toolbar */}
           <div className="editor-toolbar">
             <div className="toolbar-left">
-              <button className="tool-btn" title="Attach file">
-                <Paperclip size={18} />
-              </button>
-              <div className="toolbar-divider" />
               <button className="tool-btn" title="Align" onClick={() => formatText('justifyLeft')}>
                 <AlignLeft size={18} />
                 <ChevronDown size={14} style={{ marginLeft: '-2px' }} />
@@ -485,12 +491,6 @@ export default function EmailBodyEditor() {
                 {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
                 {saving ? 'Saving...' : savedDraftId ? 'Update Draft' : 'Save Draft'}
               </button>
-              <button className="ai-btn">
-                <Sparkles size={16} />
-                AI Tools
-                <ChevronDown size={14} />
-              </button>
-              
               <div className="variables-dropdown-container">
                 <button 
                   className="variables-btn"
