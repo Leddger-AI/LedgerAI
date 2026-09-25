@@ -262,6 +262,105 @@ describe('Drafts API', () => {
     });
   });
 
+  describe('PATCH /api/drafts/:draftId', () => {
+    const TemplateData = require('../models/TemplateData');
+    const VALID_UUID = '123e4567-e89b-42d3-a456-426614174000';
+    const baseDraft = {
+      draft_id: VALID_UUID,
+      user_id: 'test-user-uid',
+      title: 'Editable Draft',
+      config: { toggles: { fullName: true } },
+      template_type: 'student',
+      status: 'draft',
+      expires_at: null,
+      created_at: new Date().toISOString(),
+    };
+
+    test('D40: updates draft config and syncs MongoDB mirror', async () => {
+      mockSupabaseQuery.data = { ...baseDraft };
+      mockSupabaseQuery.error = null;
+
+      const res = await request(app)
+        .patch(`/api/drafts/${VALID_UUID}`)
+        .set('x-test-uid', 'test-user-uid')
+        .send({ title: 'Renamed Draft', config: { toggles: { fullName: false } } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.draftId).toBe(VALID_UUID);
+      expect(res.body.message).toContain('updated');
+
+      // MongoDB mirror synced by UUID (no duplicate rows)
+      const mirror = await TemplateData.findOne({ draftId: VALID_UUID }).lean();
+      expect(mirror).toBeTruthy();
+      expect(mirror.config.toggles.fullName).toBe(false);
+      const count = await TemplateData.countDocuments({ draftId: VALID_UUID });
+      expect(count).toBe(1);
+    });
+
+    test('D41: returns 404 when draft not found', async () => {
+      mockSupabaseQuery.data = null;
+      mockSupabaseQuery.error = { message: 'not found' };
+
+      const res = await request(app)
+        .patch(`/api/drafts/${VALID_UUID}`)
+        .set('x-test-uid', 'test-user-uid')
+        .send({ title: 'Nope' });
+
+      expect(res.status).toBe(404);
+    });
+
+    test('D42: returns 400 when draft is not in draft status', async () => {
+      mockSupabaseQuery.data = { ...baseDraft, status: 'active' };
+      mockSupabaseQuery.error = null;
+
+      const res = await request(app)
+        .patch(`/api/drafts/${VALID_UUID}`)
+        .set('x-test-uid', 'test-user-uid')
+        .send({ title: 'Locked' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/draft status/);
+    });
+
+    test('D43: returns 400 when body has nothing to update', async () => {
+      const res = await request(app)
+        .patch(`/api/drafts/${VALID_UUID}`)
+        .set('x-test-uid', 'test-user-uid')
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    test('D44: returns 400 on invalid UUID format', async () => {
+      const res = await request(app)
+        .patch('/api/drafts/not-a-uuid')
+        .set('x-test-uid', 'test-user-uid')
+        .send({ title: 'Bad' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Invalid draft ID/);
+    });
+
+    test('D45: strips script tags from customCSS before persisting', async () => {
+      const fetchChain = createChain();
+      fetchChain.single.mockResolvedValueOnce({ data: { ...baseDraft }, error: null });
+      let captured = null;
+      const updateChain = createChain();
+      updateChain.update.mockImplementation((obj) => { captured = obj; return updateChain; });
+      updateChain.single.mockResolvedValueOnce({ data: { ...baseDraft }, error: null });
+      mockSupabase.from.mockReturnValueOnce(fetchChain).mockReturnValueOnce(updateChain);
+
+      const res = await request(app)
+        .patch(`/api/drafts/${VALID_UUID}`)
+        .set('x-test-uid', 'test-user-uid')
+        .send({ config: { settings: { customCSS: '.a{color:red}<script>alert(1)</script>' } } });
+
+      expect(res.status).toBe(200);
+      expect(captured.config.settings.customCSS).toBe('.a{color:red}');
+      expect(captured.config.settings.customCSS).not.toMatch(/script/i);
+    });
+  });
+
   describe('PUT /api/drafts/:draftId/activate', () => {
     test('D7: activates draft with full response object', async () => {
       const futureDate = new Date(Date.now() + 86400000).toISOString();
@@ -593,6 +692,25 @@ describe('Forms & Submissions API', () => {
       expect(sendFormSubmissionEmail).not.toHaveBeenCalled();
     });
 
+    test('F12: returns 400 when submittedData is missing or not an object', async () => {
+      for (const body of [{}, { submittedData: null }, { submittedData: 'nope' }, { submittedData: [1, 2] }]) {
+        const res = await request(app)
+          .post('/api/forms/d1/submit')
+          .send(body);
+        expect(res.status).toBe(400);
+      }
+    });
+
+    test('F13: returns 400 when submission has too many fields', async () => {
+      const big = {};
+      for (let i = 0; i < 201; i++) big[`f${i}`] = 'x';
+      const res = await request(app)
+        .post('/api/forms/d1/submit')
+        .send({ submittedData: big });
+
+      expect(res.status).toBe(400);
+    });
+
     test('F11: falls back to legacy sendFormSubmissionEmail path when the form owner has no EmailAccount (issue #18)', async () => {
       const futureExpiry = new Date(Date.now() + 86400000).toISOString();
       mockSupabaseQuery.data = {
@@ -736,6 +854,17 @@ describe('Profile API', () => {
       );
     });
 
+    test('P5: rejects non-https avatar_url values', async () => {
+      for (const bad of ['javascript:alert(1)', 'http://evil.test/x.png', 'not a url', 'https://ok.test/x.png" onerror="1']) {
+        const res = await request(app)
+          .put('/api/user/profile')
+          .set('x-test-uid', 'test-user-uid')
+          .send({ avatar_url: bad });
+
+        expect(res.status).toBe(400);
+      }
+    });
+
     test('P4: omitting timezone from the request does not touch it in the update payload', async () => {
       const chain = createChain();
       mockSupabaseQuery.data = {
@@ -757,6 +886,20 @@ describe('Profile API', () => {
       expect(res.status).toBe(200);
       expect(chain.update.mock.calls[0][0]).not.toHaveProperty('timezone');
     });
+  });
+});
+
+describe('Google Drive OAuth callback', () => {
+  test('G1: returns 400 when code or state is missing', async () => {
+    const missing = await request(app).get('/api/google-drive/callback');
+    expect(missing.status).toBe(400);
+    const noState = await request(app).get('/api/google-drive/callback?code=abc');
+    expect(noState.status).toBe(400);
+  });
+
+  test('G2: rejects forged/plain-uid state without calling Google', async () => {
+    const res = await request(app).get('/api/google-drive/callback?code=abc&state=test-user-uid');
+    expect(res.status).toBe(400);
   });
 });
 
@@ -863,6 +1006,17 @@ describe('Spreadsheets API', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.message).toContain('deleted');
+  });
+
+  test('S15: GET/PUT/DELETE/:id/headers return 400 for malformed ObjectIds', async () => {
+    const get = await request(app).get('/api/spreadsheets/not-an-id').set('x-test-uid', 'test-user-uid');
+    expect(get.status).toBe(400);
+    const put = await request(app).put('/api/spreadsheets/not-an-id').set('x-test-uid', 'test-user-uid').send({ name: 'x' });
+    expect(put.status).toBe(400);
+    const del = await request(app).delete('/api/spreadsheets/not-an-id').set('x-test-uid', 'test-user-uid');
+    expect(del.status).toBe(400);
+    const head = await request(app).get('/api/spreadsheets/not-an-id/headers').set('x-test-uid', 'test-user-uid');
+    expect(head.status).toBe(400);
   });
 
   test('S10: DELETE returns 404 for other user spreadsheet', async () => {
