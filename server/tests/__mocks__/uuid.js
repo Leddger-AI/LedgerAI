@@ -8,7 +8,7 @@ uuidv4.v4 = uuidv4;
 uuidv4.v1 = uuidv4;
 uuidv4.parse = (str) => str;
 uuidv4.stringify = (arr) => arr;
-uuidv4.validate = () => true;
+uuidv4.validate = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(str));
 uuidv4.version = () => 4;
 
 module.exports = uuidv4;
