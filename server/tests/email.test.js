@@ -171,6 +171,22 @@ describe('Email Drafts CRUD', () => {
     expect(res.body.draft.bodyHtml).toBe('<p>Content</p>');
   });
 
+  test('E41: POST strips scripts, event handlers, and javascript: URLs from bodyHtml', async () => {
+    const res = await request(app)
+      .post('/api/email/drafts')
+      .set('x-test-uid', 'test-user-uid')
+      .send({
+        subject: 'XSS',
+        bodyHtml: '<p onclick="evil()">Hi</p><script>alert(1)</script><a href="javascript:alert(2)">x</a>',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.draft.bodyHtml).not.toContain('<script');
+    expect(res.body.draft.bodyHtml).not.toContain('onclick');
+    expect(res.body.draft.bodyHtml).not.toContain('javascript:');
+    expect(res.body.draft.bodyHtml).toContain('<p>Hi</p>');
+  });
+
   test('E2: POST returns 400 when bodyHtml is missing', async () => {
     const res = await request(app)
       .post('/api/email/drafts')
