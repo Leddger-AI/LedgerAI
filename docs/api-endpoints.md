@@ -34,7 +34,7 @@ Fetch all form submissions for the authenticated user.
 }
 ```
 
-**Implementation:** `server/index.js` lines 323-346  
+**Implementation:** `server/index.js` (`GET /api/submissions` handler — line numbers shift as the file grows; search for the route string)  
 **Supabase query:** `form_submissions` filtered by `user_id = req.user.uid`, ordered by `submitted_at DESC`
 
 ---
