@@ -44,4 +44,7 @@ const EmailDraftSchema = new mongoose.Schema({
   },
 });
 
+// Hot path sorts by owner+recency — compound index covers it
+EmailDraftSchema.index({ ownerUid: 1, updatedAt: -1 });
+
 module.exports = mongoose.model('EmailDraft', EmailDraftSchema);

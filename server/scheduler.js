@@ -1,9 +1,20 @@
 let agenda = null;
 let initialized = false;
+let agendaInitPromise = null;
 
 async function getAgenda() {
   if (agenda) return agenda;
+  // Cache the init promise (not just the instance) so concurrent callers
+  // can't construct two Agendas that both start and double-fire jobs.
+  if (agendaInitPromise) return agendaInitPromise;
+  agendaInitPromise = initAgenda().catch((err) => {
+    agendaInitPromise = null;
+    throw err;
+  });
+  return agendaInitPromise;
+}
 
+async function initAgenda() {
   const { Agenda } = require('agenda');
   const { MongoBackend } = require('@agendajs/mongo-backend');
 
@@ -55,8 +66,17 @@ async function getAgenda() {
       return;
     }
 
-    // Build transporter
-    const transporter = await buildTransporterFromAccount(account);
+    // Build transporter (guarded: a bad credential must fail the campaign,
+    // not reject the job and leave it stuck in scheduled/sending forever)
+    let transporter;
+    try {
+      transporter = await buildTransporterFromAccount(account);
+    } catch (err) {
+      console.error(`[Scheduler] Transporter failed for campaign ${campaignId}:`, err.message);
+      campaign.status = 'failed';
+      await campaign.save();
+      return;
+    }
 
     // Suppression filter (shared with immediate send)
     let suppressedSet = new Set();
@@ -118,8 +138,9 @@ async function getAgenda() {
     campaign.sentAt = new Date();
     await campaign.save();
 
-    // Insert into Supabase email_send_log
-    await supabase.from('email_send_log').insert({
+    // Insert into Supabase email_send_log (checked: Mongo saying "sent"
+    // while the audit log silently misses the row breaks send-log views)
+    const { error: logError } = await supabase.from('email_send_log').insert({
       user_id: campaign.ownerUid,
       campaign_id: campaign._id.toString(),
       draft_id: campaign.draftId.toString(),
@@ -131,6 +152,9 @@ async function getAgenda() {
       status: campaign.status,
       sent_at: new Date().toISOString()
     });
+    if (logError) {
+      console.error(`[Scheduler] email_send_log insert failed for campaign ${campaignId}:`, logError.message);
+    }
 
     console.log(`[Scheduler] Campaign ${campaignId} sent: ${sentCount} sent, ${failedCount} failed`);
   });
@@ -148,11 +172,33 @@ async function getAgenda() {
       })
       .eq('draft_id', draftId);
 
-    if (error) {
-      console.error(`[Scheduler] Failed to activate draft ${draftId}:`, error.message);
-    } else {
-      console.log(`[Scheduler] Draft ${draftId} activated (link is now live)`);
-    }
+      if (error) {
+        console.error(`[Scheduler] Failed to activate draft ${draftId}:`, error.message);
+      } else {
+        console.log(`[Scheduler] Draft ${draftId} activated (link is now live)`);
+        // Sync auto-activation to MongoDB mirror (was previously Supabase-only).
+        // setOnInsert carries ownerUid so a missing mirror row inserts validly
+        // instead of failing required-field validation and diverging forever.
+        try {
+          const TemplateData = require('./models/TemplateData');
+          const { data: ownerRow } = await supabase
+            .from('form_drafts')
+            .select('user_id')
+            .eq('draft_id', draftId)
+            .single();
+          await TemplateData.findOneAndUpdate(
+            { draftId },
+            {
+              status: 'active',
+              updatedAt: new Date(),
+              ...(ownerRow ? { $setOnInsert: { ownerUid: ownerRow.user_id } } : {}),
+            },
+            { upsert: true }
+          );
+        } catch (mongoErr) {
+          console.error(`[Scheduler] MongoDB sync error (auto-activate ${draftId}):`, mongoErr.message);
+        }
+      }
   });
 
   // Define the send analytics report job (Phase 5)
@@ -243,6 +289,9 @@ async function getAgenda() {
 
 async function scheduleCampaign(campaignId, sendAt) {
   const a = await getAgenda();
+  // Cancel any prior job for this campaign first — rescheduling (retry,
+  // double-click) must not create duplicate jobs that mass-mail twice.
+  await a.cancel({ name: 'send email campaign', 'data.campaignId': campaignId });
   await a.schedule(sendAt, 'send email campaign', { campaignId });
   console.log(`[Scheduler] Campaign ${campaignId} scheduled for ${sendAt}`);
 }
@@ -255,6 +304,8 @@ async function cancelScheduledCampaign(campaignId) {
 
 async function scheduleDraftActivation(draftId, goesLiveAt) {
   const a = await getAgenda();
+  // Cancel any prior activation job for this draft before (re)scheduling.
+  await a.cancel({ name: 'activate form draft', 'data.draftId': draftId });
   await a.schedule(goesLiveAt, 'activate form draft', { draftId });
   console.log(`[Scheduler] Draft ${draftId} scheduled to go live at ${goesLiveAt}`);
 }

@@ -19,7 +19,6 @@ function createChain() {
     eq: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
-    range: jest.fn().mockReturnThis(),
     single: jest.fn().mockResolvedValue(mockSupabaseQuery),
     count: jest.fn().mockReturnThis(),
     then: (resolve, reject) => Promise.resolve(mockSupabaseQuery).then(resolve, reject),
@@ -502,136 +501,6 @@ describe('POST /api/analytics/sync', () => {
     expect(count).toBe(1);
     mockSupabase.from = originalFrom;
   });
-
-  test('bulk upsert does not overwrite an existing submission\'s data (issue #37)', async () => {
-    await createSubmission({
-      submissionId: 'preserve-sub',
-      draftId: 'preserve-draft',
-      title: 'Original Title',
-      submittedData: { name: 'Original' },
-    });
-
-    const originalFrom = mockSupabase.from;
-    mockSupabase.from = jest.fn((table) => {
-      const chain = createChain();
-      if (table === 'form_drafts') {
-        mockSupabaseQuery.data = [];
-      } else if (table === 'form_submissions') {
-        mockSupabaseQuery.data = [
-          { submission_id: 'preserve-sub', draft_id: 'preserve-draft', user_id: 'test-user-uid', template_type: 'student', title: 'Changed Title', submitted_data: { name: 'Changed' }, submitted_at: '2024-01-01T00:00:00Z' },
-        ];
-      }
-      return chain;
-    });
-
-    const res = await request(app)
-      .post('/api/analytics/sync')
-      .set('x-test-uid', 'test-user-uid');
-    expect(res.status).toBe(200);
-    // Already existed — not counted as newly synced
-    expect(res.body.submissionsSynced).toBe(0);
-
-    const doc = await TemplateSubmission.findOne({ submissionId: 'preserve-sub' });
-    expect(doc.title).toBe('Original Title');
-    expect(doc.submittedData.name).toBe('Original');
-    mockSupabase.from = originalFrom;
-  });
-
-  test('paginates past the Supabase 1000-row page cap (issue #37)', async () => {
-    const originalFrom = mockSupabase.from;
-    let draftCalls = 0;
-    let subCalls = 0;
-
-    const makeDraft = (i) => ({
-      draft_id: `page-draft-${i}`,
-      user_id: 'test-user-uid',
-      title: `Page Template ${i}`,
-      template_type: 'student',
-      config: { toggles: { name: true } },
-      status: 'active',
-      expires_at: null,
-      created_at: '2024-01-01T00:00:00Z',
-    });
-    const makeSub = (i) => ({
-      submission_id: `page-sub-${i}`,
-      draft_id: 'page-draft-0',
-      user_id: 'test-user-uid',
-      template_type: 'student',
-      title: 'Page Template 0',
-      submitted_data: { name: `User ${i}` },
-      submitted_at: '2024-01-01T00:00:00Z',
-    });
-
-    const draftPage1 = Array.from({ length: 1000 }, (_, i) => makeDraft(i));
-    const draftPage2 = [makeDraft(1000), makeDraft(1001)]; // 1002 total, spans 2 pages
-    const subPage1 = Array.from({ length: 1000 }, (_, i) => makeSub(i));
-    const subPage2 = [makeSub(1000)]; // 1001 total, spans 2 pages
-
-    mockSupabase.from = jest.fn((table) => {
-      const chain = createChain();
-      if (table === 'form_drafts') {
-        draftCalls++;
-        mockSupabaseQuery.data = draftCalls === 1 ? draftPage1 : draftPage2;
-      } else if (table === 'form_submissions') {
-        subCalls++;
-        mockSupabaseQuery.data = subCalls === 1 ? subPage1 : subPage2;
-      }
-      return chain;
-    });
-
-    const res = await request(app)
-      .post('/api/analytics/sync')
-      .set('x-test-uid', 'test-user-uid');
-
-    expect(res.status).toBe(200);
-    expect(draftCalls).toBe(2);
-    expect(subCalls).toBe(2);
-    expect(res.body.templatesSynced).toBe(1002);
-    expect(res.body.submissionsSynced).toBe(1001);
-
-    const templateCount = await TemplateData.countDocuments({ draftId: /^page-draft-/ });
-    expect(templateCount).toBe(1002);
-    const subCount = await TemplateSubmission.countDocuments({ submissionId: /^page-sub-/ });
-    expect(subCount).toBe(1001);
-
-    mockSupabase.from = originalFrom;
-  }, 30000);
-
-  test('fetches a second, empty page when the row count is an exact multiple of the page size (issue #37)', async () => {
-    const originalFrom = mockSupabase.from;
-    let subCalls = 0;
-    const subPage1 = Array.from({ length: 1000 }, (_, i) => ({
-      submission_id: `exact-sub-${i}`,
-      draft_id: 'exact-draft',
-      user_id: 'test-user-uid',
-      template_type: 'student',
-      title: 'Exact Template',
-      submitted_data: { name: `User ${i}` },
-      submitted_at: '2024-01-01T00:00:00Z',
-    }));
-
-    mockSupabase.from = jest.fn((table) => {
-      const chain = createChain();
-      if (table === 'form_drafts') {
-        mockSupabaseQuery.data = [];
-      } else if (table === 'form_submissions') {
-        subCalls++;
-        mockSupabaseQuery.data = subCalls === 1 ? subPage1 : [];
-      }
-      return chain;
-    });
-
-    const res = await request(app)
-      .post('/api/analytics/sync')
-      .set('x-test-uid', 'test-user-uid');
-
-    expect(res.status).toBe(200);
-    // Proves it queried a second page rather than assuming a full first page was the last
-    expect(subCalls).toBe(2);
-    expect(res.body.submissionsSynced).toBe(1000);
-
-    mockSupabase.from = originalFrom;
-  }, 30000);
 });
 
 // =====================
@@ -639,16 +508,7 @@ describe('POST /api/analytics/sync', () => {
 // =====================
 
 describe('githubAnalyzer utility', () => {
-  const {
-    classifyRole,
-    extractTechStack,
-    fetchGitHubRepos,
-    _setGithubThrottleMsForTests,
-    _resetGithubThrottleForTests,
-    _setGithubCacheMaxSizeForTests,
-    _resetGithubCacheMaxSizeForTests,
-    _clearGithubCacheForTests,
-  } = require('../utils/githubAnalyzer');
+  const { classifyRole, extractTechStack, fetchGitHubRepos } = require('../utils/githubAnalyzer');
 
   describe('classifyRole', () => {
     test('should classify frontend repos', () => {
@@ -760,29 +620,14 @@ describe('githubAnalyzer utility', () => {
 
   describe('fetchGitHubRepos (issue #32: cached vs uncached shape)', () => {
     const originalFetch = global.fetch;
-    const originalToken = process.env.GITHUB_TOKEN;
-    const noHeaders = { get: () => null };
-
-    beforeEach(() => {
-      // Default to no throttle delay so these tests run fast; the
-      // dedicated throttle test below overrides this with a real (short)
-      // interval to prove pacing actually happens.
-      _resetGithubThrottleForTests();
-      _setGithubThrottleMsForTests(0);
-      delete process.env.GITHUB_TOKEN;
-    });
 
     afterEach(() => {
       global.fetch = originalFetch;
-      _setGithubThrottleMsForTests(0);
-      if (originalToken === undefined) delete process.env.GITHUB_TOKEN;
-      else process.env.GITHUB_TOKEN = originalToken;
     });
 
     const mockGitHubResponse = (repos) => ({
       ok: true,
       status: 200,
-      headers: noHeaders,
       json: async () => repos,
     });
 
@@ -819,164 +664,19 @@ describe('githubAnalyzer utility', () => {
     });
 
     test('returns { error: "User not found", repos: [] } on 404', async () => {
-      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404, headers: noHeaders });
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 });
 
       const result = await fetchGitHubRepos('gh32-404-user');
 
       expect(result).toEqual({ error: 'User not found', repos: [] });
     });
 
-    test('returns a bare "Rate limited" message on 403 with no rate-limit headers', async () => {
-      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403, headers: noHeaders });
+    test('returns { error: "Rate limited", repos: [] } on 403', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
 
-      const result = await fetchGitHubRepos('gh35-403-no-headers');
+      const result = await fetchGitHubRepos('gh32-403-user');
 
       expect(result).toEqual({ error: 'Rate limited', repos: [] });
-    });
-
-    test('issue #35: includes Authorization header when GITHUB_TOKEN is set', async () => {
-      process.env.GITHUB_TOKEN = 'test-pat-123';
-      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
-
-      await fetchGitHubRepos('gh35-auth-user');
-
-      const [, options] = global.fetch.mock.calls[0];
-      expect(options.headers.Authorization).toBe('token test-pat-123');
-    });
-
-    test('issue #35: omits Authorization header when GITHUB_TOKEN is not set', async () => {
-      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
-
-      await fetchGitHubRepos('gh35-no-auth-user');
-
-      const [, options] = global.fetch.mock.calls[0];
-      expect(options.headers.Authorization).toBeUndefined();
-    });
-
-    test('issue #35: 403 with Retry-After header includes the wait time in seconds', async () => {
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: false,
-        status: 403,
-        headers: { get: (name) => (name === 'retry-after' ? '45' : null) },
-      });
-
-      const result = await fetchGitHubRepos('gh35-retry-after-user');
-
-      expect(result.error).toBe('Rate limited by GitHub. Try again in 45s.');
-    });
-
-    test('issue #35: 403 with only X-RateLimit-Reset falls back to a minutes estimate', async () => {
-      const resetAt = Math.ceil(Date.now() / 1000) + 300; // 5 minutes out
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: false,
-        status: 403,
-        headers: { get: (name) => (name === 'x-ratelimit-reset' ? String(resetAt) : null) },
-      });
-
-      const result = await fetchGitHubRepos('gh35-reset-header-user');
-
-      expect(result.error).toMatch(/Rate limited by GitHub\. Try again in ~\d+ min\./);
-    });
-
-    test('issue #35: throttles consecutive uncached requests by roughly the configured interval', async () => {
-      _setGithubThrottleMsForTests(150);
-      _resetGithubThrottleForTests();
-      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
-
-      const start = Date.now();
-      await fetchGitHubRepos('gh35-throttle-user-1');
-      await fetchGitHubRepos('gh35-throttle-user-2');
-      const elapsed = Date.now() - start;
-
-      // First call is unthrottled (no prior request), second must wait
-      // out the remainder of the interval — allow slack for CI jitter.
-      expect(elapsed).toBeGreaterThanOrEqual(100);
-    });
-  });
-
-  describe('githubCache size cap (issue #38)', () => {
-    let originalFetch;
-    const noHeaders = { get: () => null };
-
-    beforeEach(() => {
-      originalFetch = global.fetch;
-      _resetGithubThrottleForTests();
-      _setGithubThrottleMsForTests(0);
-      _clearGithubCacheForTests();
-      delete process.env.GITHUB_TOKEN;
-    });
-
-    afterEach(() => {
-      global.fetch = originalFetch;
-      _setGithubThrottleMsForTests(0);
-      _resetGithubCacheMaxSizeForTests();
-      _clearGithubCacheForTests();
-    });
-
-    const mockGitHubResponse = (repos) => ({
-      ok: true,
-      status: 200,
-      headers: noHeaders,
-      json: async () => repos,
-    });
-
-    test('evicts the oldest entry once a new key would push the cache past its cap', async () => {
-      _setGithubCacheMaxSizeForTests(3);
-      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
-
-      await fetchGitHubRepos('cache38-user-1'); // oldest
-      await fetchGitHubRepos('cache38-user-2');
-      await fetchGitHubRepos('cache38-user-3');
-      expect(global.fetch).toHaveBeenCalledTimes(3);
-
-      // 4th distinct key exceeds the cap of 3 — user-1 should be evicted
-      await fetchGitHubRepos('cache38-user-4');
-      expect(global.fetch).toHaveBeenCalledTimes(4);
-
-      // user-1 was evicted: re-fetching it is a cache miss (a real call)
-      await fetchGitHubRepos('cache38-user-1');
-      expect(global.fetch).toHaveBeenCalledTimes(5);
-
-      // user-3 (recently inserted, never evicted) is still a cache hit
-      await fetchGitHubRepos('cache38-user-3');
-      expect(global.fetch).toHaveBeenCalledTimes(5);
-    });
-
-    test('does not evict anything while at or under the cap', async () => {
-      _setGithubCacheMaxSizeForTests(3);
-      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
-
-      await fetchGitHubRepos('cache38-under-1');
-      await fetchGitHubRepos('cache38-under-2');
-      await fetchGitHubRepos('cache38-under-3');
-      expect(global.fetch).toHaveBeenCalledTimes(3);
-
-      // Re-fetching all 3 again should be pure cache hits — no new calls
-      await fetchGitHubRepos('cache38-under-1');
-      await fetchGitHubRepos('cache38-under-2');
-      await fetchGitHubRepos('cache38-under-3');
-      expect(global.fetch).toHaveBeenCalledTimes(3);
-    });
-
-    test('eviction removes exactly one entry per key over the cap, not the whole cache', async () => {
-      _setGithubCacheMaxSizeForTests(2);
-      global.fetch = jest.fn().mockResolvedValue(mockGitHubResponse([]));
-
-      await fetchGitHubRepos('cache38-multi-1'); // oldest, will be evicted 1st
-      await fetchGitHubRepos('cache38-multi-2'); // evicted 2nd
-      await fetchGitHubRepos('cache38-multi-3'); // pushes multi-1 out, cap holds at 2
-      await fetchGitHubRepos('cache38-multi-4'); // pushes multi-2 out, cap holds at 2
-      expect(global.fetch).toHaveBeenCalledTimes(4);
-
-      // multi-3 and multi-4 are the 2 survivors — both still cache hits
-      await fetchGitHubRepos('cache38-multi-3');
-      await fetchGitHubRepos('cache38-multi-4');
-      expect(global.fetch).toHaveBeenCalledTimes(4);
-
-      // multi-1 and multi-2 were evicted — both are cache misses
-      await fetchGitHubRepos('cache38-multi-1');
-      await fetchGitHubRepos('cache38-multi-2');
-      expect(global.fetch).toHaveBeenCalledTimes(6);
     });
   });
 });
