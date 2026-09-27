@@ -6,7 +6,7 @@ organized per topic. Each file is self-contained.
 ## Files
 
 | # | File | Topic |
-|---|---|---|
+|---|------|-------|
 | 0 | [bugs-fixed-log.md](./bugs-fixed-log.md) | Every bug, where found, how fixed, how verified |
 | 1 | [email-feature-audit.md](./email-feature-audit.md) | Email deep audit (backend, scheduler, frontend, tests) |
 | 2 | [feature-interconnections.md](./feature-interconnections.md) | How all 13 features connect, cascade failures |
@@ -18,6 +18,7 @@ organized per topic. Each file is self-contained.
 | 8 | [avatar-cloudinary.md](./avatar-cloudinary.md) | Cloudinary fetch failure, compression, profile redesign |
 | 9 | [email-ux.md](./email-ux.md) | Body editor compact/layout, insight panels, unified Email page, bind engine |
 | 10 | [landing-tours.md](./landing-tours.md) | EmailFlowTour + TemplateFlowTour showcases and iterations |
+| 11 | [form-builder-and-preview-studio.md](./form-builder-and-preview-studio.md) | Form builder: blocks, Zod, DnD, inspector, theme, Preview Studio, Mailwave UI |
 
 ## Test Discipline Used All Day
 

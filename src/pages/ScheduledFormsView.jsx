@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Calendar, Copy, Trash2, Loader2, RefreshCw, Send, GraduationCap, Briefcase, Users, File, XCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Clock, Copy, Loader2, RefreshCw, Send, GraduationCap, Briefcase, Users, File, XCircle } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -173,8 +173,9 @@ export default function ScheduledFormsView() {
                       readOnly
                     />
                     <button
+                      type="button"
                       className="copy-btn"
-                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${encodeURIComponent(draft.title)}/${draft.draftId}`)}
+                      onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/form/${encodeURIComponent(draft.title)}/${draft.draftId}`)?.catch(() => {})}
                     >
                       <Copy size={16} />
                     </button>

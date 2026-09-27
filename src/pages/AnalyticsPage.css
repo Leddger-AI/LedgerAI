@@ -633,3 +633,226 @@
 .analytics-drive-link:hover {
   text-decoration: underline;
 }
+
+/* ============================================================ */
+/* Phase 5 — Download Export Menu                              */
+/* ============================================================ */
+
+.analytics-export-menu {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.analytics-export-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border-color, #333);
+  background: rgba(59, 130, 246, 0.1);
+  color: #3B82F6;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.analytics-export-trigger:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.analytics-export-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.analytics-export-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 240px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #333);
+  background: var(--bg-card, #1a1d1d);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.analytics-export-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.analytics-export-option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.analytics-export-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.analytics-export-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.analytics-export-option-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+}
+
+.analytics-export-option-desc {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  line-height: 1.4;
+}
+
+.analytics-export-error {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #EF4444;
+  font-size: 12px;
+}
+
+/* ============================================================ */
+/* Phase 5 — Scheduled Reports Panel                           */
+/* ============================================================ */
+
+.analytics-reports-panel {
+  padding: 20px;
+  border-radius: 12px;
+  margin-top: 24px;
+}
+
+.analytics-reports-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.analytics-reports-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #333);
+  background: transparent;
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.analytics-reports-add-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.analytics-report-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  margin-bottom: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #333);
+  background: rgba(128, 128, 128, 0.04);
+}
+
+.analytics-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.analytics-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #aaa);
+}
+
+.analytics-form-input,
+.analytics-form-select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #333);
+  background: var(--bg-secondary, #1a1d1d);
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.analytics-form-input:focus,
+.analytics-form-select:focus {
+  border-color: var(--color-cyan, #3B82F6);
+}
+
+.analytics-reports-recipients {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+
+.analytics-reports-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.analytics-reports-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #333);
+  background: transparent;
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.analytics-reports-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #fff);
+}
+
+.analytics-reports-icon-btn.danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #EF4444;
+}
+
+.analytics-reports-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

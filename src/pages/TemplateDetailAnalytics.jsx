@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Loader2, AlertCircle, FileText, Users, Clock,
   BarChart3, ChevronLeft, ChevronRight, GitBranch, Star, HardDrive, ExternalLink, CheckCircle2,
@@ -8,6 +8,7 @@ import {
   Cell,
 } from 'recharts';
 import { getAuthToken } from '../supabaseAuth';
+import AnalyticsExportMenu from '../components/AnalyticsExportMenu';
 import './AnalyticsPage.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -31,7 +32,11 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
   const fetchDetail = useCallback(async () => {
     try {
       const token = await getAuthToken();
-      if (!token) return;
+      if (!token) {
+        setError('Not authenticated. Please sign in again.');
+        setLoading(false);
+        return;
+      }
       const res = await fetch(`${API_BASE_URL}/api/analytics/templates/${draftId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -46,7 +51,10 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
   const fetchSubmissions = useCallback(async (page) => {
     try {
       const token = await getAuthToken();
-      if (!token) return;
+      if (!token) {
+        setError('Not authenticated. Please sign in again.');
+        return;
+      }
       const res = await fetch(
         `${API_BASE_URL}/api/analytics/templates/${draftId}/submissions?page=${page}&limit=10`,
         { headers: { Authorization: `Bearer ${token}` } }
@@ -58,7 +66,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
       setSubmissionsTotal(data.total);
       setSubmissionsTotalPages(data.totalPages);
     } catch (err) {
-      console.error('Submissions fetch error:', err);
+      setError(err.message);
     }
   }, [draftId]);
 
@@ -104,11 +112,6 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
 
   useEffect(() => {
     (async () => {
-      setError(null);
-      setGithubData(null);
-      setGithubError(null);
-      setSubmissionsPage(1);
-      setDriveResult(null);
       setLoading(true);
       await Promise.all([fetchDetail(), fetchSubmissions(1)]);
       setLoading(false);
@@ -150,7 +153,9 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
     rate: detail.fieldStats?.[field]?.completionRate || 0,
   }));
 
-  const allSubmissionKeys = detail.enabledFields;
+  const allSubmissionKeys = submissions.length > 0
+    ? Object.keys(submissions[0].submittedData || {})
+    : [];
 
   return (
     <div className="analytics-page">
@@ -189,6 +194,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
             {driveLoading ? <Loader2 size={14} className="spin" /> : <HardDrive size={14} />}
             {driveLoading ? 'Saving...' : 'Save to Drive'}
           </button>
+          <AnalyticsExportMenu endpoint={`/api/analytics/export/templates/${draftId}`} />
         </div>
       </div>
 
@@ -371,9 +377,9 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
               <>
                 {/* Role Distribution */}
                 <div className="analytics-github-section">
-                  <h4 className="analytics-github-subtitle">Role Distribution ({githubData.totalProfiles} profiles)</h4>
+                  <h4 className="analytics-github-subtitle">Role Distribution ({githubData.totalProfiles || 0} profiles)</h4>
                   <div className="analytics-github-roles">
-                    {githubData.roleDistribution.map((r) => (
+                    {(Array.isArray(githubData.roleDistribution) ? githubData.roleDistribution : []).map((r) => (
                       <div key={r.role} className="analytics-github-role-item">
                         <span className={`analytics-type-badge ${r.role.toLowerCase()}`}>
                           {r.role}
@@ -383,7 +389,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
                           <div
                             className="analytics-github-role-bar-fill"
                             style={{
-                              width: `${(r.count / githubData.totalProfiles) * 100}%`,
+                              width: `${githubData.totalProfiles > 0 ? (r.count / githubData.totalProfiles) * 100 : 0}%`,
                             }}
                           />
                         </div>
@@ -393,7 +399,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
                 </div>
 
                 {/* Top Languages */}
-                {githubData.topLanguages.length > 0 && (
+                {Array.isArray(githubData.topLanguages) && githubData.topLanguages.length > 0 && (
                   <div className="analytics-github-section">
                     <h4 className="analytics-github-subtitle">Top Languages</h4>
                     <div className="analytics-github-languages">
@@ -409,7 +415,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
                 )}
 
                 {/* Top Topics */}
-                {githubData.topTopics.length > 0 && (
+                {Array.isArray(githubData.topTopics) && githubData.topTopics.length > 0 && (
                   <div className="analytics-github-section">
                     <h4 className="analytics-github-subtitle">Top Topics & Technologies</h4>
                     <div className="analytics-github-topics">
@@ -437,7 +443,7 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {githubData.profiles.map((p) => (
+                        {(Array.isArray(githubData.profiles) ? githubData.profiles : []).map((p) => (
                           <tr key={p.username}>
                             <td className="analytics-github-username">
                               <GitBranch size={12} />
@@ -447,8 +453,8 @@ export default function TemplateDetailAnalytics({ draftId, onBack }) {
                               {p.error ? (
                                 <span className="analytics-status-badge expired">{p.error}</span>
                               ) : (
-                                <span className={`analytics-type-badge ${p.role.toLowerCase()}`}>
-                                  {p.role}
+                                <span className={`analytics-type-badge ${String(p.role || 'unknown').toLowerCase()}`}>
+                                  {p.role || 'Unknown'}
                                 </span>
                               )}
                             </td>

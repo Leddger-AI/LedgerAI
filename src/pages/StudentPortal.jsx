@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Lock, FileSignature, UploadCloud, Link2, GitBranch, Globe } from 'lucide-react';
 import CryptoJS from 'crypto-js';
-import { useNavigate } from 'react-router-dom';
 import '../LandingPage.css'; // Inherit styling
-import { supabase } from '../supabaseClient';
 import { getCurrentUser } from '../supabaseAuth';
 
 // Default field template used when no recruiter config is found for a code
@@ -36,7 +34,6 @@ function PrefixedLinkInput({ prefix, value, onChange, placeholder }) {
 }
 
 export default function StudentPortal() {
-  const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [isCodeValid, setIsCodeValid] = useState(false);
   const [formConfig, setFormConfig] = useState(DEFAULT_FORM_CONFIG);
@@ -47,7 +44,6 @@ export default function StudentPortal() {
     getCurrentUser().then((user) => {
       if (!user) {
         // No anonymous auth in Supabase by default — user can still browse
-        console.log('No authenticated user for student portal');
       }
     });
 
@@ -113,7 +109,10 @@ export default function StudentPortal() {
       idea: formData.idea,
       workingProcedure: formData.procedure,
       experience: parseInt(formData.experience) || 0,
-      score: Math.floor(Math.random() * 40) + 60, // Mock generated score
+      // Placeholder score until server-side evaluation lands — flagged so
+      // reviewers never mistake it for a real assessment.
+      score: null,
+      scoreNote: 'pending-evaluation',
       githubUsername: formConfig.requestGithub ? formData.githubUsername || '' : '',
       githubPrivateAccessGranted: formConfig.requestGithubPrivate,
       linkedinUsername: formConfig.requestLinkedin ? formData.linkedinUsername || '' : '',

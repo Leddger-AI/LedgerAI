@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { UserSearch, Plus, Copy, Check, ExternalLink, GitBranch, FileText, Users, Link2, MoreVertical, Loader2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { UserSearch, Plus, Copy, Check, ExternalLink, FileText, Users, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getAuthToken } from './supabaseAuth';
 
@@ -7,8 +7,10 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function formatRelativeTime(dateStr) {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return 'Unknown date';
   const now = new Date();
   const diffMs = now - d;
+  if (diffMs < 0) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
@@ -25,6 +27,11 @@ export default function SourcingView() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState(null);
+  const copyTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -56,9 +63,12 @@ export default function SourcingView() {
 
   const handleCopyLink = (draft) => {
     const link = `${window.location.origin}/form/${encodeURIComponent(draft.title)}/${draft.draftId}`;
-    navigator.clipboard?.writeText(link);
-    setCopiedId(draft.draftId);
-    setTimeout(() => setCopiedId(null), 1500);
+    if (!navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedId(draft.draftId);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedId(null), 1500);
+    }).catch(() => {});
   };
 
   const getDraftFields = (draft) => {
@@ -92,7 +102,7 @@ export default function SourcingView() {
           </h2>
           <p className="section-subtitle">Build shareable candidate application forms and manage your incoming talent pool</p>
         </div>
-        <button
+        <button type="button"
           className="table-action-btn"
           style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: 'rgba(20, 20, 20, 0.06)', borderColor: 'var(--border-color)' }}
           onClick={() => navigate('/recruiter')}
@@ -178,7 +188,7 @@ export default function SourcingView() {
                   <strong style={{ color: 'var(--text-primary)' }}>{getSubmissionCount(draft.draftId)}</strong> submissions
                 </span>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
+                  <button type="button"
                     onClick={() => handleCopyLink(draft)}
                     title="Copy shareable link"
                     style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-secondary)' }}
@@ -186,7 +196,7 @@ export default function SourcingView() {
                     {copiedId === draft.draftId ? <Check size={12} style={{ color: 'var(--color-success)' }} /> : <Copy size={12} />}
                     {copiedId === draft.draftId ? 'Copied' : 'Copy Link'}
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => navigate('/recruiter')}
                     title="Edit template"
                     style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-secondary)' }}

@@ -1,20 +1,28 @@
-import React, { useState, useMemo } from 'react';
-import { FileText, Download, Filter, Calendar, BarChart2, TrendingUp, PieChart as PieIcon, ArrowDownRight, ArrowUpRight } from 'lucide-react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Cell, PieChart, Pie, Legend } from 'recharts';
+import { useState, useMemo } from 'react';
+import { FileText, Download, Filter, Calendar, TrendingUp, PieChart as PieIcon } from 'lucide-react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Cell, PieChart, Pie, Legend } from 'recharts';
 
 export default function ReportsView({ meetings }) {
   const [projectFilter, setProjectFilter] = useState('All');
   const [minConfidence, setMinConfidence] = useState(0);
   const [dateRange, setDateRange] = useState('This Month');
 
-  // Filter meetings dynamically
+  // Filter meetings dynamically (project + confidence + date range)
   const filteredMeetings = useMemo(() => {
+    const span = dateRange === 'Last 7 Days' ? 7 * 86400000 : dateRange === 'Last 30 Days' ? 30 * 86400000 : null;
+    const cutoff = span ? Date.now() - span : null;
     return meetings.filter(m => {
       const matchProj = projectFilter === 'All' || m.project === projectFilter;
       const matchConf = m.confidence >= minConfidence;
-      return matchProj && matchConf;
+      if (!matchProj || !matchConf) return false;
+      if (cutoff !== null) {
+        const t = m.start_time || m.startTime;
+        const d = t ? new Date(t).getTime() : NaN;
+        if (Number.isNaN(d) || d < cutoff) return false;
+      }
+      return true;
     });
-  }, [meetings, projectFilter, minConfidence]);
+  }, [meetings, projectFilter, minConfidence, dateRange]);
 
   // Grouped data for Pie Chart
   const pieData = useMemo(() => {
@@ -29,23 +37,20 @@ export default function ReportsView({ meetings }) {
     }));
   }, [filteredMeetings]);
 
-  // Chronological data for Area Chart
-  // We plot days of the week based on meeting items
+  // Chronological data for Area Chart — bucketed by each meeting's real
+  // start_time weekday. Meetings without a parseable date are skipped.
   const areaData = useMemo(() => {
     const dayMap = {
       'Monday': 0, 'Tuesday': 0, 'Wednesday': 0, 'Thursday': 0, 'Friday': 0, 'Saturday': 0, 'Sunday': 0
     };
 
     filteredMeetings.forEach(m => {
-      // Map to days
-      let day = 'Saturday'; // default
-      if (m.id === 1) day = 'Thursday';
-      if (m.id === 2 || m.id === 3) day = 'Friday';
-      if (m.id === 4) day = 'Thursday';
-      if (m.id === 5) day = 'Wednesday';
-      if (m.id === 6) day = 'Tuesday';
-
-      dayMap[day] += m.cost;
+      const t = m.start_time || m.startTime;
+      const d = t ? new Date(t) : null;
+      if (!d || Number.isNaN(d.getTime())) return;
+      // getDay(): 0=Sunday..6=Saturday → Monday-first map keys
+      const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      dayMap[names[d.getDay()]] += Number(m.cost) || 0;
     });
 
     return Object.keys(dayMap).map(key => ({
@@ -62,26 +67,29 @@ export default function ReportsView({ meetings }) {
     ? Math.round(filteredMeetings.reduce((acc, m) => acc + m.confidence, 0) / filteredMeetings.length)
     : 0;
 
-  // Mock CSV Export handler
+  // CSV export with RFC-4180 quoting via Blob (handles commas/quotes/newlines)
   const handleExportCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "ID,Meeting Title,Cost,Project Tag,Confidence,Duration,Attendees\n";
-    
+    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = ["ID,Meeting Title,Cost,Project Tag,Confidence,Duration,Attendees"];
+
     filteredMeetings.forEach(m => {
-      csvContent += `${m.id},"${m.title}",${m.cost},"${m.project}",${m.confidence},"${m.duration}",${m.attendeeCount}\n`;
+      lines.push([m.id, q(m.title), m.cost, q(m.project), m.confidence, q(m.duration), m.attendeeCount].join(','));
     });
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `HR_Cost_Attribution_Report_${dateRange.replace(' ', '_')}.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `HR_Cost_Attribution_Report_${dateRange.replace(/ /g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  // Browser print-to-PDF of the report view (honest export, no fake alert)
   const handleExportPDF = () => {
-    alert("Compiling report ledger... Downloaded PDF Summary successfully!");
+    window.print();
   };
 
   return (
@@ -119,7 +127,7 @@ export default function ReportsView({ meetings }) {
       {/* Filter Options */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '20px', alignItems: 'center' }}>
         <div>
-          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Filter size={12} /> Project Taxonomy Code
           </label>
           <select 
@@ -136,7 +144,7 @@ export default function ReportsView({ meetings }) {
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Calendar size={12} /> Date Range Preset
           </label>
           <select 
@@ -151,7 +159,7 @@ export default function ReportsView({ meetings }) {
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between' }}>
+          <label style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
             <span>Min AI Confidence</span>
             <strong style={{ color: 'var(--color-cyan)' }}>{minConfidence}%</strong>
           </label>

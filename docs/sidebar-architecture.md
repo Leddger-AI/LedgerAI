@@ -10,8 +10,8 @@ The application's navigation was migrated from a standard monolithic sidebar (wi
 Instead of nesting the Mini Sidebar inside the main application container, it was decoupled entirely. 
 
 **Structure:**
-- **Mini Sidebar (Level 1)**: Physically separated from the main app. It is rendered as an independent vertical "pill" (`width: 64px`, `border-radius: 24px`, solid white background) that floats directly on the cream canvas (`#f6eadc`).
-- **Gap Margin**: The `.layout-wrapper` uses a `flex` layout with a `12px` gap. This forces a physical transparent space between the Mini Sidebar and the Secondary Sidebar.
+- **Mini Sidebar (Level 1)**: Physically separated from the main app. It is rendered as an independent vertical "pill" (`width: 64px`, `border-radius: 16px`, solid white background) that floats directly on the cream canvas (`#F2E8D5`).
+- **Gap Margin**: The `.layout-wrapper` uses a `flex` layout with a `16px` gap. This forces a physical transparent space between the Mini Sidebar and the Secondary Sidebar.
 - **Active State Highlights**: Because the Mini Sidebar is a white pill, active icons are highlighted using a subtle gray square (`#F5F5F5`), shifting away from the previous heavy drop-shadows.
 
 ## 2. Secondary Sidebar (Level 2)
