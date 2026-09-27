@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, Key, Download, FileText, BarChart2, Search, ArrowRight, UserCheck, Eye, Settings, FileUp, GitBranch, Globe, Check, Mail, Upload, X, FileSpreadsheet, Link2, Lock } from 'lucide-react';
+import { Shield, Key, FileText, ArrowRight, UserCheck, Eye, Settings, FileUp, GitBranch, Globe, Mail, Upload, X, Link2, Lock } from 'lucide-react';
 import CryptoJS from 'crypto-js';
 import Papa from 'papaparse';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,9 @@ export default function RecruiterDashboard() {
   const [requestGithub, setRequestGithub] = useState(true);
   const [requestGithubPrivate, setRequestGithubPrivate] = useState(false);
   const [requestLinkedin, setRequestLinkedin] = useState(true);
+  // Live preview inputs (controlled so the preview fields stay editable)
+  const [previewGithub, setPreviewGithub] = useState('');
+  const [previewLinkedin, setPreviewLinkedin] = useState('');
   const [requestPortfolio, setRequestPortfolio] = useState(true);
   const [recruiterNotes, setRecruiterNotes] = useState(
     'Please provide detailed descriptions of your past engineering projects and experience. Upload your verified code repositories for cryptographic validation.'
@@ -83,7 +86,7 @@ export default function RecruiterDashboard() {
       
       const parsed = JSON.parse(decryptedString);
       setDecryptedData(prev => ({ ...prev, [candidate.id]: parsed }));
-    } catch (e) {
+    } catch {
       alert("Decryption failed. Invalid one-time key or corrupted data.");
     }
   };
@@ -427,7 +430,7 @@ export default function RecruiterDashboard() {
                         <GitBranch size={14} />
                         GitHub Username *
                       </label>
-                      <PrefixedLinkInput prefix="github.com/" value="" placeholder="username" />
+                      <PrefixedLinkInput prefix="github.com/" value={previewGithub} onChange={setPreviewGithub} placeholder="username" />
                       {requestGithubPrivate && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', fontSize: '11px', color: 'rgba(0,0,0,0.55)' }}>
                           <Lock size={11} />
@@ -444,7 +447,7 @@ export default function RecruiterDashboard() {
                         <Link2 size={14} />
                         LinkedIn Profile *
                       </label>
-                      <PrefixedLinkInput prefix="linkedin.com/in/" value="" placeholder="username" />
+                      <PrefixedLinkInput prefix="linkedin.com/in/" value={previewLinkedin} onChange={setPreviewLinkedin} placeholder="username" />
                     </div>
                   )}
 
@@ -558,7 +561,7 @@ export default function RecruiterDashboard() {
                             <div style={{ marginBottom: '8px' }}><strong>Working Procedure:</strong> {decryptedData[cand.id].workingProcedure}</div>
                             <div style={{ display: 'flex', gap: '20px', marginTop: '15px' }}>
                               <span style={{ backgroundColor: '#f25530', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
-                                Score: {decryptedData[cand.id].score}
+                                Score: {decryptedData[cand.id].score ?? 'Pending evaluation'}
                               </span>
                               <span style={{ backgroundColor: '#D7FEFA', color: '#1A1D1D', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
                                 Experience: {decryptedData[cand.id].experience} yrs
