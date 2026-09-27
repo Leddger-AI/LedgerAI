@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { User, Link, Briefcase, Building, Calendar, Star, Target, MessageSquare, ClipboardList, Zap, Monitor, Smartphone, Camera, FileUp, Mail, Users, Tag, CheckSquare, Search, Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Building, Star, Target, ClipboardList, Monitor, Smartphone, Tablet, Users, Tag, Search, Plus, Trash2 } from 'lucide-react';
 import './TemplateBuilder.css';
 import { getAuthToken, getCurrentUser } from '../supabaseAuth';
 
@@ -15,6 +16,7 @@ const DEFAULT_TOGGLES = {
 };
 
 export default function TeamTemplateBuilder() {
+  const location = useLocation();
   const [toggles, setToggles] = useState(DEFAULT_TOGGLES);
   const [previewMode, setPreviewMode] = useState('desktop');
   
@@ -42,6 +44,35 @@ export default function TeamTemplateBuilder() {
   // Draft Generation State
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('Draft saved.');
+  // UUID of the draft being edited (null = new draft). Re-saving PATCHes
+  // the same draft instead of creating duplicates.
+  const [existingDraftId, setExistingDraftId] = useState(null);
+
+  // Hydrate from a draft opened via DraftsView → Edit (router state)
+  useEffect(() => {
+    const draft = location.state?.draft;
+    if (!draft || draft.templateType !== 'team') return;
+    const t = setTimeout(() => {
+      const cfg = draft.config || {};
+      if (draft.title) setFormTitle(draft.title);
+      if (cfg.toggles) setToggles({ ...DEFAULT_TOGGLES, ...cfg.toggles });
+      if (cfg.titlePrefix !== undefined) setTitlePrefix(cfg.titlePrefix);
+      if (cfg.deptInputMode) setDeptInputMode(cfg.deptInputMode);
+      if (Array.isArray(cfg.selectedDepartments)) setSelectedDepartments(cfg.selectedDepartments);
+      if (cfg.leadRestriction) setLeadRestriction(cfg.leadRestriction);
+      if (cfg.autoAssignLead !== undefined) setAutoAssignLead(cfg.autoAssignLead);
+      if (cfg.minMembers !== undefined) setMinMembers(cfg.minMembers);
+      if (cfg.maxMembers !== undefined) setMaxMembers(cfg.maxMembers);
+      if (cfg.crossFunctional !== undefined) setCrossFunctional(cfg.crossFunctional);
+      setSaveMsg('Draft loaded — saving will update it.');
+      setExistingDraftId(draft.draftId || null);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2500);
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   useEffect(() => {
     const fetchDepartments = async () => {
@@ -135,9 +166,14 @@ export default function TeamTemplateBuilder() {
       };
 
       const token = await getAuthToken();
-      
-      const response = await fetch(`${API_BASE_URL}/api/drafts`, {
-        method: 'POST',
+
+      // PATCH the same UUID when editing; POST only for brand-new drafts
+      const url = existingDraftId
+        ? `${API_BASE_URL}/api/drafts/${existingDraftId}`
+        : `${API_BASE_URL}/api/drafts`;
+
+      const response = await fetch(url, {
+        method: existingDraftId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -151,11 +187,13 @@ export default function TeamTemplateBuilder() {
 
       const data = await response.json();
       if (response.ok) {
+        if (data.draftId) setExistingDraftId(data.draftId);
+        setSaveMsg(existingDraftId ? 'Draft updated.' : 'Draft saved.');
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 2500);
       } else {
         console.error('Failed to save draft:', data.error);
-        alert('Failed to save draft.');
+        alert(data.error || 'Failed to save draft.');
       }
     } catch (err) {
       console.error(err);
@@ -172,6 +210,7 @@ export default function TeamTemplateBuilder() {
       {showSuccess && (
         <div className="success-overlay">
           <video src="/Sucess.webm" autoPlay muted className="success-video" />
+          <p className="success-text">{saveMsg}</p>
         </div>
       )}
       
@@ -396,6 +435,12 @@ export default function TeamTemplateBuilder() {
             onClick={() => setPreviewMode('mobile')}
           >
             <Smartphone size={16} />
+          </div>
+          <div 
+            className={`device-toggle-btn ${previewMode === 'tablet' ? 'active' : ''}`}
+            onClick={() => setPreviewMode('tablet')}
+          >
+            <Tablet size={16} />
           </div>
         </div>
 

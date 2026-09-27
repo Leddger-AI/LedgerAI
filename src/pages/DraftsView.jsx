@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { File, Calendar, Clock, CheckCircle2, AlertCircle, Link as LinkIcon, Copy, GraduationCap, Briefcase, Users, Trash2, Inbox, Send, XCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { File, Clock, CheckCircle2, AlertCircle, Link as LinkIcon, Copy, GraduationCap, Briefcase, Users, Trash2, Inbox, Send, XCircle, Pencil } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
 import CustomCalendar from '../components/CustomCalendar';
 import CustomTimePicker from '../components/CustomTimePicker';
@@ -8,6 +9,7 @@ import './DraftsView.css';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function DraftsView() {
+  const navigate = useNavigate();
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDraft, setSelectedDraft] = useState(null);
@@ -30,10 +32,6 @@ export default function DraftsView() {
   const [isScheduling, setIsScheduling] = useState(false);
   const [isCancellingSchedule, setIsCancellingSchedule] = useState(false);
 
-  useEffect(() => {
-    fetchDrafts();
-  }, []);
-
   const fetchDrafts = async () => {
     try {
       const token = await getAuthToken();
@@ -52,6 +50,11 @@ export default function DraftsView() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const t = setTimeout(fetchDrafts, 0);
+    return () => clearTimeout(t);
+  }, []);
 
   const handleDeleteDraft = async () => {
     if (!draftToDelete || !deleteVerify) return;
@@ -299,6 +302,18 @@ export default function DraftsView() {
                   <span>{new Date(draft.createdAt).toLocaleDateString()}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {getStatusBadge(draft.status)}
+                    {draft.status === 'draft' && ['student', 'employee', 'team'].includes(draft.templateType) && (
+                      <button
+                        className="draft-delete-icon"
+                        title="Edit in builder"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/dashboard/templates/${draft.templateType}`, { state: { draft } });
+                        }}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    )}
                     <button 
                       className="draft-delete-icon" 
                       onClick={(e) => {
@@ -442,8 +457,9 @@ export default function DraftsView() {
                 readOnly
               />
               <button
+                type="button"
                 className="copy-btn"
-                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)}
+                onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)?.catch(() => {})}
               >
                 <Copy size={16} />
               </button>
@@ -477,8 +493,9 @@ export default function DraftsView() {
                 readOnly
               />
               <button
+                type="button"
                 className="copy-btn"
-                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)}
+                onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/form/${encodeURIComponent(selectedDraft.title)}/${selectedDraft.draftId}`)?.catch(() => {})}
               >
                 <Copy size={16} />
               </button>

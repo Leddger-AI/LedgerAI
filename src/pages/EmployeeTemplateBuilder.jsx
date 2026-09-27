@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { User, Link, Briefcase, Building, Calendar, Star, Target, MessageSquare, ClipboardList, Zap, Monitor, Smartphone, Camera, FileUp, Mail } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { User, Briefcase, Calendar, Star, Target, MessageSquare, ClipboardList, Zap, Monitor, Smartphone, Tablet, Camera, FileUp, Mail } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
 import './TemplateBuilder.css';
 
@@ -26,6 +27,7 @@ const DEFAULT_TOGGLES = {
 };
 
 export default function EmployeeTemplateBuilder() {
+  const location = useLocation();
   const [toggles, setToggles] = useState(DEFAULT_TOGGLES);
   const [previewMode, setPreviewMode] = useState('desktop');
   const [formTitle, setFormTitle] = useState('Performance Review Form');
@@ -34,6 +36,27 @@ export default function EmployeeTemplateBuilder() {
   // Draft Generation State
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('Draft saved.');
+  // UUID of the draft being edited (null = new draft). Re-saving PATCHes
+  // the same draft instead of creating duplicates.
+  const [existingDraftId, setExistingDraftId] = useState(null);
+
+  // Hydrate from a draft opened via DraftsView → Edit (router state)
+  useEffect(() => {
+    const draft = location.state?.draft;
+    if (!draft || draft.templateType !== 'employee') return;
+    const t = setTimeout(() => {
+      setExistingDraftId(draft.draftId || null);
+      if (draft.title) setFormTitle(draft.title);
+      if (draft.config?.toggles) setToggles({ ...DEFAULT_TOGGLES, ...draft.config.toggles });
+      if (draft.config?.emailFormat) setEmailFormat(draft.config.emailFormat);
+      setSaveMsg('Draft loaded — saving will update it.');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2500);
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleField = (key) => {
     setToggles(prev => ({ ...prev, [key]: !prev[key] }));
@@ -48,9 +71,15 @@ export default function EmployeeTemplateBuilder() {
       };
 
       const token = await getAuthToken();
-      
-      const response = await fetch(`${API_BASE_URL}/api/drafts`, {
-        method: 'POST',
+      if (!token) return;
+
+      // PATCH the same UUID when editing; POST only for brand-new drafts
+      const url = existingDraftId
+        ? `${API_BASE_URL}/api/drafts/${existingDraftId}`
+        : `${API_BASE_URL}/api/drafts`;
+
+      const response = await fetch(url, {
+        method: existingDraftId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -64,11 +93,13 @@ export default function EmployeeTemplateBuilder() {
 
       const data = await response.json();
       if (response.ok) {
+        if (data.draftId) setExistingDraftId(data.draftId);
+        setSaveMsg(existingDraftId ? 'Draft updated.' : 'Draft saved.');
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 2500);
       } else {
         console.error('Failed to save draft:', data.error);
-        alert('Failed to save draft.');
+        alert(data.error || 'Failed to save draft.');
       }
     } catch (err) {
       console.error(err);
@@ -122,6 +153,7 @@ export default function EmployeeTemplateBuilder() {
       {showSuccess && (
         <div className="success-overlay">
           <video src="/Sucess.webm" autoPlay muted className="success-video" />
+          <p className="success-text">{saveMsg}</p>
         </div>
       )}
       
@@ -220,6 +252,12 @@ export default function EmployeeTemplateBuilder() {
             onClick={() => setPreviewMode('mobile')}
           >
             <Smartphone size={16} />
+          </div>
+          <div 
+            className={`device-toggle-btn ${previewMode === 'tablet' ? 'active' : ''}`}
+            onClick={() => setPreviewMode('tablet')}
+          >
+            <Tablet size={16} />
           </div>
         </div>
 
