@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Send, Mail, Clock, FileSpreadsheet, Trash2, RefreshCw,
   Settings, Loader2, AlertTriangle, CheckCircle2, Plus, X,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import DOMPurify from 'dompurify';
 import { getAuthToken } from './supabaseAuth';
 import {
   extractVars, normHeader, autoMapVariables, substitutePreview as substitutePreviewShared,
@@ -38,8 +39,14 @@ function formatRelativeTime(dateStr) {
 
 function stripHtml(html) {
   const tmp = document.createElement('div');
-  tmp.innerHTML = html;
+  tmp.innerHTML = DOMPurify.sanitize(html || '');
   return tmp.textContent || tmp.innerText || '';
+}
+
+// Draft bodyHtml is stored raw server-side — sanitize at every render sink
+// so a malicious draft or CSV-mapped variable can't execute scripts here.
+function safeHtml(html, fallback = '<p>No content</p>') {
+  return DOMPurify.sanitize(html || fallback);
 }
 
 export default function EmailAutomationView() {
@@ -767,6 +774,14 @@ export default function EmailAutomationView() {
           </div>
         )}
 
+        {draftDetailLoading && !draftDetail && (
+          <div className="ea-draft-detail">
+            <div className="ea-sidebar-loading">
+              <Loader2 size={16} className="spin" /> Loading draft…
+            </div>
+          </div>
+        )}
+
         {draftDetail && (
           <div className="ea-draft-detail">
             <div className="ea-draft-detail-header">
@@ -795,7 +810,7 @@ export default function EmailAutomationView() {
             </div>
             <div
               className="ea-draft-detail-body"
-              dangerouslySetInnerHTML={{ __html: draftDetail.bodyHtml || '<p>No content</p>' }}
+              dangerouslySetInnerHTML={{ __html: safeHtml(draftDetail.bodyHtml) }}
             />
           </div>
         )}
@@ -1105,7 +1120,7 @@ export default function EmailAutomationView() {
                           })()}
                         </div>
                         <div
-                          dangerouslySetInnerHTML={{ __html: (() => {
+                          dangerouslySetInnerHTML={{ __html: safeHtml((() => {
                             const r = recipients[Math.min(previewIdx, recipients.length - 1)];
                             const mapped = {};
                             (sendDraft.variables || []).forEach(v => {
@@ -1113,7 +1128,7 @@ export default function EmailAutomationView() {
                               if (col && r.variables[col] !== undefined) mapped[v.id] = r.variables[col];
                             });
                             return substitutePreview(sendDraft.bodyHtml || stripHtml(sendDraft.bodyHtml || ''), mapped);
-                          })() }}
+                          })()) }}
                         />
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
                           <button className="ea-cancel-btn" disabled={previewIdx === 0} onClick={() => setPreviewIdx(i => Math.max(0, i - 1))}>Prev</button>

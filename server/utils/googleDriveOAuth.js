@@ -30,6 +30,38 @@ function getAuthUrl(state) {
   });
 }
 
+// Signed, expiring OAuth `state` so the unauthenticated /callback endpoint
+// can't be abused to attach tokens to someone else's uid (CSRF). Format:
+// base64url(uid) + '.' + timestamp + '.' + hex HMAC.
+function stateSecret() {
+  return process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'dev-only-drive-state-secret';
+}
+
+function signDriveState(uid) {
+  const crypto = require('crypto');
+  const ts = Date.now().toString();
+  const payload = `${Buffer.from(String(uid), 'utf8').toString('base64url')}.${ts}`;
+  const sig = crypto.createHmac('sha256', stateSecret()).update(payload).digest('hex');
+  return `${payload}.${sig}`;
+}
+
+function verifyDriveState(state, maxAgeMs = 10 * 60 * 1000) {
+  try {
+    const crypto = require('crypto');
+    const parts = String(state || '').split('.');
+    if (parts.length !== 3) return null;
+    const [b64, ts, sig] = parts;
+    const payload = `${b64}.${ts}`;
+    const expected = crypto.createHmac('sha256', stateSecret()).update(payload).digest('hex');
+    if (sig.length !== expected.length) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+    if (Date.now() - Number(ts) > maxAgeMs || Number.isNaN(Number(ts))) return null;
+    return Buffer.from(b64, 'base64url').toString('utf8') || null;
+  } catch {
+    return null;
+  }
+}
+
 async function exchangeCodeForTokens(code) {
   const oauth2Client = getOAuthClient();
   const { tokens } = await oauth2Client.getToken(code);
@@ -134,6 +166,8 @@ async function getDriveStatus(ownerUid) {
 
 module.exports = {
   getAuthUrl,
+  signDriveState,
+  verifyDriveState,
   exchangeCodeForTokens,
   storeTokens,
   getValidAccessToken,

@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, Upload, FileText, Send, Trash2, Shield, User, HelpCircle, Layers, CheckCircle2, ChevronRight, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Sparkles, Upload, FileText, Send, Trash2, Layers, CheckCircle2, Eye } from 'lucide-react';
+import { getAuthToken } from './supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+// Attach the Supabase access token so the KB service can authenticate
+// the caller instead of serving unauthenticated requests.
+async function authHeaders(extra = {}) {
+  const token = await getAuthToken().catch(() => null);
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
+}
 
 export default function KnowledgeBase() {
   const [activeSubTab, setActiveSubTab] = useState('file'); // 'file' | 'slack'
@@ -12,7 +20,7 @@ export default function KnowledgeBase() {
   const [ownerId, setOwnerId] = useState('U12345');
   const [teamId, setTeamId] = useState('T67890');
   const [chunkSize, setChunkSize] = useState(3000);
-  const [chunkOverlap, setChunkOverlap] = useState(300);
+  const [chunkOverlap] = useState(300);
   
   // Slack ingestion state
   const [slackThreadTs, setSlackThreadTs] = useState(() => (Date.now() / 1000).toFixed(4));
@@ -55,7 +63,9 @@ export default function KnowledgeBase() {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/kb/documents`);
+      const response = await fetch(`${API_BASE_URL}/api/kb/documents`, {
+        headers: await authHeaders(),
+      });
       if (!response.ok) throw new Error('Failed to fetch document registry.');
       const data = await response.json();
       setDocuments(data);
@@ -108,6 +118,7 @@ export default function KnowledgeBase() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/kb/ingest/file`, {
         method: 'POST',
+        headers: await authHeaders(),
         body: formData,
       });
 
@@ -143,7 +154,7 @@ export default function KnowledgeBase() {
       let messages;
       try {
         messages = JSON.parse(slackMessagesJson);
-      } catch (pErr) {
+      } catch {
         throw new Error('Invalid JSON format in Slack messages. Check syntax.');
       }
 
@@ -157,7 +168,7 @@ export default function KnowledgeBase() {
 
       const response = await fetch(`${API_BASE_URL}/api/kb/ingest/slack`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       });
 
@@ -181,7 +192,9 @@ export default function KnowledgeBase() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/kb/documents/${docId}`);
+      const response = await fetch(`${API_BASE_URL}/api/kb/documents/${docId}`, {
+        headers: await authHeaders(),
+      });
       if (!response.ok) throw new Error('Failed to retrieve document details.');
       const data = await response.json();
       setSelectedDocDetails(data);
@@ -227,7 +240,8 @@ export default function KnowledgeBase() {
     setError(null);
     try {
       const response = await fetch(`${API_BASE_URL}/api/kb/documents/${docId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: await authHeaders(),
       });
       if (!response.ok) throw new Error('Failed to delete document.');
       

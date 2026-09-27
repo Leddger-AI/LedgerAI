@@ -1,7 +1,9 @@
 const supabaseAdmin = require('../supabaseClient');
 
+const DEV_BYPASS = !supabaseAdmin && process.env.NODE_ENV !== 'production';
+
 if (!supabaseAdmin) {
-  console.warn('⚠️ WARNING: Supabase env vars not set. API requests will bypass authentication. THIS IS FOR LOCAL DEV ONLY.');
+  console.warn('⚠️ WARNING: Supabase env vars not set. Authentication bypass is available for LOCAL DEV ONLY (disabled in production).');
 }
 
 const verifyToken = async (req, res, next) => {
@@ -14,7 +16,11 @@ const verifyToken = async (req, res, next) => {
   const token = authHeader.split('Bearer ')[1];
 
   if (!supabaseAdmin) {
-    // Development bypass if no Supabase credentials are provided
+    // Fail closed in production: never mint users from attacker-supplied tokens.
+    if (!DEV_BYPASS) {
+      return res.status(503).json({ error: 'Authentication is not configured on this server' });
+    }
+    // Local-dev convenience only (NODE_ENV !== 'production')
     req.user = { uid: "DEV_MOCK_UID_" + token.substring(0, 5), email: "dev@localhost" };
     return next();
   }

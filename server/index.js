@@ -38,23 +38,41 @@ const {
 const { analyzeTemplateGitHub } = require('./utils/githubAnalyzer');
 const {
   getAuthUrl,
+  signDriveState,
+  verifyDriveState,
   exchangeCodeForTokens,
   storeTokens,
   getValidAccessToken,
   revokeTokens,
   getDriveStatus,
 } = require('./utils/googleDriveOAuth');
+
+// FRONTEND_URL allowlist for OAuth redirects — a poisoned env value must not
+// turn the Drive callback into an open redirect to an attacker site.
+function safeFrontendUrl() {
+  const fallback = 'http://localhost:5173';
+  const raw = process.env.FRONTEND_URL || fallback;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return fallback;
+    return raw.replace(/\/$/, '');
+  } catch {
+    return fallback;
+  }
+}
 const { uploadCSVToDrive, uploadJSONToDrive } = require('./utils/googleDriveUpload');
 const { encrypt } = require('./utils/crypto');
 const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
 const { substituteTemplateVars, isValidEmail } = require('./utils/emailTemplate');
 const EmailSuppression = require('./models/EmailSuppression');
 const MeetingRate = require('./models/MeetingRate');
+const MeetingSplit = require('./models/MeetingSplit');
+const ProjectBudget = require('./models/ProjectBudget');
 const { logAudit } = require('./utils/audit');
 const { sendFormSubmissionEmail, buildSubmissionEmailHtml, sendOtpEmail } = require('./utils/emailService');
 const { createOtpChallenge, verifyOtpChallenge } = require('./utils/otp');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation, scheduleAnalyticsReport, cancelAnalyticsReport } = require('./scheduler');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4, validate: isUuid } = require('uuid');
 const { runStartupChecks } = require('./startupCheck');
 
 const app = express();
@@ -72,7 +90,24 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
+
+// Minimal in-memory rate limiter (no extra dependency) for unauthenticated
+// public endpoints. Not distributed-safe, but stops single-source floods.
+function publicRateLimit({ windowMs, max }) {
+  const hits = new Map();
+  setInterval(() => hits.clear(), windowMs).unref?.();
+  return (req, res, next) => {
+    const key = req.ip || 'unknown';
+    const count = (hits.get(key) || 0) + 1;
+    hits.set(key, count);
+    if (count > max) {
+      return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+    next();
+  };
+}
+const submitLimiter = publicRateLimit({ windowMs: 60 * 1000, max: 30 });
 
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -189,18 +224,36 @@ app.get('/api/user/export', verifyToken, async (req, res) => {
       }
     }
     const AuditLog = require('./models/AuditLog');
-    const [emailDrafts, emailCampaigns, suppressions, rates, audits] = await Promise.all([
+    const GoogleDriveToken = require('./models/GoogleDriveToken');
+    const [emailDrafts, emailCampaigns, suppressions, rates, audits,
+      templates, submissions, splits, budgets, sheets, reports, accounts, driveTokens] = await Promise.all([
       EmailDraft.find({ ownerUid: uid }).lean().catch(() => []),
       EmailCampaign.find({ ownerUid: uid }).lean().catch(() => []),
       EmailSuppression.find({ ownerUid: uid }).lean().catch(() => []),
       MeetingRate.find({ ownerUid: uid }).lean().catch(() => []),
       AuditLog.find({ ownerUid: uid }).sort({ createdAt: -1 }).limit(1000).lean().catch(() => []),
+      TemplateData.find({ ownerUid: uid }).lean().catch(() => []),
+      TemplateSubmission.find({ ownerUid: uid }).lean().catch(() => []),
+      MeetingSplit.find({ ownerUid: uid }).lean().catch(() => []),
+      ProjectBudget.find({ ownerUid: uid }).lean().catch(() => []),
+      Spreadsheet.find({ ownerUid: uid }).lean().catch(() => []),
+      AnalyticsReport.find({ ownerUid: uid }).lean().catch(() => []),
+      EmailAccount.find({ ownerUid: uid }).lean().catch(() => []),
+      GoogleDriveToken.find({ ownerUid: uid }).lean().catch(() => []),
     ]);
     dump.emailDrafts = emailDrafts;
     dump.emailCampaigns = emailCampaigns;
     dump.suppressions = suppressions;
     dump.meetingRates = rates;
     dump.auditLog = audits;
+    dump.templates = templates;
+    dump.templateSubmissions = submissions;
+    dump.meetingSplits = splits;
+    dump.projectBudgets = budgets;
+    dump.spreadsheets = sheets;
+    dump.analyticsReports = reports;
+    dump.emailAccounts = accounts;
+    dump.googleDriveTokens = driveTokens;
     logAudit(uid, 'dsr.export', 'user', uid, { tables: Object.keys(dump) });
     res.json({ user_id: uid, exported_at: new Date().toISOString(), data: dump });
   } catch (error) {
@@ -305,6 +358,124 @@ app.get('/api/drafts', verifyToken, async (req, res) => {
 });
 
 /**
+ * Remove <script>...</script> blocks from any customCSS string found in a
+ * draft config (top-level settings.customCSS or theme.customCSS).
+ * The frontend also sanitizes at render time — this is defense in depth
+ * so stored configs can never carry executable payloads.
+ */
+function sanitizeDraftConfig(config) {
+  const stripScripts = (css) => (
+    typeof css === 'string' ? css.replace(/<script[\s\S]*?<\/script\s*>/gi, '') : css
+  );
+  const clean = { ...config };
+  if (clean.settings && typeof clean.settings === 'object') {
+    clean.settings = { ...clean.settings };
+    if (clean.settings.customCSS !== undefined) clean.settings.customCSS = stripScripts(clean.settings.customCSS);
+    if (clean.settings.styles && typeof clean.settings.styles === 'object') {
+      clean.settings.styles = { ...clean.settings.styles };
+      if (clean.settings.styles.customCSS !== undefined) {
+        clean.settings.styles.customCSS = stripScripts(clean.settings.styles.customCSS);
+      }
+    }
+  }
+  if (clean.theme && typeof clean.theme === 'object') {
+    clean.theme = { ...clean.theme };
+    if (clean.theme.customCSS !== undefined) clean.theme.customCSS = stripScripts(clean.theme.customCSS);
+  }
+  return clean;
+}
+
+/**
+ * PATCH /api/drafts/:draftId
+ * Update an existing draft (title / config / templateType) by its UUID.
+ * Only drafts in 'draft' status can be edited — active/scheduled links are immutable.
+ * Supabase is the source of truth; MongoDB TemplateData is synced as mirror.
+ */
+app.patch('/api/drafts/:draftId', verifyToken, async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    if (!draftId || !isUuid(draftId)) {
+      return res.status(400).json({ error: 'Invalid draft ID format' });
+    }
+
+    const { title, config, templateType } = req.body || {};
+    if (title === undefined && config === undefined && templateType === undefined) {
+      return res.status(400).json({ error: 'Nothing to update (title, config, or templateType required)' });
+    }
+    if (config !== undefined && (typeof config !== 'object' || config === null || Array.isArray(config))) {
+      return res.status(400).json({ error: 'config must be an object' });
+    }
+
+    const { data: draft, error: findError } = await supabase
+      .from('form_drafts')
+      .select('*')
+      .eq('draft_id', draftId)
+      .eq('user_id', req.user.uid)
+      .single();
+
+    if (findError || !draft) {
+      return res.status(404).json({ error: 'Draft not found' });
+    }
+    if (draft.status !== 'draft') {
+      return res.status(400).json({ error: 'Only drafts in draft status can be edited' });
+    }
+
+    // Strip <script> blocks from custom CSS before persisting (defense in depth;
+    // FormRenderer also sanitizes at render time with DOMPurify).
+    const cleanConfig = config === undefined ? undefined : sanitizeDraftConfig(config);
+
+    const updateData = { updated_at: new Date().toISOString() };
+    if (title !== undefined) updateData.title = title;
+    if (cleanConfig !== undefined) updateData.config = cleanConfig;
+    if (templateType !== undefined) updateData.template_type = templateType;
+
+    const { data: updated, error: updateError } = await supabase
+      .from('form_drafts')
+      .update(updateData)
+      .eq('draft_id', draftId)
+      .select('*')
+      .single();
+
+    if (updateError) throw updateError;
+
+    // Sync to MongoDB mirror. $setOnInsert carries ownerUid (required by the
+    // schema) so a missing mirror row inserts validly instead of failing
+    // validation and diverging from Supabase forever. NOTE: a path may not
+    // appear in both $set and $setOnInsert, so title only goes to
+    // $setOnInsert when the PATCH didn't set it.
+    const mongoUpdate = { updatedAt: new Date() };
+    if (title !== undefined) mongoUpdate.title = title;
+    if (cleanConfig !== undefined) mongoUpdate.config = cleanConfig;
+    if (templateType !== undefined) mongoUpdate.templateType = templateType;
+    const setOnInsert = { ownerUid: req.user.uid };
+    if (title === undefined) setOnInsert.title = updated.title;
+    await TemplateData.findOneAndUpdate(
+      { draftId },
+      { ...mongoUpdate, $setOnInsert: setOnInsert },
+      { upsert: true }
+    ).catch(err => console.error('MongoDB sync error (patch):', err));
+
+    logAudit(req.user.uid, 'draft.updated', 'form_draft', draftId, { title: updated.title });
+    res.json({
+      message: 'Draft updated',
+      draftId: updated.draft_id,
+      draft: {
+        draftId: updated.draft_id,
+        title: updated.title,
+        config: updated.config,
+        templateType: updated.template_type,
+        status: updated.status,
+        expiresAt: updated.expires_at,
+        createdAt: updated.created_at
+      }
+    });
+  } catch (error) {
+    console.error('Error updating draft:', error);
+    res.status(500).json({ error: 'Failed to update draft' });
+  }
+});
+
+/**
  * DELETE /api/drafts/:draftId
  * Delete a draft
  */
@@ -372,10 +543,16 @@ app.put('/api/drafts/:draftId/activate', verifyToken, async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // Sync status to MongoDB TemplateData
+    // Sync status to MongoDB TemplateData (upsert with ownerUid so a missing
+    // mirror row is created, not silently skipped)
     await TemplateData.findOneAndUpdate(
       { draftId: req.params.draftId },
-      { status: 'active', expiresAt: new Date(expiresAt) }
+      {
+        status: 'active',
+        expiresAt: new Date(expiresAt),
+        $setOnInsert: { ownerUid: req.user.uid, title: updated.title },
+      },
+      { upsert: true }
     ).catch(err => console.error('MongoDB sync error (activate):', err));
 
     res.json({ 
@@ -473,6 +650,13 @@ app.put('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
     // Schedule Agenda job to activate at goesLiveAt
     await scheduleDraftActivation(req.params.draftId, liveDate);
 
+    // Sync scheduled status to MongoDB mirror (was previously Supabase-only)
+    await TemplateData.findOneAndUpdate(
+      { draftId: req.params.draftId },
+      { status: 'scheduled', expiresAt: expiryDate, updatedAt: new Date() },
+      { upsert: true }
+    ).catch(err => console.error('MongoDB sync error (schedule):', err));
+
     res.json({
       message: 'Draft scheduled',
       draft: {
@@ -525,6 +709,13 @@ app.delete('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
 
     if (updateError) throw updateError;
 
+    // Sync cancelled status back to MongoDB mirror
+    await TemplateData.findOneAndUpdate(
+      { draftId: req.params.draftId },
+      { status: 'draft', expiresAt: null, updatedAt: new Date() },
+      { upsert: true }
+    ).catch(err => console.error('MongoDB sync error (unschedule):', err));
+
     res.json({
       message: 'Schedule cancelled',
       draft: {
@@ -575,6 +766,16 @@ app.get('/api/forms/:draftId', async (req, res) => {
         .update({ status: 'active', updated_at: new Date().toISOString() })
         .eq('draft_id', req.params.draftId);
       draft.status = 'active';
+      // Mirror to MongoDB like the Agenda job does (was previously Supabase-only)
+      await TemplateData.findOneAndUpdate(
+        { draftId: req.params.draftId },
+        {
+          status: 'active',
+          updatedAt: new Date(),
+          $setOnInsert: { ownerUid: draft.user_id, title: draft.title },
+        },
+        { upsert: true }
+      ).catch(err => console.error('MongoDB sync error (fallback auto-activate):', err));
     }
 
     if (new Date() > new Date(draft.expires_at) || draft.status === 'expired') {
@@ -598,8 +799,27 @@ app.get('/api/forms/:draftId', async (req, res) => {
  * POST /api/forms/:draftId/submit
  * Submit a public form (no auth required)
  */
-app.post('/api/forms/:draftId/submit', async (req, res) => {
+app.post('/api/forms/:draftId/submit', submitLimiter, async (req, res) => {
   try {
+    // Validate payload shape/size before touching the DB or mailer
+    const { submittedData } = req.body || {};
+    if (!submittedData || typeof submittedData !== 'object' || Array.isArray(submittedData)) {
+      return res.status(400).json({ error: 'submittedData must be an object' });
+    }
+    const entries = Object.entries(submittedData);
+    if (entries.length > 200) {
+      return res.status(400).json({ error: 'Too many fields in submission' });
+    }
+    for (const [k, v] of entries) {
+      if (typeof k !== 'string' || k.length > 200) {
+        return res.status(400).json({ error: 'Invalid field name in submission' });
+      }
+      const s = typeof v === 'string' ? v : JSON.stringify(v);
+      if (s && s.length > 20000) {
+        return res.status(400).json({ error: 'Field value too large' });
+      }
+    }
+
     const { data: draft, error: findError } = await supabase
       .from('form_drafts')
       .select('*')
@@ -615,7 +835,6 @@ app.post('/api/forms/:draftId/submit', async (req, res) => {
     }
 
     const submissionId = uuidv4();
-    const { submittedData } = req.body;
 
     const { error: submitError } = await supabase
       .from('form_submissions')
@@ -821,6 +1040,9 @@ app.get('/api/spreadsheets/metadata', verifyToken, async (req, res) => {
  */
 app.get('/api/spreadsheets/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid spreadsheet id format' });
+    }
     const doc = await Spreadsheet.findOne({ _id: req.params.id, ownerUid: req.user.uid });
     if (!doc) {
       return res.status(404).json({ error: 'Spreadsheet not found' });
@@ -880,6 +1102,9 @@ app.post('/api/spreadsheets', verifyToken, async (req, res) => {
  */
 app.put('/api/spreadsheets/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid spreadsheet id format' });
+    }
     const { name, sheets } = req.body;
 
     const doc = await Spreadsheet.findOne({ _id: req.params.id, ownerUid: req.user.uid });
@@ -905,6 +1130,9 @@ app.put('/api/spreadsheets/:id', verifyToken, async (req, res) => {
  */
 app.delete('/api/spreadsheets/:id', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid spreadsheet id format' });
+    }
     const result = await Spreadsheet.deleteOne({ _id: req.params.id, ownerUid: req.user.uid });
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Spreadsheet not found or unauthorized' });
@@ -923,6 +1151,9 @@ app.delete('/api/spreadsheets/:id', verifyToken, async (req, res) => {
  */
 app.get('/api/spreadsheets/:id/headers', verifyToken, async (req, res) => {
   try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid spreadsheet id format' });
+    }
     const doc = await Spreadsheet.findOne({ _id: req.params.id, ownerUid: req.user.uid });
     if (!doc) {
       return res.status(404).json({ error: 'Spreadsheet not found' });
@@ -1020,6 +1251,9 @@ app.delete('/api/meetings/:id', verifyToken, async (req, res) => {
       .eq('id', req.params.id)
       .eq('user_id', req.user.uid);
     if (error) throw error;
+    // Delete orphaned cost splits or budget/attribution reads join ghost rows
+    await MeetingSplit.deleteMany({ ownerUid: req.user.uid, meetingId: req.params.id })
+      .catch(err => console.error('MongoDB sync error (delete splits):', err));
     res.json({ message: 'Meeting deleted' });
     logAudit(req.user.uid, 'meeting.deleted', 'meeting', req.params.id, null);
   } catch (error) {
@@ -1135,6 +1369,145 @@ app.put('/api/meetings/:id/attribution', verifyToken, async (req, res) => {
   }
 });
 
+// --- Meeting Cost Splits (attribution queue: split one meeting %) ---
+
+app.get('/api/meetings/splits', verifyToken, async (req, res) => {
+  try {
+    const splits = await MeetingSplit.find({ ownerUid: req.user.uid }).sort({ updatedAt: -1 }).lean();
+    res.json({ splits });
+  } catch (error) {
+    console.error('Error fetching splits:', error);
+    res.status(500).json({ error: 'Failed to fetch splits' });
+  }
+});
+
+app.post('/api/meetings/:id/split', verifyToken, async (req, res) => {
+  try {
+    const { parts } = req.body || {};
+    if (!Array.isArray(parts) || parts.length < 2) {
+      return res.status(400).json({ error: 'parts array with at least 2 entries is required' });
+    }
+    for (const p of parts) {
+      if (!p.aiProject || typeof p.pct !== 'number' || p.pct <= 0 || p.pct > 100) {
+        return res.status(400).json({ error: 'Each part needs aiProject and pct (0-100]' });
+      }
+    }
+    const total = parts.reduce((a, p) => a + p.pct, 0);
+    if (Math.abs(total - 100) > 0.01) {
+      return res.status(400).json({ error: `Percentages must sum to 100 (got ${total})` });
+    }
+    const { data: meeting, error: fetchError } = await supabase
+      .from('meetings')
+      .select('id,ai_project')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.uid)
+      .single();
+    if (fetchError) return res.status(404).json({ error: 'Meeting not found' });
+
+    const split = await MeetingSplit.findOneAndUpdate(
+      { ownerUid: req.user.uid, meetingId: req.params.id },
+      { parts, updatedAt: new Date() },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    // Primary (largest) part becomes the meeting tag; review cleared
+    const primary = [...parts].sort((a, b) => b.pct - a.pct)[0];
+    await supabase
+      .from('meetings')
+      .update({ ai_project: primary.aiProject, requires_human_review: false })
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.uid);
+    logAudit(req.user.uid, 'meeting.split', 'meeting', req.params.id, { from: meeting?.ai_project || null, parts });
+    res.status(201).json({ split });
+  } catch (error) {
+    console.error('Error splitting meeting:', error);
+    res.status(500).json({ error: 'Failed to split meeting' });
+  }
+});
+
+// --- Project Budgets (monthly caps + live spend) ---
+
+app.get('/api/budgets', verifyToken, async (req, res) => {
+  try {
+    const budgets = await ProjectBudget.find({ ownerUid: req.user.uid }).sort({ project: 1 }).lean();
+    res.json({ budgets });
+  } catch (error) {
+    console.error('Error fetching budgets:', error);
+    res.status(500).json({ error: 'Failed to fetch budgets' });
+  }
+});
+
+app.post('/api/budgets', verifyToken, async (req, res) => {
+  try {
+    const { project, monthlyCap } = req.body || {};
+    if (!project || typeof project !== 'string') return res.status(400).json({ error: 'project is required' });
+    if (monthlyCap === undefined || Number(monthlyCap) < 0) return res.status(400).json({ error: 'monthlyCap (>=0) is required' });
+    const doc = await ProjectBudget.findOneAndUpdate(
+      { ownerUid: req.user.uid, project: project.trim() },
+      { monthlyCap: Number(monthlyCap), updatedAt: new Date() },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    logAudit(req.user.uid, 'budget.upserted', 'project_budget', doc._id, { project: doc.project, monthlyCap: doc.monthlyCap });
+    res.status(201).json({ budget: doc });
+  } catch (error) {
+    console.error('Error saving budget:', error);
+    res.status(500).json({ error: 'Failed to save budget' });
+  }
+});
+
+app.delete('/api/budgets/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid budget id format' });
+    const r = await ProjectBudget.findOneAndDelete({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!r) return res.status(404).json({ error: 'Budget not found' });
+    logAudit(req.user.uid, 'budget.deleted', 'project_budget', req.params.id, null);
+    res.json({ message: 'Budget deleted' });
+  } catch (error) {
+    console.error('Error deleting budget:', error);
+    res.status(500).json({ error: 'Failed to delete budget' });
+  }
+});
+
+// Live spend per project for the current month + cap usage
+app.get('/api/budgets/overview', verifyToken, async (req, res) => {
+  try {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const { data: meetings, error } = await supabase
+      .from('meetings')
+      .select('duration_minutes,attendees,ai_project,start_time')
+      .eq('user_id', req.user.uid)
+      .gte('start_time', monthStart)
+      .limit(2000);
+    if (error) throw error;
+    const defRate = await MeetingRate.findOne({
+      ownerUid: req.user.uid, dept: 'default', level: 'default', region: 'default',
+    }).lean();
+    const hourly = defRate ? defRate.hourlyRate : 75;
+    const spend = {};
+    for (const m of meetings || []) {
+      const mins = Number(m.duration_minutes) || 0;
+      const n = Array.isArray(m.attendees) ? m.attendees.length : 0;
+      const cost = Math.round(((mins / 60) * hourly * Math.max(n, 1)) * 100) / 100;
+      const p = m.ai_project || 'Unattributed';
+      spend[p] = Math.round(((spend[p] || 0) + cost) * 100) / 100;
+    }
+    const budgets = await ProjectBudget.find({ ownerUid: req.user.uid }).lean();
+    const rows = budgets.map(b => ({
+      project: b.project,
+      monthlyCap: b.monthlyCap,
+      spent: spend[b.project] || 0,
+      pct: b.monthlyCap > 0 ? Math.round(((spend[b.project] || 0) / b.monthlyCap) * 100) : 0,
+    }));
+    const unattributed = Object.entries(spend)
+      .filter(([p]) => !budgets.some(b => b.project === p))
+      .map(([project, spent]) => ({ project, monthlyCap: 0, spent, pct: 0 }));
+    res.json({ month: monthStart.slice(0, 7), hourlyRate: hourly, rows: [...rows, ...unattributed] });
+  } catch (error) {
+    console.error('Error building budget overview:', error);
+    res.status(500).json({ error: 'Failed to build budget overview' });
+  }
+});
+
 // ==========================================
 // ALERTS ENDPOINTS (Supabase)
 // ==========================================
@@ -1214,6 +1587,18 @@ app.delete('/api/alerts/:id', verifyToken, async (req, res) => {
 
 // --- Email Drafts CRUD ---
 
+// Defense-in-depth HTML sanitizer for stored draft bodies (the client also
+// sanitizes at render time with DOMPurify). Strips scripts, event-handler
+// attributes, and javascript: URLs while keeping email-safe formatting tags.
+function sanitizeBodyHtml(html) {
+  if (typeof html !== 'string') return html;
+  return html
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|javascript:[^\s>]+)/gi, '$1="#"')
+    .slice(0, 500000);
+}
+
 app.post('/api/email/drafts', verifyToken, async (req, res) => {
   try {
     const { subject, bodyHtml, variables, dataSourceType, dataSourceFile, dataSourceSheetId } = req.body;
@@ -1225,7 +1610,7 @@ app.post('/api/email/drafts', verifyToken, async (req, res) => {
     const draft = await EmailDraft.create({
       ownerUid: req.user.uid,
       subject: subject || '',
-      bodyHtml,
+      bodyHtml: sanitizeBodyHtml(bodyHtml),
       variables: variables || [],
       dataSourceType: dataSourceType || 'none',
       dataSourceFile: dataSourceFile || null,
@@ -1279,7 +1664,7 @@ app.put('/api/email/drafts/:id', verifyToken, async (req, res) => {
     }
 
     if (subject !== undefined) draft.subject = subject;
-    if (bodyHtml !== undefined) draft.bodyHtml = bodyHtml;
+    if (bodyHtml !== undefined) draft.bodyHtml = sanitizeBodyHtml(bodyHtml);
     if (variables !== undefined) draft.variables = variables;
     if (dataSourceType !== undefined) draft.dataSourceType = dataSourceType;
     if (dataSourceFile !== undefined) draft.dataSourceFile = dataSourceFile;
@@ -2171,7 +2556,14 @@ app.post('/api/cloudinary/upload', verifyToken, (req, res, next) => { getUpload(
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    const folder = req.body.folder || 'leddger-ai';
+    // Allowlisted folders only — the raw client value previously flowed
+    // straight into Cloudinary (path traversal / arbitrary folder names).
+    const ALLOWED_FOLDERS = new Set(['leddger-ai', 'avatars', 'templates', 'spreadsheets']);
+    const requestedFolder = String(req.body.folder || 'leddger-ai');
+    if (!ALLOWED_FOLDERS.has(requestedFolder)) {
+      return res.status(400).json({ error: 'Invalid folder' });
+    }
+    const folder = requestedFolder;
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
@@ -2201,7 +2593,10 @@ app.post('/api/cloudinary/upload', verifyToken, (req, res, next) => { getUpload(
   }
 });
 
-// DELETE /api/cloudinary/:publicId — generic asset delete
+// DELETE /api/cloudinary/:publicId — scoped asset delete (own assets only).
+// publicIds are predictable (avatars/<uid>), so unrestricted deletes let any
+// authed user destroy anyone's avatar. Only the caller's own avatar prefix
+// and uids namespaced to them are deletable here.
 app.delete('/api/cloudinary/:publicId', verifyToken, async (req, res) => {
   try {
     const cloudinary = configureCloudinary();
@@ -2210,6 +2605,11 @@ app.delete('/api/cloudinary/:publicId', verifyToken, async (req, res) => {
     }
 
     const publicId = decodeURIComponent(req.params.publicId);
+    const ownAvatar = `avatars/${req.user.uid}`;
+    const ownNamespace = `${req.user.uid}/`;
+    if (publicId !== ownAvatar && !publicId.startsWith(ownNamespace)) {
+      return res.status(403).json({ error: 'You can only delete your own assets' });
+    }
     const result = await cloudinary.uploader.destroy(publicId);
     res.json({ result: result.result, publicId });
   } catch (error) {
@@ -2248,6 +2648,20 @@ app.put('/api/user/profile', verifyToken, async (req, res) => {
   try {
     const userId = req.user.uid;
     const { display_name, avatar_url, timezone } = req.body || {};
+
+    // avatar_url is rendered as <img src> — only accept plain https URLs so
+    // arbitrary strings can't become tracking/phishing or javascript: sources.
+    // (The /cloudinary/avatar upload endpoint sets the real avatar itself.)
+    if (avatar_url !== undefined && avatar_url !== null && avatar_url !== '') {
+      let ok = false;
+      try {
+        const u = new URL(String(avatar_url));
+        ok = u.protocol === 'https:' && !/[\s<>"']/.test(String(avatar_url));
+      } catch { ok = false; }
+      if (!ok) {
+        return res.status(400).json({ error: 'avatar_url must be a valid https URL' });
+      }
+    }
 
     const updates = { updated_at: new Date().toISOString() };
     if (display_name !== undefined) updates.display_name = display_name;
@@ -2351,7 +2765,7 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
     }).eq('id', userId);
     deleted.supabase.push('profiles (reset)');
 
-    // --- MongoDB deletions ---
+    // --- MongoDB deletions (fail loudly per collection so partial wipes surface) ---
     const mongoModels = [
       { name: 'EmailAccount', model: EmailAccount },
       { name: 'EmailConfig', model: EmailConfig },
@@ -2359,17 +2773,31 @@ app.delete('/api/user/data', verifyToken, async (req, res) => {
       { name: 'EmailCampaign', model: EmailCampaign },
       { name: 'EmailSuppression', model: EmailSuppression },
       { name: 'MeetingRate', model: MeetingRate },
+      { name: 'MeetingSplit', model: MeetingSplit },
+      { name: 'ProjectBudget', model: ProjectBudget },
       { name: 'AuditLog', model: require('./models/AuditLog') },
       { name: 'Spreadsheet', model: Spreadsheet },
       { name: 'AnalyticsReport', model: AnalyticsReport },
+      { name: 'TemplateData', model: TemplateData },
+      { name: 'TemplateSubmission', model: TemplateSubmission },
+      { name: 'GoogleDriveToken', model: require('./models/GoogleDriveToken') },
     ];
     for (const { name, model } of mongoModels) {
-      const result = await model.deleteMany({ ownerUid: userId });
-      deleted.mongodb.push(`${name} (${result.deletedCount})`);
+      try {
+        const result = await model.deleteMany({ ownerUid: userId });
+        deleted.mongodb.push(`${name} (${result.deletedCount})`);
+      } catch (e) {
+        deleted.mongodb.push(`${name} (ERROR: ${e.message})`);
+      }
     }
 
-    // --- Google Drive token cleanup ---
-    try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }
+    // User model uses firebaseUid
+    const User = require('./models/User');
+    const userResult = await User.deleteMany({ firebaseUid: userId });
+    deleted.mongodb.push(`User (${userResult.deletedCount})`);
+
+    // --- Google Drive token cleanup (revoke at Google, doc already wiped above) ---
+    try { await revokeTokens(userId); } catch (e) { /* non-fatal */ }
 
     // --- Cloudinary avatar deletion ---
     try {
@@ -2427,17 +2855,30 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
       { name: 'EmailCampaign', model: EmailCampaign },
       { name: 'EmailSuppression', model: EmailSuppression },
       { name: 'MeetingRate', model: MeetingRate },
+      { name: 'MeetingSplit', model: MeetingSplit },
+      { name: 'ProjectBudget', model: ProjectBudget },
       { name: 'AuditLog', model: require('./models/AuditLog') },
       { name: 'Spreadsheet', model: Spreadsheet },
       { name: 'AnalyticsReport', model: AnalyticsReport },
+      { name: 'TemplateData', model: TemplateData },
+      { name: 'TemplateSubmission', model: TemplateSubmission },
+      { name: 'GoogleDriveToken', model: require('./models/GoogleDriveToken') },
     ];
     for (const { name, model } of mongoModels) {
-      const result = await model.deleteMany({ ownerUid: userId });
-      deleted.mongodb.push(`${name} (${result.deletedCount})`);
+      try {
+        const result = await model.deleteMany({ ownerUid: userId });
+        deleted.mongodb.push(`${name} (${result.deletedCount})`);
+      } catch (e) {
+        deleted.mongodb.push(`${name} (ERROR: ${e.message})`);
+      }
     }
 
-    // --- Google Drive token cleanup ---
-    try { await revokeTokens(userId); deleted.mongodb.push('GoogleDriveToken'); } catch (e) { /* non-fatal */ }
+    const User = require('./models/User');
+    const userResult = await User.deleteMany({ firebaseUid: userId });
+    deleted.mongodb.push(`User (${userResult.deletedCount})`);
+
+    // --- Google Drive token cleanup (revoke at Google, doc already wiped above) ---
+    try { await revokeTokens(userId); } catch (e) { /* non-fatal */ }
 
     try {
       const cloudinary = configureCloudinary();
@@ -2470,30 +2911,6 @@ app.delete('/api/user/account', verifyToken, async (req, res) => {
 // ANALYTICS API ENDPOINTS
 // ==========================================
 
-// Supabase/PostgREST caps a single select at 1000 rows by default, so a
-// straight `.select('*')` silently truncates any user with more than that
-// many drafts or submissions. Page through with `.range()` instead.
-const SYNC_PAGE_SIZE = 1000;
-
-async function fetchAllSyncRows(table, userId) {
-  const rows = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
-      .eq('user_id', userId)
-      .range(from, from + SYNC_PAGE_SIZE - 1);
-
-    if (error) throw error;
-
-    rows.push(...(data || []));
-    if (!data || data.length < SYNC_PAGE_SIZE) break;
-    from += SYNC_PAGE_SIZE;
-  }
-  return rows;
-}
-
 /**
  * POST /api/analytics/sync
  * Backfill existing Supabase templates and submissions to MongoDB
@@ -2501,10 +2918,15 @@ async function fetchAllSyncRows(table, userId) {
  */
 app.post('/api/analytics/sync', verifyToken, async (req, res) => {
   try {
-    const drafts = await fetchAllSyncRows('form_drafts', req.user.uid);
+    const { data: drafts, error: draftsError } = await supabase
+      .from('form_drafts')
+      .select('*')
+      .eq('user_id', req.user.uid);
+
+    if (draftsError) throw draftsError;
 
     let templatesSynced = 0;
-    for (const draft of drafts) {
+    for (const draft of (drafts || [])) {
       await TemplateData.findOneAndUpdate(
         { draftId: draft.draft_id },
         {
@@ -2522,34 +2944,30 @@ app.post('/api/analytics/sync', verifyToken, async (req, res) => {
       templatesSynced++;
     }
 
-    const submissions = await fetchAllSyncRows('form_submissions', req.user.uid);
+    const { data: submissions, error: subError } = await supabase
+      .from('form_submissions')
+      .select('*')
+      .eq('user_id', req.user.uid);
+
+    if (subError) throw subError;
 
     let submissionsSynced = 0;
-    if (submissions.length > 0) {
-      // A single bulk upsert instead of a findOne+create round trip per
-      // submission — halves the DB calls and stays idempotent (existing
-      // submissions are matched and left untouched via $setOnInsert).
-      const result = await TemplateSubmission.bulkWrite(
-        submissions.map((sub) => ({
-          updateOne: {
-            filter: { submissionId: sub.submission_id },
-            update: {
-              $setOnInsert: {
-                submissionId: sub.submission_id,
-                draftId: sub.draft_id,
-                ownerUid: req.user.uid,
-                templateType: sub.template_type || 'unknown',
-                title: sub.title,
-                submittedData: sub.submitted_data,
-                submittedAt: sub.submitted_at,
-              },
-            },
-            upsert: true,
-          },
-        })),
-        { ordered: false }
-      );
-      submissionsSynced = result.upsertedCount || 0;
+    for (const sub of (submissions || [])) {
+      // Scope the existence check to this user: another user's row with the
+      // same id must not block a legitimate sync (or leak across accounts).
+      const exists = await TemplateSubmission.findOne({ submissionId: sub.submission_id, ownerUid: req.user.uid });
+      if (!exists) {
+        await TemplateSubmission.create({
+          submissionId: sub.submission_id,
+          draftId: sub.draft_id,
+          ownerUid: req.user.uid,
+          templateType: sub.template_type || 'unknown',
+          title: sub.title,
+          submittedData: sub.submitted_data,
+          submittedAt: sub.submitted_at,
+        });
+        submissionsSynced++;
+      }
     }
 
     res.json({
@@ -2682,7 +3100,7 @@ app.get('/api/analytics/trends', verifyToken, async (req, res) => {
  */
 app.get('/api/google-drive/auth', verifyToken, (req, res) => {
   try {
-    const state = req.user.uid;
+    const state = signDriveState(req.user.uid);
     const authUrl = getAuthUrl(state);
     res.json({ authUrl });
   } catch (error) {
@@ -2701,16 +3119,23 @@ app.get('/api/google-drive/callback', async (req, res) => {
     return res.status(400).send('Missing code or state parameter');
   }
 
+  // Verify the signed, expiring state before trusting the uid it carries
+  const ownerUid = verifyDriveState(state);
+  if (!ownerUid) {
+    return res.status(400).send('Invalid or expired state parameter');
+  }
+
   try {
     const tokens = await exchangeCodeForTokens(code);
-    await storeTokens(state, tokens);
+    if (!tokens || !tokens.refresh_token) {
+      throw new Error('no refresh_token returned — reconnect with consent');
+    }
+    await storeTokens(ownerUid, tokens);
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/dashboard/settings/integrations?drive=connected`);
+    res.redirect(`${safeFrontendUrl()}/dashboard/settings/integrations?drive=connected`);
   } catch (error) {
     console.error('Error in Google Drive callback:', error);
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/dashboard/settings/integrations?drive=error`);
+    res.redirect(`${safeFrontendUrl()}/dashboard/settings/integrations?drive=error`);
   }
 });
 
@@ -2807,6 +3232,21 @@ app.post('/api/analytics/templates/:draftId/export/drive', verifyToken, async (r
 // ===========================================================================
 
 const VALID_EXPORT_FORMATS = ['csv', 'json', 'pdf'];
+const MAX_REPORT_RECIPIENTS = 20;
+
+// Normalize + validate report recipients: lowercase, trim, valid emails only,
+// capped so a typo or hostile list can't turn the scheduler into a spam cannon.
+function normalizeRecipients(list) {
+  if (!Array.isArray(list)) return { error: 'recipientEmails must be a non-empty array' };
+  const clean = [...new Set(
+    list.map((e) => String(e || '').trim().toLowerCase()).filter((e) => e && isValidEmail(e))
+  )];
+  if (clean.length === 0) return { error: 'recipientEmails must contain at least one valid email' };
+  if (clean.length > MAX_REPORT_RECIPIENTS) {
+    return { error: `recipientEmails is limited to ${MAX_REPORT_RECIPIENTS} addresses` };
+  }
+  return { emails: clean };
+}
 
 function resolveExportFormat(query) {
   const format = String(query.format || 'csv').toLowerCase();
@@ -2906,8 +3346,9 @@ app.post('/api/analytics/reports', verifyToken, async (req, res) => {
       const exists = await TemplateData.findOne({ ownerUid: req.user.uid, draftId });
       if (!exists) return res.status(404).json({ error: 'Template not found' });
     }
-    if (!Array.isArray(recipientEmails) || recipientEmails.length === 0) {
-      return res.status(400).json({ error: 'recipientEmails must be a non-empty array' });
+    const normalized = normalizeRecipients(recipientEmails);
+    if (normalized.error) {
+      return res.status(400).json({ error: normalized.error });
     }
 
     const report = await AnalyticsReport.create({
@@ -2917,7 +3358,7 @@ app.post('/api/analytics/reports', verifyToken, async (req, res) => {
       scope,
       draftId: scope === 'template' ? draftId : null,
       format: VALID_EXPORT_FORMATS.includes(format) ? format : 'csv',
-      recipientEmails,
+      recipientEmails: normalized.emails,
       status: 'active',
     });
 
@@ -2958,7 +3399,13 @@ app.put('/api/analytics/reports/:id', verifyToken, async (req, res) => {
 
     if (name !== undefined) report.name = name;
     if (VALID_EXPORT_FORMATS.includes(format)) report.format = format;
-    if (Array.isArray(recipientEmails) && recipientEmails.length > 0) report.recipientEmails = recipientEmails;
+    if (recipientEmails !== undefined) {
+      const normalized = normalizeRecipients(recipientEmails);
+      if (normalized.error) {
+        return res.status(400).json({ error: normalized.error });
+      }
+      report.recipientEmails = normalized.emails;
+    }
 
     const freqChanged = VALID_REPORT_FREQUENCIES.includes(frequency) && frequency !== report.frequency;
     if (freqChanged) report.frequency = frequency;
@@ -2999,6 +3446,19 @@ app.delete('/api/analytics/reports/:id', verifyToken, async (req, res) => {
     console.error('Error deleting analytics report:', error);
     res.status(500).json({ error: 'Failed to delete scheduled report' });
   }
+});
+
+// Central error handler — maps multer upload errors (fileFilter rejections,
+// size limits) to JSON 400s instead of Express's default HTML stack page.
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'File too large. Maximum size is 5MB.' });
+  }
+  if (/invalid file type/i.test(err.message || '')) {
+    return res.status(400).json({ error: err.message });
+  }
+  return next(err);
 });
 
 if (require.main === module) {

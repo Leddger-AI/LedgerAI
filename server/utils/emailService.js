@@ -55,13 +55,19 @@ const createTransporter = async () => {
   });
 };
 
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const buildSubmissionEmailHtml = (formTitle, submittedData) => {
-  const dataString = Object.entries(submittedData)
-    .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
+  const data = submittedData && typeof submittedData === 'object' ? submittedData : {};
+  const dataString = Object.entries(data)
+    .slice(0, 200)
+    .map(([key, value]) => `<strong>${escapeHtml(key)}:</strong> ${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : value)}`)
     .join('<br>');
 
   return `
-    <h2>New Submission for ${formTitle}</h2>
+    <h2>New Submission for ${escapeHtml(formTitle)}</h2>
     <p>A user has just completed your form draft.</p>
     <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px;">
       ${dataString}
@@ -113,6 +119,7 @@ const sendOtpEmail = async (toEmail, otpCode, actionLabel) => {
 };
 
 module.exports = {
+  createTransporter,
   sendFormSubmissionEmail,
   buildSubmissionEmailHtml,
   sendOtpEmail,
