@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Calendar, Send, Trash2, Loader2, RefreshCw, AlertCircle, CheckCircle2, Mail, Users } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Clock, Calendar, Trash2, Loader2, RefreshCw, AlertCircle, Mail, Users } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -58,7 +58,8 @@ export default function ScheduleView() {
   }, []);
 
   useEffect(() => {
-    fetchScheduled();
+    const timer = setTimeout(fetchScheduled, 0);
+    return () => clearTimeout(timer);
   }, [fetchScheduled]);
 
   const handleCancel = async (campaignId) => {
@@ -136,10 +137,10 @@ export default function ScheduleView() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>{campaign.name}</h3>
-                    {campaign.draftId?.subject && (
+                    {(campaign.snapshot?.subject ?? campaign.draftId?.subject) && (
                       <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                         <Mail size={11} style={{ display: 'inline', marginRight: '4px' }} />
-                        {campaign.draftId.subject}
+                        {campaign.snapshot?.subject ?? campaign.draftId?.subject}
                       </span>
                     )}
                   </div>

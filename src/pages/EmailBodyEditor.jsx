@@ -7,7 +7,7 @@ import {
   Cloud, Loader2, FileUp, AlertTriangle, Save, CheckCircle2
 } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
-import { extractVars, normHeader } from '../utils/templateBind';
+import { extractVars, normHeader, canonicalizeTemplate } from '../utils/templateBind';
 import './EmailBodyEditor.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -95,7 +95,7 @@ export default function EmailBodyEditor() {
       } else {
         setVarFilter('');
       }
-    } catch (_) { /* caret unreadable — ignore */ }
+    } catch { /* caret unreadable — ignore */ }
   };
 
   const handleEditorInput = () => {
@@ -138,7 +138,7 @@ export default function EmailBodyEditor() {
     personalization: 0,
   });
 
-  const calculateMetrics = () => {
+  const calculateMetrics = useCallback(() => {
     let subLen = 0;
     if (subjectRef.current) {
       subLen = subjectRef.current.innerText.trim().length;
@@ -173,8 +173,8 @@ export default function EmailBodyEditor() {
       const known = new Set(variables.map(v => v.id));
       const missing = used.filter(id => !known.has(id));
       setSheetUnmapped(missing);
-    } catch (_) { /* ignore */ }
-  };
+    } catch { /* ignore */ }
+  }, [variables]);
 
   useEffect(() => {
     // Initialize default content for demo purposes
@@ -193,7 +193,7 @@ export default function EmailBodyEditor() {
       subjectRef.current.innerHTML = `Idea for <span class="variable-pill" contenteditable="false">{{company_name}}</span> !`;
     }
     calculateMetrics();
-  }, []);
+  }, [calculateMetrics]);
 
   const saveSelection = () => {
     const sel = window.getSelection();
@@ -216,10 +216,10 @@ export default function EmailBodyEditor() {
   };
 
   const addVariablesFromHeaders = (headers) => {
-    const newVars = headers.filter(f => f).map(field => ({
-      id: field.toLowerCase().replace(/\s+/g, '_'),
-      label: `{{${field}}}`
-    }));
+    const newVars = headers.filter(f => normHeader(f)).map(field => {
+      const id = normHeader(field);
+      return { id, label: `{{${id}}}` };
+    });
     setVariables(prev => {
       const existingIds = new Set(prev.map(v => v.id));
       const toAdd = newVars.filter(h => !existingIds.has(h.id));
@@ -355,12 +355,13 @@ export default function EmailBodyEditor() {
         setSaveStatus({ type: 'error', message: 'Not authenticated. Please sign in.' });
         return;
       }
-      const subject = subjectRef.current?.innerText || '';
-      const bodyHtml = bodyRef.current?.innerHTML || '';
+      const subject = canonicalizeTemplate(subjectRef.current?.innerText || '');
+      const bodyHtml = canonicalizeTemplate(bodyRef.current?.innerHTML || '');
+      const usedVariables = extractVars(subject, bodyHtml).map(id => ({ id, label: `{{${id}}}` }));
       const payload = {
         subject,
         bodyHtml,
-        variables,
+        variables: usedVariables,
         dataSourceType,
         dataSourceFile: importSource || null,
       };

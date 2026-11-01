@@ -1,141 +1,51 @@
-# 09: Email Campaign Scheduling
+# 09: Email Campaign Workflow
 
-## Feature Summary
+## User journey and API flow
 
-User composes an email campaign (subject + body + recipients), then either sends immediately or schedules it for a future date/time. Scheduled campaigns are processed by Agenda (MongoDB-backed job scheduler) which triggers nodemailer to send individual emails with variable substitution. Results are logged to Supabase.
-
-## ASCII Flow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  FRONTEND (EmailAutomationView.jsx)                              │
-│                                                                   │
-│  User composes campaign:                                          │
-│  ├─ Select email draft (subject + body HTML)                     │
-│  ├─ Select recipients (from spreadsheet data source)             │
-│  ├─ Choose email account (sender)                                │
-│  └─ Click "Send Now" OR "Schedule"                               │
-│                                                                   │
-│  SEND NOW:                                                        │
-│  └─ POST /api/email/send                                         │
-│     Body: { draftId, recipients, campaignName, accountId }       │
-│                                                                   │
-│  SCHEDULE:                                                        │
-│  └─ POST /api/email/schedule                                     │
-│     Body: { draftId, recipients, campaignName,                    │
-│             scheduledAt, accountId }                             │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  BACKEND — SEND NOW (server/index.js:1351)                       │
-│  POST /api/email/send                                             │
-│  ├─ verifyToken → req.user.uid                                   │
-│  ├─ Validate: draftId, recipients, accountId required            │
-│  ├─ Fetch EmailDraft from MongoDB                                │
-│  ├─ Fetch EmailAccount from MongoDB                              │
-│  ├─ Create EmailCampaign in MongoDB (status: 'sending')         │
-│  ├─ Build transporter from account config:                       │
-│  │  ├─ OAuth2: googleapis + refresh token → access token        │
-│  │  └─ SMTP: nodemailer.createTransport({ host, port, auth })   │
-│  │                                                                │
-│  ├─ For each recipient:                                          │
-│  │  ├─ Substitute {{variables}} in subject and body             │
-│  │  ├─ transporter.sendMail({ from, to, subject, html })        │
-│  │  ├─ Mark recipient.status = 'sent' or 'failed'              │
-│  │  └─ Increment sentCount / failedCount                        │
-│  │                                                                │
-│  ├─ Update campaign: status, sentCount, failedCount, sentAt     │
-│  ├─ Insert into Supabase email_send_log                          │
-│  └─ res.json({ campaignId, sentCount, failedCount })            │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  BACKEND — SCHEDULE (server/index.js:1526)                       │
-│  POST /api/email/schedule                                         │
-│  ├─ verifyToken → req.user.uid                                   │
-│  ├─ Validate: draftId, recipients, scheduledAt, accountId       │
-│  ├─ Fetch EmailDraft + EmailAccount                              │
-│  ├─ Create EmailCampaign (status: 'scheduled', scheduledAt)     │
-│  ├─ scheduleCampaign(campaignId, sendDate) → scheduler.js:181   │
-│  │  ├─ getAgenda() → Agenda instance (MongoDB-backed)           │
-│  │  └─ agenda.schedule(sendAt, 'send email campaign', { id })  │
-│  └─ res.json({ campaignId, scheduledAt })                       │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼ (at scheduled time)
-┌─────────────────────────────────────────────────────────────────┐
-│  AGENDA SCHEDULER (server/scheduler.js:20)                       │
-│  Job: 'send email campaign'                                      │
-│  ├─ Fetch EmailCampaign from MongoDB by campaignId              │
-│  ├─ Skip if already sent/cancelled                               │
-│  ├─ Fetch EmailDraft + EmailConfig                               │
-│  ├─ Build transporter (OAuth2 or SMTP)                           │
-│  ├─ For each recipient:                                          │
-│  │  ├─ Substitute {{variables}} in subject and body             │
-│  │  ├─ transporter.sendMail({ from, to, subject, html })        │
-│  │  └─ Update recipient.status                                   │
-│  ├─ Update campaign: status='sent', counts, sentAt              │
-│  ├─ Insert into Supabase email_send_log                          │
-│  └─ console.log(`Campaign ${id} sent: X sent, Y failed`)        │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  CANCEL SCHEDULED CAMPAIGN                                        │
-│  DELETE /api/email/schedule/:campaignId (server/index.js:1601)   │
-│  ├─ Find campaign in MongoDB                                     │
-│  ├─ cancelScheduledCampaign(campaignId) → scheduler.js:187      │
-│  │  └─ agenda.cancel({ name: 'send email campaign',             │
-│  │                     'data.campaignId': id })                  │
-│  ├─ Update campaign.status = 'cancelled'                        │
-│  └─ res.json({ message: 'Cancelled' })                          │
-└─────────────────────────────────────────────────────────────────┘
+```text
+Email Automation
+  → create/select draft and sender account
+  → import CSV/XLSX or add recipients
+  → map variables and preview rendered rows
+  → POST /api/email/send (202, queued) OR POST /api/email/schedule (200, scheduled)
+  → GET /api/email/campaigns/:id for progress
+  → Sent Emails for sent/partial/failed/needs_review and selected retry
+  → Schedule for future campaigns and cancellation
 ```
 
-## File-by-File Trace
+Both creation endpoints use `server/utils/emailCampaignFlow.js`. They validate the same input, resolve an owner-scoped draft/account, and store a snapshot of the subject, HTML body, sender email, recipients, and mapped variables in `EmailCampaign`. The frontend sends a request ID. Repeating that ID returns the same campaign rather than scheduling twice. Older callers can omit it.
 
-| Step | File | Lines | What Happens |
-|------|------|-------|--------------|
-| 1. Send now | `server/index.js` | 1351-1460 | `POST /api/email/send` |
-| 2. Schedule | `server/index.js` | 1526-1584 | `POST /api/email/schedule` |
-| 3. Cancel schedule | `server/index.js` | 1601-1622 | `DELETE /api/email/schedule/:id` |
-| 4. List campaigns | `server/index.js` | 1498-1508 | `GET /api/email/campaigns` |
-| 5. Send log | `server/index.js` | 1464-1478 | `GET /api/email/send-log` |
-| 6. Agenda define | `server/scheduler.js` | 20-152 | `agenda.define('send email campaign')` |
-| 7. Schedule job | `server/scheduler.js` | 181-185 | `scheduleCampaign()` |
-| 8. Cancel job | `server/scheduler.js` | 187-191 | `cancelScheduledCampaign()` |
-| 9. Agenda start | `server/scheduler.js` | 174-178 | `agenda.start()` on first call |
-| 10. Stop on shutdown | `server/scheduler.js` | 205-210 | `stopAgenda()` on SIGTERM/SIGINT |
+The Email page and Body editor normalize placeholders when saving a draft: `{{First Name}}` becomes `{{first_name}}`, and `{{E-mail}}` becomes `{{email}}`. Delivery applies the same normalization to older drafts. Only variables actually used by a draft need values. The Send modal can take values from mapped spreadsheet columns or manual recipient fields; email, name, and the selected sender fill the matching built-in variables. Invalid spreadsheet email rows are quarantined before submission. A campaign accepts up to 500 valid recipients; larger files must be split.
 
-## Shared Dependencies
+The existing API service starts Agenda after MongoDB connects. On startup it first marks previously `sending` recipients `unknown`, then starts Agenda and requeues waiting campaigns. `GET /api/email/worker-health` reports whether MongoDB is connected and all Agenda job processors are registered. The backend must remain awake for timely scheduled sends.
 
-- **Agenda** — MongoDB-backed job scheduler (`@agendajs/mongo-backend`)
-- **MongoDB** — `EmailCampaign`, `EmailDraft`, `EmailConfig`, `EmailAccount` collections + `agendaJobs` collection
-- **Supabase** — `email_send_log` table for audit trail
-- **nodemailer** — email sending (OAuth2 Gmail or SMTP)
-- **googleapis** — Gmail OAuth2 access token refresh (lazy-loaded)
-- **Supabase Auth** — JWT for API authentication
+## Delivery states
 
-## Error Paths
+| State | Meaning |
+|---|---|
+| `queued` | Send Now accepted; worker has not claimed it |
+| `scheduled` | Waiting for the chosen time; can be cancelled |
+| `sending` | Worker atomically claimed the campaign |
+| `sent` | Every attempted recipient sent successfully |
+| `partial` | Some sent and others failed or were suppressed |
+| `failed` | No recipients sent |
+| `needs_review` | A recipient is pending or has an uncertain result after interruption |
+| `cancelled` | Future delivery was cancelled before worker claim |
 
-| Scenario | What Happens |
-|----------|-------------|
-| No email account configured | 400: "No email account configured" |
-| Draft not found | 400: "Draft not found" |
-| Transporter fails | Individual recipient marked 'failed', campaign continues |
-| All recipients fail | Campaign status = 'failed' |
-| Agenda job fails | Campaign stays 'scheduled', logged to console |
-| Cancel non-scheduled campaign | 400: "Campaign is not scheduled" |
+The worker in `server/scheduler.js` delegates to `processCampaign`. It checks suppression and the 24-hour send limit at delivery time, escapes mapped values in HTML, persists each recipient result, and calculates final counts from saved recipient states. A result left `sending` after interruption becomes `unknown` on recovery; no automatic retry occurs. SMTP delivery cannot guarantee exactly once across a crash.
 
-## Environment Variables
+Agenda v6 cancellation uses a nested `data` filter (for example `{ name: 'send email campaign', data: { campaignId } }`). A dotted `data.campaignId` option is ignored and would cancel every campaign job with that name. The real Agenda integration test checks that scheduling and cancelling one campaign preserves another.
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `MONGODB_URI` | Yes | MongoDB connection (Agenda + email models) |
-| `SUPABASE_URL` | Yes | Supabase for email_send_log |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role |
-| `GOOGLE_CLIENT_ID` | For Gmail OAuth2 | Gmail sender auth |
-| `GOOGLE_CLIENT_SECRET` | For Gmail OAuth2 | Gmail sender auth |
-| `GOOGLE_REFRESH_TOKEN` | For Gmail OAuth2 | Gmail token refresh |
-| `GOOGLE_EMAIL` | For Gmail OAuth2 | Gmail sender address |
+`GET /api/email/campaigns?status=...` feeds Recent Campaigns and Sent Emails from MongoDB. The draft list returns a short `bodyPreview`; opening a draft fetches its full body. Schedule displays the campaign's frozen subject. `POST /api/email/campaigns/:id/retry` creates a linked campaign for selected failed or pending recipients. Unknown recipients require `includeUnknown: true` and an explicit UI confirmation. The old Supabase `email_send_log` remains for compatibility and is upserted once per campaign after delivery. Apply `server/email_send_log_migration.sql` to an existing Supabase database before deployment.
+
+## Unsubscribe and failure paths
+
+The worker places a signed campaign and recipient token in the human unsubscribe URL. `/unsubscribe` asks for confirmation and calls `POST /api/email/unsubscribe` with `{ token }`. For mailbox one-click controls, the message also carries `List-Unsubscribe` with the public API URL `/api/email/unsubscribe/one-click?token=...` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. GET on that API URL redirects to the confirmation page without changing suppression. Only a valid RFC 8058 POST suppresses the address. The backend verifies the signature and that the address belongs to the campaign. Rotating `ENCRYPTION_KEY` invalidates previously issued links.
+
+If scheduling fails, the campaign is marked failed with `lastError`, and the API returns 503. If the sender account or draft is unavailable at delivery time, the campaign ends in a reviewable failure state. A failed Supabase log write does not hide the MongoDB campaign result in the UI. Cancellation only succeeds while the campaign is still scheduled; a worker claim wins the race.
+
+## Configuration and verification
+
+Requires MongoDB, Supabase, `ENCRYPTION_KEY` (64 hex characters), sender account credentials, and `FRONTEND_URL`. Set `PUBLIC_API_URL` to the externally reachable HTTPS backend origin; Render's `RENDER_EXTERNAL_URL` is used when it is omitted. Keep the current Render API service awake and monitor `/api/email/worker-health` for HTTP 200. The email and scheduler tests cover queueing, snapshots, idempotency, delivery results, recovery, retry, unsubscribe tokens and one-click POST, a real Agenda processor, and scheduled delivery through an API restart with isolated MongoDB and local SMTP.
+
+For isolated UI testing, run `node tests/fixtures/localSmtp.js` and `node tests/fixtures/localEmailDevServer.js` in separate terminals from `server/`. In the repository root, start Vite with `VITE_LOCAL_EMAIL_TEST=true`, `VITE_SUPABASE_URL=http://127.0.0.1:59999`, and `VITE_SUPABASE_ANON_KEY=local-only`. Configure the sender as `sender@example.invalid`, SMTP host `127.0.0.1`, port `2525`, with any local-only app password. These fixtures use temporary in-memory MongoDB, drop SMTP messages, and authenticate a test user only in the Vite development build. The test data disappears when the API process stops.

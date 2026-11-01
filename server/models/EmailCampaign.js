@@ -22,7 +22,7 @@ const EmailCampaignSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'scheduled', 'sending', 'sent', 'paused', 'failed', 'cancelled'],
+    enum: ['draft', 'queued', 'scheduled', 'sending', 'sent', 'partial', 'paused', 'failed', 'needs_review', 'cancelled'],
     default: 'draft',
   },
   recipients: {
@@ -32,7 +32,7 @@ const EmailCampaignSchema = new mongoose.Schema({
       variables: mongoose.Schema.Types.Mixed,
       status: {
         type: String,
-        enum: ['pending', 'sent', 'failed', 'opened'],
+        enum: ['pending', 'sending', 'sent', 'failed', 'unknown', 'suppressed', 'opened'],
         default: 'pending',
       },
       error: { type: String, default: null },
@@ -64,6 +64,17 @@ const EmailCampaignSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  startedAt: { type: Date, default: null },
+  requestId: { type: String, default: undefined },
+  parentCampaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'EmailCampaign', default: null },
+  snapshot: {
+    subject: { type: String, default: '' },
+    bodyHtml: { type: String, default: '' },
+    senderEmail: { type: String, default: '' },
+  },
+  suppressedCount: { type: Number, default: 0 },
+  lastError: { type: String, default: null },
+  loggedAt: { type: Date, default: null },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -77,5 +88,6 @@ const EmailCampaignSchema = new mongoose.Schema({
 // Hot paths filter by owner (+status/+recency) — compound indexes cover them
 EmailCampaignSchema.index({ ownerUid: 1, createdAt: -1 });
 EmailCampaignSchema.index({ ownerUid: 1, status: 1 });
+EmailCampaignSchema.index({ ownerUid: 1, requestId: 1 }, { unique: true, partialFilterExpression: { requestId: { $type: 'string' } } });
 
 module.exports = mongoose.model('EmailCampaign', EmailCampaignSchema);

@@ -39,8 +39,8 @@ function splitName(full) {
 }
 
 export default function ProfileSection({ user, onAvatarChange }) {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState(() => splitName(user?.displayName).first);
+  const [lastName, setLastName] = useState(() => splitName(user?.displayName).last);
   const [email, setEmail] = useState(user?.email || '');
   const [role, setRole] = useState('');
   const [avatarUrl, setAvatarUrl] = useState(user?.photoURL || '');
@@ -56,6 +56,24 @@ export default function ProfileSection({ user, onAvatarChange }) {
   const [pwSaving, setPwSaving] = useState(false);
   const [prefs, setPrefs] = useState(loadPrefs);
   const fileInputRef = useRef(null);
+  const profileRequestGenerationRef = useRef(0);
+  const previewObjectUrlRef = useRef(null);
+  const previewPreviousUrlRef = useRef('');
+  const mountedRef = useRef(false);
+  const onAvatarChangeRef = useRef(onAvatarChange);
+
+  useEffect(() => { onAvatarChangeRef.current = onAvatarChange; }, [onAvatarChange]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (previewObjectUrlRef.current) {
+        onAvatarChangeRef.current?.(previewPreviousUrlRef.current);
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      }
+    };
+  }, []);
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
@@ -71,6 +89,7 @@ export default function ProfileSection({ user, onAvatarChange }) {
 
   // Fetch profile from backend on mount
   useEffect(() => {
+    const generation = profileRequestGenerationRef.current;
     const fetchProfile = async () => {
       try {
         const token = await getAuthToken();
@@ -93,7 +112,9 @@ export default function ProfileSection({ user, onAvatarChange }) {
           }
           if (data.email) setEmail(data.email);
           if (data.role) setRole(data.role);
-          if (data.avatar_url) setAvatarUrl(data.avatar_url);
+          if (generation === profileRequestGenerationRef.current && Object.hasOwn(data, 'avatar_url')) {
+            setAvatarUrl(data.avatar_url || '');
+          }
           if (data.timezone) setTimezone(data.timezone);
         }
       } catch {
@@ -130,14 +151,28 @@ export default function ProfileSection({ user, onAvatarChange }) {
   const handleAvatarUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!validateFile(file)) return;
+    if (!validateFile(file)) { e.target.value = ''; return; }
 
+    profileRequestGenerationRef.current += 1;
+    const generation = profileRequestGenerationRef.current;
+    const previousUrl = previewObjectUrlRef.current ? previewPreviousUrlRef.current : avatarUrl;
+    if (previewObjectUrlRef.current) URL.revokeObjectURL(previewObjectUrlRef.current);
+    const previewUrl = URL.createObjectURL(file);
+    previewObjectUrlRef.current = previewUrl;
+    previewPreviousUrlRef.current = previousUrl;
+    setAvatarUrl(previewUrl);
+    onAvatarChange?.(previewUrl);
     setUploading(true);
     setErrorMsg('');
+    let keepPreview = false;
     try {
       const token = await getAuthToken();
       if (!token) {
-        showError('Not authenticated. Please log in again.');
+        if (mountedRef.current && generation === profileRequestGenerationRef.current) {
+          setAvatarUrl(previousUrl);
+          onAvatarChange?.(previousUrl);
+          showError('Not authenticated. Please log in again.');
+        }
         return;
       }
 
@@ -152,22 +187,53 @@ export default function ProfileSection({ user, onAvatarChange }) {
 
       if (res.ok) {
         const data = await res.json();
-        setAvatarUrl(data.secure_url);
-        if (onAvatarChange) onAvatarChange(data.secure_url);
-        showSuccess(`Avatar uploaded! (${data.size_kb}KB, WebP ${data.width}x${data.height})`);
+        // Keep the local preview visible until the versioned CDN image loads.
+        const imageReady = await new Promise((resolve) => {
+          const image = new Image();
+          const timeout = setTimeout(() => resolve(false), 8000);
+          image.onload = () => { clearTimeout(timeout); resolve(true); };
+          image.onerror = () => { clearTimeout(timeout); resolve(false); };
+          image.src = data.secure_url;
+        });
+        if (!mountedRef.current || generation !== profileRequestGenerationRef.current) return;
+        if (imageReady) {
+          setAvatarUrl(data.secure_url);
+          onAvatarChange?.(data.secure_url);
+          showSuccess(`Avatar uploaded! (${data.size_kb}KB, WebP ${data.width}x${data.height})`);
+        } else {
+          // Keep the already visible local image if the CDN has not made the
+          // versioned URL available yet. A later profile fetch uses that URL.
+          keepPreview = true;
+          previewPreviousUrlRef.current = data.secure_url;
+          showSuccess('Photo saved. Showing your preview while the image becomes available.');
+        }
       } else {
         const data = await res.json().catch(() => ({}));
-        showError(data.error || 'Upload failed. Check Cloudinary configuration.');
+        if (mountedRef.current && generation === profileRequestGenerationRef.current) {
+          setAvatarUrl(previousUrl);
+          onAvatarChange?.(previousUrl);
+          showError(data.error || 'Upload failed. Check Cloudinary configuration.');
+        }
       }
     } catch {
-      showError('Network error. Please try again.');
+      if (mountedRef.current && generation === profileRequestGenerationRef.current) {
+        setAvatarUrl(previousUrl);
+        onAvatarChange?.(previousUrl);
+        showError('Network error. Please try again.');
+      }
     } finally {
-      setUploading(false);
+      if (mountedRef.current) setUploading(false);
+      if (!keepPreview) URL.revokeObjectURL(previewUrl);
+      if (!keepPreview && previewObjectUrlRef.current === previewUrl) {
+        previewObjectUrlRef.current = null;
+        previewPreviousUrlRef.current = '';
+      }
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleAvatarRemove = async () => {
+    profileRequestGenerationRef.current += 1;
     setRemoving(true);
     setErrorMsg('');
     try {
@@ -263,15 +329,6 @@ export default function ProfileSection({ user, onAvatarChange }) {
     .toUpperCase()
     .slice(0, 2);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>
-        <Loader2 size={16} className="spin" />
-        Loading profile...
-      </div>
-    );
-  }
-
   const rowStyle = {
     display: 'grid',
     gridTemplateColumns: '220px minmax(0, 1fr)',
@@ -324,11 +381,11 @@ export default function ProfileSection({ user, onAvatarChange }) {
               style={{ display: 'none' }}
               onChange={handleAvatarUpload}
             />
-            <button type="button" className="settings-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            <button type="button" className="settings-btn" onClick={() => fileInputRef.current?.click()} disabled={uploading || removing}>
               {uploading ? (<><Loader2 size={14} className="spin" /> Uploading...</>) : (<><Upload size={14} /> Change photo</>)}
             </button>
             {avatarUrl && (
-              <button type="button" className="settings-btn settings-btn-danger" onClick={handleAvatarRemove} disabled={removing}>
+              <button type="button" className="settings-btn settings-btn-danger" onClick={handleAvatarRemove} disabled={removing || uploading}>
                 {removing ? (<><Loader2 size={14} className="spin" /> Removing...</>) : (<><Trash2 size={14} /> Remove</>)}
               </button>
             )}
@@ -344,6 +401,7 @@ export default function ProfileSection({ user, onAvatarChange }) {
             <div style={hintStyle}>Your name, contact email and role.</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {loading && <div className="settings-hint">Loading saved profile details...</div>}
             <div className="settings-grid-2">
               <div className="settings-field">
                 <label className="settings-label">First name</label>
@@ -373,7 +431,7 @@ export default function ProfileSection({ user, onAvatarChange }) {
               </select>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-              <button type="submit" className="settings-btn settings-btn-primary" disabled={saving}>
+              <button type="submit" className="settings-btn settings-btn-primary" disabled={saving || loading}>
                 {saving ? (<><Loader2 size={14} className="spin" /> Saving...</>) : 'Save changes'}
               </button>
             </div>

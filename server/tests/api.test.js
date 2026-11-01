@@ -23,9 +23,12 @@ function createChain() {
     delete: jest.fn().mockReturnThis(),
     upsert: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
+    lte: jest.fn().mockReturnThis(),
+    gt: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     single: jest.fn().mockResolvedValue(mockSupabaseQuery),
+    maybeSingle: jest.fn().mockResolvedValue(mockSupabaseQuery),
     count: jest.fn().mockReturnThis(),
     // Make the chain thenable so `await chain` resolves to mockSupabaseQuery
     then: (resolve, reject) => Promise.resolve(mockSupabaseQuery).then(resolve, reject),
@@ -38,6 +41,20 @@ const mockSupabase = {
 };
 
 jest.mock('../supabaseClient', () => mockSupabase);
+
+const mockCloudinaryUpload = jest.fn((options, done) => {
+  const { PassThrough } = require('stream');
+  const stream = new PassThrough();
+  stream.on('finish', () => done(null, {
+    secure_url: 'https://res.cloudinary.com/test/image/upload/v2/avatars/test-user-uid.webp',
+    public_id: options.public_id,
+    version: 2,
+  }));
+  return stream;
+});
+jest.mock('cloudinary', () => ({
+  v2: { config: jest.fn(), uploader: { upload_stream: mockCloudinaryUpload } },
+}));
 
 // Mock auth middleware to bypass JWT verification
 jest.mock('../middleware/auth', () =>
@@ -441,6 +458,26 @@ describe('Drafts API', () => {
       expect(res.body.draft.goesLiveAt).toBe(goesLive);
     });
 
+    test('D10a: restores the draft when Agenda cannot schedule activation', async () => {
+      const goesLive = new Date(Date.now() + 3600000).toISOString();
+      const expires = new Date(Date.now() + 7200000).toISOString();
+      const draft = { draft_id: 'draft-1', user_id: 'test-user-uid', status: 'draft', goes_live_at: null, expires_at: null };
+      const updated = { ...draft, status: 'scheduled', goes_live_at: goesLive, expires_at: expires };
+      const find = createChain();
+      find.single.mockResolvedValueOnce({ data: draft, error: null });
+      const save = createChain();
+      save.single.mockResolvedValueOnce({ data: updated, error: null });
+      const rollback = createChain();
+      mockSupabase.from.mockReturnValueOnce(find).mockReturnValueOnce(save).mockReturnValueOnce(rollback);
+      require('../scheduler').scheduleDraftActivation.mockRejectedValueOnce(new Error('Agenda unavailable'));
+
+      const res = await request(app).put('/api/drafts/draft-1/schedule')
+        .set('x-test-uid', 'test-user-uid').send({ goesLiveAt: goesLive, expiresAt: expires });
+      expect(res.status).toBe(503);
+      expect(rollback.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft', goes_live_at: null }));
+      expect(rollback.eq).toHaveBeenCalledWith('goes_live_at', goesLive);
+    });
+
     test('D11: rejects missing goesLiveAt', async () => {
       const res = await request(app)
         .put('/api/drafts/draft-1/schedule')
@@ -483,11 +520,11 @@ describe('Drafts API', () => {
       const cancelledDraft = { ...scheduledDraft, status: 'draft' };
 
       // First .single() call: find draft (status=scheduled)
-      // Second .single() call: update result
+      // Conditional update result
       const chain1 = createChain();
       chain1.single.mockResolvedValueOnce({ data: scheduledDraft, error: null });
       const chain2 = createChain();
-      chain2.single.mockResolvedValueOnce({ data: cancelledDraft, error: null });
+      chain2.maybeSingle.mockResolvedValueOnce({ data: cancelledDraft, error: null });
 
       mockSupabase.from.mockReturnValueOnce(chain1).mockReturnValueOnce(chain2);
 
@@ -508,6 +545,19 @@ describe('Drafts API', () => {
         .set('x-test-uid', 'test-user-uid');
 
       expect(res.status).toBe(400);
+    });
+
+    test('D16: cancellation loses a concurrent activation claim', async () => {
+      const chain1 = createChain();
+      chain1.single.mockResolvedValueOnce({ data: { draft_id: 'draft-1', user_id: 'test-user-uid', status: 'scheduled' }, error: null });
+      const chain2 = createChain();
+      chain2.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
+      mockSupabase.from.mockReturnValueOnce(chain1).mockReturnValueOnce(chain2);
+
+      const res = await request(app).delete('/api/drafts/draft-1/schedule').set('x-test-uid', 'test-user-uid');
+      expect(res.status).toBe(409);
+      expect(require('../scheduler').cancelDraftActivation).not.toHaveBeenCalled();
+      expect(chain2.eq).toHaveBeenCalledWith('status', 'scheduled');
     });
   });
 });
@@ -617,6 +667,18 @@ describe('Forms & Submissions API', () => {
   });
 
   describe('POST /api/forms/:draftId/submit', () => {
+    test('F7a: rejects a draft and a form scheduled for the future', async () => {
+      for (const status of ['draft', 'scheduled']) {
+        mockSupabaseQuery.data = {
+          draft_id: 'd1', status, user_id: 'test-user-uid',
+          goes_live_at: new Date(Date.now() + 3600000).toISOString(),
+          expires_at: new Date(Date.now() + 7200000).toISOString(),
+        };
+        const res = await request(app).post('/api/forms/d1/submit').send({ submittedData: { name: 'John' } });
+        expect(res.status).toBe(403);
+      }
+      expect(mockSupabase.from).not.toHaveBeenCalledWith('form_submissions');
+    });
     test('F7: submits form successfully', async () => {
       const futureExpiry = new Date(Date.now() + 86400000).toISOString();
       mockSupabaseQuery.data = {
@@ -885,6 +947,44 @@ describe('Profile API', () => {
 
       expect(res.status).toBe(200);
       expect(chain.update.mock.calls[0][0]).not.toHaveProperty('timezone');
+    });
+  });
+
+  describe('POST /api/cloudinary/avatar', () => {
+    let previous;
+    beforeEach(() => {
+      previous = [process.env.CLOUDINARY_CLOUDNAME, process.env.CLOUDINARY_API_KEY, process.env.CLOUDINARY_API_SECREAT];
+      process.env.CLOUDINARY_CLOUDNAME = 'test';
+      process.env.CLOUDINARY_API_KEY = 'test';
+      process.env.CLOUDINARY_API_SECREAT = 'test';
+    });
+    afterEach(() => {
+      ['CLOUDINARY_CLOUDNAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECREAT'].forEach((name, index) => {
+        if (previous[index] === undefined) delete process.env[name];
+        else process.env[name] = previous[index];
+      });
+    });
+
+    test('returns and saves the versioned delivery URL', async () => {
+      const chain = createChain();
+      mockSupabase.from.mockReturnValueOnce(chain);
+      const png = await require('sharp')({ create: { width: 48, height: 48, channels: 3, background: 'blue' } }).png().toBuffer();
+      const res = await request(app).post('/api/cloudinary/avatar').set('x-test-uid', 'test-user-uid')
+        .attach('file', png, { filename: 'avatar.png', contentType: 'image/png' });
+      expect(res.status).toBe(200);
+      expect(res.body.version).toBe(2);
+      expect(res.body.secure_url).toContain('/v2/');
+      expect(chain.upsert).toHaveBeenCalledWith(expect.objectContaining({ avatar_url: res.body.secure_url }));
+      expect(mockCloudinaryUpload).toHaveBeenCalledWith(expect.objectContaining({ overwrite: true, invalidate: true }), expect.any(Function));
+    });
+
+    test('does not claim upload success when the profile URL could not be saved', async () => {
+      mockSupabaseQuery.error = { message: 'Profile database unavailable' };
+      const png = await require('sharp')({ create: { width: 48, height: 48, channels: 3, background: 'blue' } }).png().toBuffer();
+      const res = await request(app).post('/api/cloudinary/avatar').set('x-test-uid', 'test-user-uid')
+        .attach('file', png, { filename: 'avatar.png', contentType: 'image/png' });
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('Could not save profile photo');
     });
   });
 });

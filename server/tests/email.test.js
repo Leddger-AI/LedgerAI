@@ -43,6 +43,7 @@ const mockScheduler = {
   scheduleCampaign: jest.fn(() => Promise.resolve()),
   cancelScheduledCampaign: jest.fn(() => Promise.resolve()),
   stopAgenda: jest.fn(() => Promise.resolve()),
+  isAgendaReady: jest.fn(() => true),
   scheduleDraftActivation: jest.fn(() => Promise.resolve()),
   cancelDraftActivation: jest.fn(() => Promise.resolve()),
 };
@@ -171,6 +172,17 @@ describe('Email Drafts CRUD', () => {
     expect(res.body.draft.bodyHtml).toBe('<p>Content</p>');
   });
 
+  test('draft saves canonical placeholders for imported column names', async () => {
+    const res = await request(app)
+      .post('/api/email/drafts')
+      .set('x-test-uid', 'test-user-uid')
+      .send({ subject: 'Hello {{First Name}}', bodyHtml: '<p>{{E-mail}}</p>' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.draft.subject).toBe('Hello {{first_name}}');
+    expect(res.body.draft.bodyHtml).toBe('<p>{{email}}</p>');
+  });
+
   test('E41: POST strips scripts, event handlers, and javascript: URLs from bodyHtml', async () => {
     const res = await request(app)
       .post('/api/email/drafts')
@@ -207,6 +219,7 @@ describe('Email Drafts CRUD', () => {
     expect(res.status).toBe(200);
     expect(res.body.drafts).toHaveLength(2);
     expect(res.body.drafts[0].bodyHtml).toBeUndefined();
+    expect(res.body.drafts[0].bodyPreview).toBe('<p>Hello {{name}}</p>');
   });
 
   test('E4: GET /api/email/drafts/:id returns full draft with bodyHtml', async () => {
@@ -370,7 +383,7 @@ describe('Email Accounts', () => {
 // ==========================================
 
 describe('Email Campaign Send', () => {
-  test('E16: POST /api/email/send sends campaign with variable substitution', async () => {
+  test('E16: POST /api/email/send queues campaign and worker sends frozen content', async () => {
     const draft = await createDraft();
     await createAccount();
 
@@ -386,11 +399,14 @@ describe('Email Campaign Send', () => {
         campaignName: 'Test Campaign',
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body.sentCount).toBe(2);
-    expect(res.body.failedCount).toBe(0);
+    expect(res.status).toBe(202);
     expect(res.body.totalRecipients).toBe(2);
+    expect(mockSendMail).not.toHaveBeenCalled();
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
     expect(mockSendMail).toHaveBeenCalledTimes(2);
+    const campaign = await EmailCampaign.findById(res.body.campaignId);
+    expect(campaign.status).toBe('sent');
+    expect(campaign.sentCount).toBe(2);
 
     // Verify variable substitution was called
     const firstCallArgs = mockSendMail.mock.calls[0][0];
@@ -458,9 +474,12 @@ describe('Email Campaign Send', () => {
         ],
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body.sentCount).toBe(1);
-    expect(res.body.failedCount).toBe(1);
+    expect(res.status).toBe(202);
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
+    const campaign = await EmailCampaign.findById(res.body.campaignId);
+    expect(campaign.status).toBe('partial');
+    expect(campaign.sentCount).toBe(1);
+    expect(campaign.failedCount).toBe(1);
   });
 
   test('E21b: POST /api/email/send fails recipients with unmapped {{variables}} instead of mailing raw', async () => {
@@ -478,16 +497,19 @@ describe('Email Campaign Send', () => {
         ],
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body.sentCount).toBe(1);
-    expect(res.body.failedCount).toBe(1);
+    expect(res.status).toBe(202);
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
+    const campaign = await EmailCampaign.findById(res.body.campaignId);
+    expect(campaign.status).toBe('partial');
+    expect(campaign.sentCount).toBe(1);
+    expect(campaign.failedCount).toBe(1);
   });
 
   test('E22: POST /api/email/send inserts into Supabase email_send_log', async () => {
     const draft = await createDraft();
     await createAccount();
 
-    await request(app)
+    const res = await request(app)
       .post('/api/email/send')
       .set('x-test-uid', 'test-user-uid')
       .send({
@@ -495,7 +517,162 @@ describe('Email Campaign Send', () => {
         recipients: [{ email: 'a@b.com', variables: {} }],
       });
 
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
     expect(mockSupabase.from).toHaveBeenCalledWith('email_send_log');
+  });
+
+  test('E42: duplicate requestId queues only one campaign', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    const body = { draftId: draft._id.toString(), requestId: 'same-click', recipients: [{ email: 'a@b.com', variables: { name: 'A' } }] };
+    const first = await request(app).post('/api/email/send').send(body);
+    const second = await request(app).post('/api/email/send').send(body);
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    expect(second.body.campaignId).toBe(first.body.campaignId);
+    expect(await EmailCampaign.countDocuments()).toBe(1);
+    expect(mockScheduler.scheduleCampaign).toHaveBeenCalledTimes(1);
+  });
+
+  test('duplicate schedule request returns its campaign even after the submitted time passes', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    const body = {
+      draftId: draft._id.toString(), requestId: 'schedule-same-click',
+      scheduledAt: new Date(Date.now() + 60000).toISOString(),
+      recipients: [{ email: 'a@b.com', variables: {} }],
+    };
+    const first = await request(app).post('/api/email/schedule').send(body);
+    const second = await request(app).post('/api/email/schedule').send({ ...body, scheduledAt: new Date(Date.now() - 60000).toISOString() });
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.body.campaignId).toBe(first.body.campaignId);
+    expect(await EmailCampaign.countDocuments()).toBe(1);
+  });
+
+  test('E43: queued campaign sends the previewed snapshot after draft edits', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    const res = await request(app).post('/api/email/send').send({ draftId: draft._id.toString(), recipients: [{ email: 'a@b.com', variables: { name: 'Original' } }] });
+    await EmailDraft.updateOne({ _id: draft._id }, { subject: 'Changed', bodyHtml: '<p>Changed</p>' });
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
+    expect(mockSendMail.mock.calls[0][0].subject).toBe('Test Subject');
+    expect(mockSendMail.mock.calls[0][0].html).toContain('Original');
+  });
+
+  test('unbound legacy placeholders never reach SMTP', async () => {
+    const draft = await createDraft('test-user-uid', { bodyHtml: '<p>{{E-mail}}</p>' });
+    await createAccount();
+    const res = await request(app).post('/api/email/send').send({
+      draftId: draft._id.toString(), recipients: [{ email: 'a@b.com', variables: {} }],
+    });
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
+    const campaign = await EmailCampaign.findById(res.body.campaignId);
+    expect(campaign.status).toBe('failed');
+    expect(campaign.recipients[0].error).toContain('Unmapped variable {{E-mail}}');
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  test('E44: suppressed recipients are skipped and mixed delivery is partial', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    await require('../models/EmailSuppression').create({ ownerUid: 'test-user-uid', email: 'a@b.com' });
+    const res = await request(app).post('/api/email/send').send({ draftId: draft._id.toString(), recipients: [
+      { email: 'a@b.com', variables: { name: 'A' } },
+      { email: 'b@b.com', variables: { name: 'B' } },
+    ] });
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
+    const campaign = await EmailCampaign.findById(res.body.campaignId);
+    expect(campaign.suppressedCount).toBe(1);
+    expect(campaign.sentCount).toBe(1);
+    expect(campaign.status).toBe('partial');
+    expect(campaign.recipients[0].status).toBe('suppressed');
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+  });
+
+  test('E45: recovery marks interrupted attempts unknown and requeues waiting campaigns', async () => {
+    const draft = await createDraft();
+    const interrupted = await EmailCampaign.create({ ownerUid: 'test-user-uid', draftId: draft._id, status: 'sending', recipients: [{ email: 'a@b.com', status: 'sending' }] });
+    await EmailCampaign.create({ ownerUid: 'test-user-uid', draftId: draft._id, status: 'queued', scheduledAt: new Date(), recipients: [{ email: 'b@b.com' }] });
+    await require('../utils/emailCampaignFlow').reconcileCampaigns();
+    const recovered = await EmailCampaign.findById(interrupted._id);
+    expect(recovered.status).toBe('needs_review');
+    expect(recovered.recipients[0].status).toBe('unknown');
+    expect(mockScheduler.scheduleCampaign).toHaveBeenCalledTimes(1);
+  });
+
+  test('E46: unknown recipients require explicit retry confirmation', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    const original = await EmailCampaign.create({ ownerUid: 'test-user-uid', draftId: draft._id, status: 'needs_review', snapshot: { subject: 'Frozen', bodyHtml: '<p>Frozen</p>', senderEmail: 'test@gmail.com' }, recipients: [{ email: 'a@b.com', status: 'unknown' }] });
+    const body = { recipientIds: [original.recipients[0]._id.toString()] };
+    const blocked = await request(app).post(`/api/email/campaigns/${original._id}/retry`).send(body);
+    expect(blocked.status).toBe(409);
+    const accepted = await request(app).post(`/api/email/campaigns/${original._id}/retry`).send({ ...body, includeUnknown: true });
+    expect(accepted.status).toBe(202);
+    const retry = await EmailCampaign.findById(accepted.body.campaignId);
+    expect(retry.parentCampaignId.toString()).toBe(original._id.toString());
+  });
+
+  test('E47: unsubscribe requires a signed campaign-specific link', async () => {
+    const draft = await createDraft();
+    const campaign = await EmailCampaign.create({ ownerUid: 'test-user-uid', draftId: draft._id, recipients: [{ email: 'a@b.com' }] });
+    const { unsubscribeToken } = require('../utils/emailCampaignFlow');
+    const token = unsubscribeToken(campaign._id, 'a@b.com');
+    const bad = await request(app).post('/api/email/unsubscribe').send({ token: token + 'x' });
+    expect(bad.status).toBe(400);
+    const good = await request(app).post('/api/email/unsubscribe').send({ token });
+    expect(good.status).toBe(200);
+    expect(await require('../models/EmailSuppression').exists({ ownerUid: 'test-user-uid', email: 'a@b.com' })).toBeTruthy();
+  });
+
+  test('one-click unsubscribe requires the signed URL and the RFC 8058 form field', async () => {
+    const draft = await createDraft();
+    const campaign = await EmailCampaign.create({ ownerUid: 'test-user-uid', draftId: draft._id, recipients: [{ email: 'a@b.com' }] });
+    const { unsubscribeToken } = require('../utils/emailCampaignFlow');
+    const url = `/api/email/unsubscribe/one-click?token=${encodeURIComponent(unsubscribeToken(campaign._id, 'a@b.com'))}`;
+    const get = await request(app).get(url);
+    expect(get.status).toBe(302);
+    expect(await require('../models/EmailSuppression').countDocuments()).toBe(0);
+    expect((await request(app).post(url).type('form').send({ wrong: 'One-Click' })).status).toBe(400);
+    expect((await request(app).post(`${url}x`).type('form').send({ 'List-Unsubscribe': 'One-Click' })).status).toBe(400);
+    expect((await request(app).post(url).send({ 'List-Unsubscribe': 'One-Click' })).status).toBe(415);
+    const good = await request(app).post(url).type('form').send({ 'List-Unsubscribe': 'One-Click' });
+    expect(good.status).toBe(200);
+    expect(await require('../models/EmailSuppression').exists({ ownerUid: 'test-user-uid', email: 'a@b.com' })).toBeTruthy();
+  });
+
+  test('delivered mail advertises a direct one-click POST and keeps the human link', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    const res = await request(app).post('/api/email/send').send({ draftId: draft._id.toString(), recipients: [{ email: 'a@b.com', variables: { name: 'A' } }] });
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
+    const message = mockSendMail.mock.calls[0][0];
+    expect(message.headers['List-Unsubscribe']).toMatch(/^<http:\/\/localhost:5000\/api\/email\/unsubscribe\/one-click\?token=/);
+    expect(message.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    expect(message.html).toContain('http://localhost:5173/unsubscribe?token=');
+  });
+
+  test('E48: worker claim prevents duplicate delivery', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    const res = await request(app).post('/api/email/send').send({ draftId: draft._id.toString(), recipients: [{ email: 'a@b.com', variables: { name: 'A' } }] });
+    const { processCampaign } = require('../utils/emailCampaignFlow');
+    await processCampaign(res.body.campaignId);
+    await processCampaign(res.body.campaignId);
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+  });
+
+  test('E49: SMTP timeout requires review rather than an automatic retry', async () => {
+    const draft = await createDraft();
+    await createAccount();
+    mockSendMail.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
+    const res = await request(app).post('/api/email/send').send({ draftId: draft._id.toString(), recipients: [{ email: 'a@b.com', variables: { name: 'A' } }] });
+    await require('../utils/emailCampaignFlow').processCampaign(res.body.campaignId);
+    const campaign = await EmailCampaign.findById(res.body.campaignId);
+    expect(campaign.status).toBe('needs_review');
+    expect(campaign.recipients[0].status).toBe('unknown');
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -644,6 +821,16 @@ describe('Email Scheduling', () => {
       .set('x-test-uid', 'test-user-uid');
 
     expect(res.status).toBe(404);
+  });
+
+  test('E50: cancellation loses cleanly when worker claims the campaign first', async () => {
+    const draft = await createDraft();
+    const campaign = await EmailCampaign.create({ ownerUid: 'test-user-uid', draftId: draft._id, status: 'scheduled', scheduledAt: new Date(Date.now() + 3600000), recipients: [] });
+    const claim = jest.spyOn(EmailCampaign, 'findOneAndUpdate').mockResolvedValueOnce(null);
+    const res = await request(app).delete(`/api/email/schedule/${campaign._id}`);
+    claim.mockRestore();
+    expect(res.status).toBe(409);
+    expect(mockScheduler.cancelScheduledCampaign).not.toHaveBeenCalled();
   });
 });
 
