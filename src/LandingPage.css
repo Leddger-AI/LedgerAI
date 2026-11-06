@@ -66,7 +66,7 @@ html {
   scroll-behavior: smooth;
 }
 .lp-wrapper {
-  background-color: var(--cz-bg-dark);
+  background: var(--cz-bg-dark) url('/cream-wall-texture.webp') center center / cover fixed;
   color: var(--cz-text-light);
   font-family: var(--cz-font);
   min-height: 100vh;
