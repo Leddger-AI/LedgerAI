@@ -8,9 +8,7 @@ import {
   LineChart,
   Target,
   Globe,
-  Play,
   AlertTriangle,
-  ChevronDown,
   Database,
   Layers,
   Cpu,
@@ -18,18 +16,13 @@ import {
   Snowflake,
   GitBranch,
   Bot,
-  ArrowRight,
   TrendingUp,
-  Server,
-  DollarSign,
-  X,
   Clock,
   PieChart,
   Bell,
   User,
   BarChart2
 } from 'lucide-react';
-import CryptoJS from 'crypto-js';
 import './LandingPage.css';
 import secureAccessImg from './assets/secure_access.png';
 import teamsWorkImg from './assets/teams_work.png';
@@ -113,7 +106,7 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
       )}
 
       {/* HERO SECTION */}
-      <section id="overview" className="cz-hero" style={{ paddingTop: '100px' }}>
+      <section id="overview" className="cz-hero">
         <div className="cz-hero-left">
           <h1 className="cz-hero-title">
             Your Single Source<br/>
@@ -126,8 +119,6 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
         </div>
         
         <div className="cz-hero-right">
-          <div className="cz-concentric-rings"></div>
-          
           <div className="cz-visual-lockup">
             {/* Chart Card */}
             <div className="cz-chart-card">
@@ -295,7 +286,7 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
 
       {/* PHASE 4: COMBINED FEATURES SECTION */}
       <section id="security" className="cz-alt-section cz-alt-dark" style={{ padding: '100px 20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '60px', maxWidth: '1100px', margin: '0 auto' }}>
+        <div className="cz-security-grid">
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div className="cz-alt-text" style={{ margin: 0, padding: 0, width: '100%' }}>

@@ -19,6 +19,28 @@ with no `profiles` row.
   so re-upload replaces everywhere; response reports real w/h/q.
   Proven: 6.6MB noise → 45KB `320px q90`.
 
+## October 2026 follow-up: delayed replacement
+
+The profile view previously waited for compression, Cloudinary upload, and
+Supabase upsert before changing either avatar. Auth `SIGNED_IN` and
+`TOKEN_REFRESHED` also reset the header photo to older auth metadata; a slow
+profile fetch could then overwrite a newer upload. The upload now shows a local
+preview immediately, waits for the new Cloudinary image to load before swapping,
+and restores the prior photo if the request fails. Same-user auth events keep
+the current photo, and older profile responses cannot override a newer change.
+Profile controls render from session data while saved details load. The app
+fetches the avatar alongside meetings and alerts instead of after them.
+The upload completion is guarded against navigation or a newer avatar action,
+so an old asynchronous response cannot replace the latest visible choice.
+
+Compression now targets 256px at WebP effort 2, with a few dimension and quality
+fallbacks to stay under 50KB. This fits the 112px avatar at high pixel density
+while avoiding the old repeated 512px encodes. The API returns Cloudinary's
+versioned `secure_url` and reports a profile persistence error instead of
+claiming success when Supabase did not save the new URL. Cloudinary says
+`invalidate: true` can take seconds to minutes to propagate; its versioned
+delivery URL bypasses the prior cached version immediately.
+
 ## Settings profile redesign (matches reference screenshot)
 
 `ProfileSection.jsx` rewrite: 112px preview, First/Last split (joins to

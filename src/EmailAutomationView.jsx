@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx';
 import DOMPurify from 'dompurify';
 import { getAuthToken } from './supabaseAuth';
 import {
-  extractVars, normHeader, autoMapVariables, substitutePreview as substitutePreviewShared,
+  extractVars, normHeader, canonicalizeTemplate, autoMapVariables, substitutePreview as substitutePreviewShared,
 } from './utils/templateBind';
 import './EmailAutomationView.css';
 
@@ -49,6 +49,36 @@ function safeHtml(html, fallback = '<p>No content</p>') {
   return DOMPurify.sanitize(html || fallback);
 }
 
+function recipientValues(recipient, draft, mapping, sender) {
+  const name = String(recipient.name || '').trim();
+  const nameParts = name.split(/\s+/).filter(Boolean);
+  const builtins = {
+    email: recipient.email,
+    email_address: recipient.email,
+    name,
+    first_name: nameParts[0] || '',
+    last_name: nameParts.slice(1).join(' '),
+    sender_name: sender?.label || sender?.email || '',
+  };
+  const values = {};
+  for (const variable of draft?.variables || []) {
+    const column = mapping[variable.id];
+    const direct = recipient.variables?.[variable.id];
+    const fromColumn = column ? recipient.variables?.[column] : undefined;
+    const value = direct !== undefined && String(direct).trim() ? direct
+      : fromColumn !== undefined && String(fromColumn).trim() ? fromColumn
+        : builtins[variable.id];
+    if (value !== undefined && String(value).trim()) values[variable.id] = value;
+  }
+  return values;
+}
+
+function missingVariables(draft, recipients, mapping, sender) {
+  return (draft?.variables || []).filter(variable =>
+    recipients.some(recipient => recipientValues(recipient, draft, mapping, sender)[variable.id] === undefined)
+  );
+}
+
 export default function EmailAutomationView() {
   const [drafts, setDrafts] = useState([]);
   const [draftsLoading, setDraftsLoading] = useState(true);
@@ -85,13 +115,18 @@ export default function EmailAutomationView() {
   const [sendDraft, setSendDraft] = useState(null);
   const [campaignName, setCampaignName] = useState('');
   const [recipients, setRecipients] = useState([]);
+  const [quarantinedCount, setQuarantinedCount] = useState(0);
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [variableMapping, setVariableMapping] = useState({});
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState(null);
+  const [trackingCampaignId, setTrackingCampaignId] = useState(null);
+  const sendRequestId = useRef(null);
+  const scheduleRequestId = useRef(null);
   const [sendError, setSendError] = useState(null);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [scheduleDateTime, setScheduleDateTime] = useState('');
+  const [minScheduleDateTime, setMinScheduleDateTime] = useState('');
   const [scheduling, setScheduling] = useState(false);
   const [scheduleSuccess, setScheduleSuccess] = useState(null);
 
@@ -143,7 +178,7 @@ export default function EmailAutomationView() {
     const after = get.slice(pos);
     const m = /{{[\w.]*$/.exec(before) || /[A-Za-z][\w.]*$/.exec(before);
     const start = m ? pos - m[0].length : pos;
-    const insert = `{{${header}}}`;
+    const insert = `{{${normHeader(header)}}}`;
     const next = before.slice(0, start) + insert + after;
     set(next);
     setSuggest(null);
@@ -151,7 +186,7 @@ export default function EmailAutomationView() {
       if (el) {
         const c = start + insert.length;
         el.focus();
-        try { el.setSelectionRange(c, c); } catch (_) { /* ignore */ }
+        try { el.setSelectionRange(c, c); } catch { /* ignore */ }
       }
     });
   };
@@ -336,31 +371,75 @@ export default function EmailAutomationView() {
   };
 
   useEffect(() => {
-    fetchDrafts();
-    fetchConfig();
-    fetchCampaigns();
+    const timer = setTimeout(() => {
+      fetchDrafts();
+      fetchConfig();
+      fetchCampaigns();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchDrafts, fetchConfig, fetchCampaigns]);
+
+  useEffect(() => {
+    if (!trackingCampaignId) return undefined;
+    let cancelled = false;
+    let timer;
+    const refresh = async () => {
+      try {
+        const token = await getAuthToken();
+        if (!token) throw new Error('Session expired');
+        const res = await fetch(`${API_BASE_URL}/api/email/campaigns/${trackingCampaignId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not load campaign progress');
+        const { campaign } = await res.json();
+        if (cancelled) return;
+        setSendStatus(campaign);
+        if (['sent', 'partial', 'failed', 'needs_review', 'cancelled'].includes(campaign.status)) {
+          setTrackingCampaignId(null);
+          fetchCampaigns();
+        } else timer = setTimeout(refresh, 2500);
+      } catch (err) {
+        if (!cancelled) { setSendError(err.message); timer = setTimeout(refresh, 5000); }
+      }
+    };
+    refresh();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [trackingCampaignId, fetchCampaigns]);
 
   const handleDraftClick = (draft) => {
     setSelectedDraft(draft._id);
     fetchDraftDetail(draft._id);
   };
 
-  const openSendModal = (draft) => {
-    setSendDraft(draft);
+  const openSendModal = async (draft) => {
+    let fullDraft = draft;
+    if (!draft.bodyHtml) {
+      try {
+        const token = await getAuthToken();
+        const res = await fetch(`${API_BASE_URL}/api/email/drafts/${draft._id}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not load the email template');
+        fullDraft = (await res.json()).draft;
+      } catch (err) { setDraftsError(err.message); return; }
+    }
+    const usedVariables = extractVars(fullDraft.subject, fullDraft.bodyHtml);
+    fullDraft = { ...fullDraft, variables: usedVariables.map(id => ({ id, label: `{{${id}}}` })) };
+    setSendDraft(fullDraft);
     setCampaignName(`Campaign — ${draft.subject || 'Untitled'}`);
     if (!selectedAccountId && config && config.id) setSelectedAccountId(config.id);
     setSendStatus(null);
+    setTrackingCampaignId(null);
+    sendRequestId.current = crypto.randomUUID();
+    scheduleRequestId.current = crypto.randomUUID();
     setSendError(null);
     setShowSchedulePicker(false);
     setScheduleDateTime('');
+    setMinScheduleDateTime('');
     setScheduleSuccess(null);
     setPreviewIdx(0);
     // Reuse the attached Excel if present — no re-upload needed
     if (attachedFile && attachedFile.rows.length > 0) {
-      applySpreadsheetData(attachedFile.headers, attachedFile.rows, draft);
+      applySpreadsheetData(attachedFile.headers, attachedFile.rows, fullDraft);
     } else {
       setRecipients([]);
+      setQuarantinedCount(0);
       setCsvHeaders([]);
       setVariableMapping({});
     }
@@ -370,6 +449,7 @@ export default function EmailAutomationView() {
   // Shared: turn headers+row-objects into recipients + auto variable mapping
   const applySpreadsheetData = (headers, rows, draftOverride) => {
     const draft = draftOverride || sendDraft;
+    setSendError(null);
     setCsvHeaders(headers);
     const emailCol = headers.find(f => normHeader(f).includes('email'));
     const nameCol = headers.find(f => normHeader(f).includes('name') && !normHeader(f).includes('company'));
@@ -377,8 +457,15 @@ export default function EmailAutomationView() {
       email: emailCol ? String(row[emailCol] ?? '').trim() : '',
       name: nameCol ? String(row[nameCol] ?? '').trim() : '',
       variables: { ...row },
-    })).filter(r => r.email);
-    setRecipients(parsed);
+    }));
+    const valid = parsed.filter(r => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email));
+    setQuarantinedCount(parsed.length - valid.length);
+    if (valid.length > 500) {
+      setRecipients([]);
+      setSendError('A campaign supports up to 500 valid recipients. Split this file into smaller campaigns.');
+      return;
+    }
+    setRecipients(valid);
     setPreviewIdx(0);
     const vars = draft?.variables || [];
     if (vars.length && headers.length) {
@@ -442,13 +529,15 @@ export default function EmailAutomationView() {
       const token = await getAuthToken();
       if (!token) { setComposerError('Not authenticated.'); return; }
       if (!composerSubject.trim() && !composerBody.trim()) { setComposerError('Write a subject or body first.'); return; }
-      const varIds = extractVars(composerSubject, composerBody);
-      const bodyHtml = composerBody.split('\n').map(l => `<p>${escapeHtml(l) || '<br>'}</p>`).join('');
+      const subject = canonicalizeTemplate(composerSubject);
+      const body = canonicalizeTemplate(composerBody);
+      const varIds = extractVars(subject, body);
+      const bodyHtml = body.split('\n').map(l => `<p>${escapeHtml(l) || '<br>'}</p>`).join('');
       const res = await fetch(`${API_BASE_URL}/api/email/drafts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          subject: composerSubject,
+          subject,
           bodyHtml,
           variables: varIds.map(id => ({ id, label: `{{${id}}}` })),
           dataSourceType: attachedFile ? 'upload' : 'none',
@@ -503,11 +592,17 @@ export default function EmailAutomationView() {
   };
 
   const addManualRecipient = () => {
+    if (recipients.length >= 500) { setSendError('A campaign supports up to 500 recipients.'); return; }
     setRecipients(prev => [...prev, { email: '', name: '', variables: {} }]);
   };
 
   const updateManualRecipient = (idx, field, value) => {
     setRecipients(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  const updateManualVariable = (idx, id, value) => {
+    setRecipients(prev => prev.map((r, i) => i === idx
+      ? { ...r, variables: { ...r.variables, [id]: value } } : r));
   };
 
   const removeRecipient = (idx) => {
@@ -523,20 +618,14 @@ export default function EmailAutomationView() {
       if (!token) { setSendError('Not authenticated.'); return; }
       if (!sendDraft?._id) { setSendError('No draft selected.'); return; }
       if (recipients.length === 0) { setSendError('Add at least one recipient.'); return; }
-      const unmappedSend = (sendDraft.variables || []).filter(v => !variableMapping[v.id]);
-      if (unmappedSend.length > 0) { setSendError(`Map all variables before sending: ${unmappedSend.map(v => v.label || v.id).join(', ')}`); setSending(false); return; }
-      const finalRecipients = recipients.map(r => {
-        const mappedVars = {};
-        if (sendDraft.variables) {
-          sendDraft.variables.forEach(v => {
-            const csvCol = variableMapping[v.id];
-            if (csvCol && r.variables[csvCol] !== undefined) {
-              mappedVars[v.id] = r.variables[csvCol];
-            }
-          });
-        }
-        return { email: r.email, name: r.name, variables: mappedVars };
-      });
+      if (recipients.some(r => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email))) { setSendError('Correct invalid recipient email addresses before sending.'); return; }
+      const sender = accounts.find(a => a.id === selectedAccountId) || config;
+      const unmappedSend = missingVariables(sendDraft, recipients, variableMapping, sender);
+      if (unmappedSend.length > 0) { setSendError(`Fill or map these variables before sending: ${unmappedSend.map(v => v.label || v.id).join(', ')}`); return; }
+      const finalRecipients = recipients.map(r => ({
+        email: r.email, name: r.name,
+        variables: recipientValues(r, sendDraft, variableMapping, sender),
+      }));
       const res = await fetch(`${API_BASE_URL}/api/email/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -545,11 +634,13 @@ export default function EmailAutomationView() {
           recipients: finalRecipients,
           campaignName: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
           accountId: selectedAccountId || (config && config.id) || undefined,
+          requestId: sendRequestId.current,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send campaign');
-      setSendStatus({ sentCount: data.sentCount, failedCount: data.failedCount, total: data.totalRecipients });
+      setSendStatus({ status: data.status || 'queued', sentCount: 0, failedCount: 0, recipients: finalRecipients });
+      setTrackingCampaignId(data.campaignId);
       fetchCampaigns();
     } catch (err) {
       setSendError(err.message);
@@ -567,22 +658,16 @@ export default function EmailAutomationView() {
       if (!token) { setSendError('Not authenticated.'); return; }
       if (!sendDraft?._id) { setSendError('No draft selected.'); return; }
       if (recipients.length === 0) { setSendError('Add at least one recipient.'); return; }
+      if (recipients.some(r => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email))) { setSendError('Correct invalid recipient email addresses before scheduling.'); return; }
       if (!scheduleDateTime) { setSendError('Pick a date and time.'); return; }
-      const unmappedSched = (sendDraft.variables || []).filter(v => !variableMapping[v.id]);
-      if (unmappedSched.length > 0) { setSendError(`Map all variables before scheduling: ${unmappedSched.map(v => v.label || v.id).join(', ')}`); setScheduling(false); return; }
+      const sender = accounts.find(a => a.id === selectedAccountId) || config;
+      const unmappedSched = missingVariables(sendDraft, recipients, variableMapping, sender);
+      if (unmappedSched.length > 0) { setSendError(`Fill or map these variables before scheduling: ${unmappedSched.map(v => v.label || v.id).join(', ')}`); return; }
 
-      const finalRecipients = recipients.map(r => {
-        const mappedVars = {};
-        if (sendDraft.variables) {
-          sendDraft.variables.forEach(v => {
-            const csvCol = variableMapping[v.id];
-            if (csvCol && r.variables[csvCol] !== undefined) {
-              mappedVars[v.id] = r.variables[csvCol];
-            }
-          });
-        }
-        return { email: r.email, name: r.name, variables: mappedVars };
-      });
+      const finalRecipients = recipients.map(r => ({
+        email: r.email, name: r.name,
+        variables: recipientValues(r, sendDraft, variableMapping, sender),
+      }));
 
       const res = await fetch(`${API_BASE_URL}/api/email/schedule`, {
         method: 'POST',
@@ -593,6 +678,7 @@ export default function EmailAutomationView() {
           campaignName: campaignName || `Scheduled Campaign ${new Date().toLocaleDateString()}`,
           scheduledAt: new Date(scheduleDateTime).toISOString(),
           accountId: selectedAccountId || (config && config.id) || undefined,
+          requestId: scheduleRequestId.current,
         }),
       });
       const data = await res.json();
@@ -736,8 +822,8 @@ export default function EmailAutomationView() {
                     <div className="ea-draft-subject">{draft.subject}</div>
                   )}
                   <div className="ea-draft-preview">
-                    {stripHtml(draft.bodyHtml || '').substring(0, 120) || 'No content'}
-                    {stripHtml(draft.bodyHtml || '').length > 120 ? '...' : ''}
+                    {stripHtml(draft.bodyPreview || '').substring(0, 120) || 'No content'}
+                    {stripHtml(draft.bodyPreview || '').length > 120 ? '...' : ''}
                   </div>
                 </div>
                 <div className="ea-draft-card-footer">
@@ -887,8 +973,8 @@ export default function EmailAutomationView() {
                       {c.sentCount} sent · {c.failedCount} failed
                     </span>
                   </div>
-                  <span className={`ea-campaign-badge ${c.status}`}>
-                    {c.status}
+                  <span className={`ea-campaign-badge ${c.status === 'sent' && (c.failedCount || c.suppressedCount) ? 'partial' : c.status}`}>
+                    {c.status === 'sent' && (c.failedCount || c.suppressedCount) ? 'partial' : c.status}
                   </span>
                 </div>
               ))}
@@ -1031,7 +1117,9 @@ export default function EmailAutomationView() {
               {sendStatus ? (
                 <div className="ea-send-result">
                   <CheckCircle2 size={40} style={{ color: '#16A34A' }} />
-                  <h4>Campaign Complete</h4>
+                  <h4>Campaign {sendStatus.status === 'needs_review' ? 'Needs Review' : sendStatus.status}</h4>
+                  {['queued', 'sending', 'scheduled'].includes(sendStatus.status) && <p>Delivery is in progress. You can close this window and check Recent Campaigns or Sent Emails.</p>}
+                  {sendStatus.status === 'needs_review' && <p>One or more delivery results are uncertain. Review them in Sent Emails before retrying.</p>}
                   <div className="ea-send-result-stats">
                     <div className="ea-send-result-stat">
                       <span className="ea-send-result-num">{sendStatus.sentCount}</span>
@@ -1042,7 +1130,11 @@ export default function EmailAutomationView() {
                       <span className="ea-send-result-label">Failed</span>
                     </div>
                     <div className="ea-send-result-stat">
-                      <span className="ea-send-result-num">{sendStatus.total}</span>
+                      <span className="ea-send-result-num">{sendStatus.suppressedCount || 0}</span>
+                      <span className="ea-send-result-label">Suppressed</span>
+                    </div>
+                    <div className="ea-send-result-stat">
+                      <span className="ea-send-result-num">{sendStatus.recipients?.length ?? sendStatus.totalRecipients ?? 0}</span>
                       <span className="ea-send-result-label">Total</span>
                     </div>
                   </div>
@@ -1111,23 +1203,15 @@ export default function EmailAutomationView() {
                         <div style={{ fontWeight: 700, marginBottom: '6px' }}>
                           {(() => {
                             const r = recipients[Math.min(previewIdx, recipients.length - 1)];
-                            const mapped = {};
-                            (sendDraft.variables || []).forEach(v => {
-                              const col = variableMapping[v.id];
-                              if (col && r.variables[col] !== undefined) mapped[v.id] = r.variables[col];
-                            });
-                            return substitutePreview(sendDraft.subject, mapped) || 'Untitled';
+                            const sender = accounts.find(a => a.id === selectedAccountId) || config;
+                            return substitutePreview(sendDraft.subject, recipientValues(r, sendDraft, variableMapping, sender), false) || 'Untitled';
                           })()}
                         </div>
                         <div
                           dangerouslySetInnerHTML={{ __html: safeHtml((() => {
                             const r = recipients[Math.min(previewIdx, recipients.length - 1)];
-                            const mapped = {};
-                            (sendDraft.variables || []).forEach(v => {
-                              const col = variableMapping[v.id];
-                              if (col && r.variables[col] !== undefined) mapped[v.id] = r.variables[col];
-                            });
-                            return substitutePreview(sendDraft.bodyHtml || stripHtml(sendDraft.bodyHtml || ''), mapped);
+                            const sender = accounts.find(a => a.id === selectedAccountId) || config;
+                            return substitutePreview(sendDraft.bodyHtml || '', recipientValues(r, sendDraft, variableMapping, sender));
                           })()) }}
                         />
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
@@ -1143,7 +1227,7 @@ export default function EmailAutomationView() {
                     <>
                       {sendDraft?.variables?.length > 0 && csvHeaders.length > 0 && (
                         <div className="ea-form-group">
-                          <label>Variable Mapping (all must bind — Send is blocked until then)</label>
+                          <label>Variable Mapping (unfilled values must be mapped before sending)</label>
                           <div className="ea-mapping-list">
                             {sendDraft.variables.map(v => (
                               <div key={v.id} className="ea-mapping-row">
@@ -1169,24 +1253,37 @@ export default function EmailAutomationView() {
                           {recipients.length} recipient{recipients.length !== 1 ? 's' : ''}
                         </div>
                         {recipients.slice(0, 10).map((r, idx) => (
-                          <div key={idx} className="ea-recipient-row">
-                            <input
-                              type="email"
-                              value={r.email}
-                              onChange={e => updateManualRecipient(idx, 'email', e.target.value)}
-                              placeholder="email@example.com"
-                              className="ea-recipient-email"
-                            />
-                            <input
-                              type="text"
-                              value={r.name}
-                              onChange={e => updateManualRecipient(idx, 'name', e.target.value)}
-                              placeholder="Name"
-                              className="ea-recipient-name"
-                            />
-                            <button className="ea-recipient-remove" onClick={() => removeRecipient(idx)}>
-                              <X size={14} />
-                            </button>
+                          <div key={idx} className="ea-recipient-entry">
+                            <div className="ea-recipient-row">
+                              <input
+                                type="email"
+                                value={r.email}
+                                onChange={e => updateManualRecipient(idx, 'email', e.target.value)}
+                                placeholder="email@example.com"
+                                className="ea-recipient-email"
+                              />
+                              <input
+                                type="text"
+                                value={r.name}
+                                onChange={e => updateManualRecipient(idx, 'name', e.target.value)}
+                                placeholder="Name"
+                                className="ea-recipient-name"
+                              />
+                              <button className="ea-recipient-remove" onClick={() => removeRecipient(idx)} aria-label={`Remove ${r.email || 'recipient'}`}>
+                                <X size={14} />
+                              </button>
+                            </div>
+                            {(csvHeaders.length === 0 || Object.keys(r.variables || {}).length === 0) && (sendDraft.variables || []).some(v => !['email', 'email_address', 'sender_name'].includes(v.id)) && (
+                              <div className="ea-manual-variable-fields">
+                                {(sendDraft.variables || []).filter(v => !['email', 'email_address', 'sender_name'].includes(v.id)).map(v => (
+                                  <label key={v.id}>
+                                    <span>{v.id.replace(/_/g, ' ')}</span>
+                                    <input type="text" value={r.variables?.[v.id] ?? recipientValues(r, sendDraft, {}, accounts.find(a => a.id === selectedAccountId) || config)[v.id] ?? ''}
+                                      onChange={e => updateManualVariable(idx, v.id, e.target.value)} />
+                                  </label>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))}
                         {recipients.length > 10 && (
@@ -1211,10 +1308,11 @@ export default function EmailAutomationView() {
                       {(() => {
                         const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                         const valid = recipients.filter(r => re.test(r.email || '')).length;
-                        const unmapped = (sendDraft.variables || []).filter(v => !variableMapping[v.id]);
+                        const sender = accounts.find(a => a.id === selectedAccountId) || config;
+                        const unmapped = missingVariables(sendDraft, recipients, variableMapping, sender);
                         return (
                           <span>
-                            {recipients.length} rows · {valid} valid emails · {recipients.length - valid} quarantined
+                            {recipients.length + quarantinedCount} rows · {valid} valid emails · {quarantinedCount} quarantined · {recipients.length - valid} need correction
                             {unmapped.length > 0
                               ? ` · UNMAPPED: ${unmapped.map(v => v.label || v.id).join(', ')}`
                               : ' · all pills bound'}
@@ -1246,7 +1344,7 @@ export default function EmailAutomationView() {
                       type="datetime-local"
                       value={scheduleDateTime}
                       onChange={(e) => setScheduleDateTime(e.target.value)}
-                      min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                      min={minScheduleDateTime}
                       style={{
                         padding: '10px 14px',
                         borderRadius: '8px',
@@ -1278,7 +1376,11 @@ export default function EmailAutomationView() {
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button
                         className="ea-cancel-btn"
-                        onClick={() => setShowSchedulePicker(true)}
+                        onClick={() => {
+                          const earliest = new Date(Date.now() + 60000);
+                          setMinScheduleDateTime(new Date(earliest.getTime() - earliest.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+                          setShowSchedulePicker(true);
+                        }}
                         disabled={sending || recipients.length === 0 || !config}
                         style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                       >

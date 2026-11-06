@@ -63,7 +63,7 @@ function safeFrontendUrl() {
 const { uploadCSVToDrive, uploadJSONToDrive } = require('./utils/googleDriveUpload');
 const { encrypt } = require('./utils/crypto');
 const { buildTransporterFromAccount, resolveEmailAccount } = require('./utils/emailAccount');
-const { substituteTemplateVars, isValidEmail } = require('./utils/emailTemplate');
+const { substituteTemplateVars, canonicalizeTemplate, isValidEmail } = require('./utils/emailTemplate');
 const EmailSuppression = require('./models/EmailSuppression');
 const MeetingRate = require('./models/MeetingRate');
 const MeetingSplit = require('./models/MeetingSplit');
@@ -71,7 +71,7 @@ const ProjectBudget = require('./models/ProjectBudget');
 const { logAudit } = require('./utils/audit');
 const { sendFormSubmissionEmail, buildSubmissionEmailHtml, sendOtpEmail } = require('./utils/emailService');
 const { createOtpChallenge, verifyOtpChallenge } = require('./utils/otp');
-const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, scheduleDraftActivation, cancelDraftActivation, scheduleAnalyticsReport, cancelAnalyticsReport } = require('./scheduler');
+const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, getAgenda, isAgendaReady, scheduleDraftActivation, cancelDraftActivation, scheduleAnalyticsReport, cancelAnalyticsReport } = require('./scheduler');
 const { v4: uuidv4, validate: isUuid } = require('uuid');
 const { runStartupChecks } = require('./startupCheck');
 
@@ -115,10 +115,16 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const mongoConnectPromise = mongoose.connect(MONGODB_URI)
 .then(() => console.log('✅ MongoDB connection established via Mongoose'))
 .catch(err => console.error('❌ Failed to connect to MongoDB', err));
+let emailWorkerReconciled = false;
 
 // ==========================================
 // API ENDPOINTS
 // ==========================================
+
+app.get('/api/email/worker-health', (req, res) => {
+  const ready = mongoose.connection.readyState === 1 && isAgendaReady() && emailWorkerReconciled;
+  res.status(ready ? 200 : 503).json({ ready });
+});
 
 // Helper: Ensure user profile exists in Supabase
 const getOrCreateUser = async (userId, email) => {
@@ -647,8 +653,31 @@ app.put('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // Schedule Agenda job to activate at goesLiveAt
-    await scheduleDraftActivation(req.params.draftId, liveDate);
+    // If Agenda cannot persist the job, restore the previous row only when
+    // this exact schedule is still present. Public fallback alone is not a
+    // replacement for a timed activation job.
+    try {
+      await scheduleDraftActivation(req.params.draftId, liveDate);
+    } catch (scheduleError) {
+      console.error('Could not schedule draft activation:', scheduleError);
+      const { error: rollbackError } = await supabase.from('form_drafts')
+        .update({
+          status: draft.status,
+          goes_live_at: draft.goes_live_at || null,
+          expires_at: draft.expires_at || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('draft_id', req.params.draftId)
+        .eq('user_id', req.user.uid)
+        .eq('status', 'scheduled')
+        .eq('goes_live_at', liveDate.toISOString());
+      if (rollbackError) console.error('Could not roll back failed draft schedule:', rollbackError);
+      if (draft.status === 'scheduled' && draft.goes_live_at) {
+        await scheduleDraftActivation(req.params.draftId, new Date(draft.goes_live_at))
+          .catch(restoreError => console.error('Could not restore prior draft activation job:', restoreError));
+      }
+      return res.status(503).json({ error: 'Could not schedule form activation; refresh the draft before trying again' });
+    }
 
     // Sync scheduled status to MongoDB mirror (was previously Supabase-only)
     await TemplateData.findOneAndUpdate(
@@ -692,9 +721,8 @@ app.delete('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
     if (findError || !draft) return res.status(404).json({ error: 'Draft not found' });
     if (draft.status !== 'scheduled') return res.status(400).json({ error: 'Draft is not scheduled' });
 
-    // Cancel Agenda job
-    await cancelDraftActivation(req.params.draftId);
-
+    // Change the source-of-truth status first. A job already claimed by Agenda
+    // can only activate rows that are still scheduled.
     const { data: updated, error: updateError } = await supabase
       .from('form_drafts')
       .update({
@@ -704,10 +732,18 @@ app.delete('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
         updated_at: new Date().toISOString()
       })
       .eq('draft_id', req.params.draftId)
+      .eq('user_id', req.user.uid)
+      .eq('status', 'scheduled')
       .select('*')
-      .single();
+      .maybeSingle();
 
     if (updateError) throw updateError;
+    if (!updated) return res.status(409).json({ error: 'Draft status changed; refresh and try again' });
+
+    // Job removal is cleanup; the status guard above prevents activation even
+    // if Agenda has already loaded the job or cancellation fails.
+    await cancelDraftActivation(req.params.draftId).catch(err =>
+      console.error('Could not remove cancelled draft job:', err));
 
     // Sync cancelled status back to MongoDB mirror
     await TemplateData.findOneAndUpdate(
@@ -740,7 +776,7 @@ app.delete('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
  */
 app.get('/api/forms/:draftId', async (req, res) => {
   try {
-    const { data: draft, error: findError } = await supabase
+    let { data: draft, error: findError } = await supabase
       .from('form_drafts')
       .select('*')
       .eq('draft_id', req.params.draftId)
@@ -761,21 +797,13 @@ app.get('/api/forms/:draftId', async (req, res) => {
 
     // Fallback: scheduled and time has arrived but Agenda hasn't fired yet — auto-activate
     if (draft.status === 'scheduled' && draft.goes_live_at && new Date() >= new Date(draft.goes_live_at)) {
-      await supabase
-        .from('form_drafts')
-        .update({ status: 'active', updated_at: new Date().toISOString() })
-        .eq('draft_id', req.params.draftId);
-      draft.status = 'active';
-      // Mirror to MongoDB like the Agenda job does (was previously Supabase-only)
-      await TemplateData.findOneAndUpdate(
-        { draftId: req.params.draftId },
-        {
-          status: 'active',
-          updatedAt: new Date(),
-          $setOnInsert: { ownerUid: draft.user_id, title: draft.title },
-        },
-        { upsert: true }
-      ).catch(err => console.error('MongoDB sync error (fallback auto-activate):', err));
+      const activated = await require('./utils/formActivation').activateScheduledForm(req.params.draftId, draft.goes_live_at);
+      if (activated) draft = activated;
+      else {
+        const latest = await supabase.from('form_drafts').select('*').eq('draft_id', req.params.draftId).single();
+        if (latest.error || !latest.data) return res.status(404).json({ error: 'Form not found' });
+        draft = latest.data;
+      }
     }
 
     if (new Date() > new Date(draft.expires_at) || draft.status === 'expired') {
@@ -787,6 +815,8 @@ app.get('/api/forms/:draftId', async (req, res) => {
       }
       return res.status(410).json({ error: 'This form link has expired.' });
     }
+
+    if (draft.status !== 'active') return res.status(403).json({ error: 'This form link is not yet active.' });
 
     res.json({ title: draft.title, config: draft.config });
   } catch (error) {
@@ -820,7 +850,7 @@ app.post('/api/forms/:draftId/submit', submitLimiter, async (req, res) => {
       }
     }
 
-    const { data: draft, error: findError } = await supabase
+    let { data: draft, error: findError } = await supabase
       .from('form_drafts')
       .select('*')
       .eq('draft_id', req.params.draftId)
@@ -833,6 +863,17 @@ app.post('/api/forms/:draftId/submit', submitLimiter, async (req, res) => {
     if (new Date() > new Date(draft.expires_at) || draft.status === 'expired') {
       return res.status(410).json({ error: 'This form link has expired.' });
     }
+
+    if (draft.status === 'scheduled' && draft.goes_live_at && new Date() >= new Date(draft.goes_live_at)) {
+      const activated = await require('./utils/formActivation').activateScheduledForm(req.params.draftId, draft.goes_live_at);
+      if (activated) draft = activated;
+      else {
+        const latest = await supabase.from('form_drafts').select('*').eq('draft_id', req.params.draftId).single();
+        if (latest.error || !latest.data) return res.status(404).json({ error: 'Form not found' });
+        draft = latest.data;
+      }
+    }
+    if (draft.status !== 'active') return res.status(403).json({ error: 'This form is not currently active' });
 
     const submissionId = uuidv4();
 
@@ -1609,8 +1650,8 @@ app.post('/api/email/drafts', verifyToken, async (req, res) => {
 
     const draft = await EmailDraft.create({
       ownerUid: req.user.uid,
-      subject: subject || '',
-      bodyHtml: sanitizeBodyHtml(bodyHtml),
+      subject: canonicalizeTemplate(subject || ''),
+      bodyHtml: canonicalizeTemplate(sanitizeBodyHtml(bodyHtml)),
       variables: variables || [],
       dataSourceType: dataSourceType || 'none',
       dataSourceFile: dataSourceFile || null,
@@ -1626,9 +1667,16 @@ app.post('/api/email/drafts', verifyToken, async (req, res) => {
 
 app.get('/api/email/drafts', verifyToken, async (req, res) => {
   try {
-    const drafts = await EmailDraft.find({ ownerUid: req.user.uid })
-      .select('-bodyHtml')
-      .sort({ updatedAt: -1 });
+    const drafts = await EmailDraft.aggregate([
+      { $match: { ownerUid: req.user.uid } },
+      { $sort: { updatedAt: -1 } },
+      { $limit: 100 },
+      { $project: {
+        ownerUid: 1, subject: 1, variables: 1, dataSourceType: 1,
+        dataSourceFile: 1, dataSourceSheetId: 1, createdAt: 1, updatedAt: 1,
+        bodyPreview: { $substrCP: [{ $ifNull: ['$bodyHtml', ''] }, 0, 2000] },
+      } },
+    ]);
     res.json({ drafts });
   } catch (error) {
     console.error('Error fetching email drafts:', error);
@@ -1663,8 +1711,8 @@ app.put('/api/email/drafts/:id', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Draft not found' });
     }
 
-    if (subject !== undefined) draft.subject = subject;
-    if (bodyHtml !== undefined) draft.bodyHtml = sanitizeBodyHtml(bodyHtml);
+    if (subject !== undefined) draft.subject = canonicalizeTemplate(subject);
+    if (bodyHtml !== undefined) draft.bodyHtml = canonicalizeTemplate(sanitizeBodyHtml(bodyHtml));
     if (variables !== undefined) draft.variables = variables;
     if (dataSourceType !== undefined) draft.dataSourceType = dataSourceType;
     if (dataSourceFile !== undefined) draft.dataSourceFile = dataSourceFile;
@@ -1925,181 +1973,12 @@ app.post('/api/email/test', verifyToken, async (req, res) => {
 
 app.post('/api/email/send', verifyToken, async (req, res) => {
   try {
-    const { draftId, recipients, campaignName, accountId, async: asyncSend } = req.body;
-
-    if (!draftId) {
-      return res.status(400).json({ error: 'draftId is required' });
-    }
-    if (!isValidObjectId(draftId)) {
-      return res.status(400).json({ error: 'Invalid draftId format' });
-    }
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-      return res.status(400).json({ error: 'recipients array is required' });
-    }
-    if (recipients.length > 500) {
-      return res.status(400).json({ error: 'Too many recipients (max 500 per campaign). Split into smaller batches.' });
-    }
-    const badEmails = recipients.filter(r => !isValidEmail(r.email)).map(r => r.email);
-    if (badEmails.length > 0) {
-      return res.status(400).json({ error: `Invalid recipient email(s): ${badEmails.slice(0, 5).join(', ')}${badEmails.length > 5 ? ` (+${badEmails.length - 5} more)` : ''}` });
-    }
-    if (accountId && !isValidObjectId(accountId)) {
-      return res.status(400).json({ error: 'Invalid accountId format' });
-    }
-
-    const draft = await EmailDraft.findOne({ _id: draftId, ownerUid: req.user.uid });
-    if (!draft) {
-      return res.status(404).json({ error: 'Draft not found' });
-    }
-
     await migrateLegacyEmailConfig(req.user.uid);
-    const account = await resolveEmailAccount(EmailAccount, req.user.uid, accountId);
-    if (!account) {
-      return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
-    }
-
-    // Daily rate limit: max 2000 sends per user per 24h (Gmail Workspace ceiling)
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recent = await EmailCampaign.aggregate([
-      { $match: { ownerUid: req.user.uid, createdAt: { $gte: dayAgo } } },
-      { $group: { _id: null, total: { $sum: '$sentCount' } } },
-    ]);
-    const sentLast24h = (recent[0] && recent[0].total) || 0;
-    if (sentLast24h + recipients.length > 2000) {
-      return res.status(429).json({ error: `Daily send limit reached (sent ${sentLast24h}/2000 in last 24h). Try again tomorrow or split the batch.` });
-    }
-
-    // Suppression filter: skip unsubscribed/bounced
-    const suppressedDocs = await EmailSuppression.find({ ownerUid: req.user.uid }).select('email').lean();
-    const suppressedSet = new Set((suppressedDocs || []).map(d => String(d.email).toLowerCase()));
-    const mailable = [];
-    let suppressedCount = 0;
-    for (const r of recipients) {
-      if (suppressedSet.has(String(r.email).toLowerCase())) suppressedCount++;
-      else mailable.push(r);
-    }
-    if (mailable.length === 0 && suppressedCount > 0) {
-      return res.status(400).json({ error: `All ${suppressedCount} recipient(s) are suppressed (unsubscribed/bounced).` });
-    }
-
-    // Background queue: async=true or large batch (>100) -> Agenda now
-    if (asyncSend === true || mailable.length > 100) {
-      const queued = await EmailCampaign.create({
-        ownerUid: req.user.uid,
-        name: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
-        draftId,
-        accountId: account._id,
-        status: 'scheduled',
-        scheduledAt: new Date(),
-        recipients: mailable.map(r => ({
-          email: r.email,
-          name: r.name || '',
-          variables: r.variables || {},
-          status: 'pending',
-        })),
-      });
-      await scheduleCampaign(queued._id.toString(), new Date());
-      logAudit(req.user.uid, 'email.queued', 'email_campaign', queued._id, { queuedCount: mailable.length });
-      return res.status(202).json({
-        message: 'Campaign queued for background sending',
-        campaignId: queued._id,
-        queuedCount: mailable.length,
-        suppressedCount,
-        totalRecipients: recipients.length,
-      });
-    }
-
-    // Create campaign
-    const campaign = await EmailCampaign.create({
-      ownerUid: req.user.uid,
-      name: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
-      draftId,
-      accountId: account._id,
-      status: 'sending',
-      recipients: mailable.map(r => ({
-        email: r.email,
-        name: r.name || '',
-        variables: r.variables || {},
-        status: 'pending',
-      })),
-    });
-
-    // Build transporter from selected account
-    const transporter = await buildTransporterFromAccount(account);
-
-    // Send emails
-    let sentCount = 0;
-    let failedCount = 0;
-
-    for (const recipient of campaign.recipients) {
-      try {
-        // Substitute variables in subject and body (regex-safe)
-        const subject = substituteTemplateVars(draft.subject, recipient.variables);
-        let bodyHtml = substituteTemplateVars(draft.bodyHtml, recipient.variables);
-        // Safety net: never mail raw {{placeholders}} — fail loudly instead
-        const leftover = /{{\s*[A-Za-z0-9_. ]+?\s*}}/.exec(subject + ' ' + bodyHtml);
-        if (leftover) {
-          throw new Error(`Unmapped variable ${leftover[0]} — bind every {{pill}} to a column before sending`);
-        }
-        const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
-        const unsubUrl = `${frontendUrl}/unsubscribe?campaign=${campaign._id}&email=${encodeURIComponent(recipient.email)}`;
-        if (bodyHtml && !bodyHtml.includes('unsubscribe')) {
-          bodyHtml += `<br><br><p style="font-size:12px;color:#888;">Don't want these emails? <a href="${unsubUrl}">Unsubscribe</a></p>`;
-        }
-
-        await transporter.sendMail({
-          from: account.email,
-          to: recipient.email,
-          subject,
-          html: bodyHtml,
-          headers: {
-            'List-Unsubscribe': `<${unsubUrl}>, <mailto:${account.email}?subject=unsubscribe>`,
-            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-          },
-        });
-
-        recipient.status = 'sent';
-        recipient.sentAt = new Date();
-        sentCount++;
-      } catch (err) {
-        recipient.status = 'failed';
-        recipient.error = err.message;
-        failedCount++;
-      }
-    }
-
-    campaign.sentCount = sentCount;
-    campaign.failedCount = failedCount;
-    campaign.status = sentCount > 0 ? 'sent' : 'failed';
-    campaign.sentAt = new Date();
-    await campaign.save();
-
-    // Insert into Supabase email_send_log
-    await supabase.from('email_send_log').insert({
-      user_id: req.user.uid,
-      campaign_id: campaign._id.toString(),
-      draft_id: draftId,
-      draft_title: draft.subject || 'Untitled',
-      sender_email: account.email,
-      recipient_count: recipients.length,
-      sent_count: sentCount,
-      failed_count: failedCount,
-      status: campaign.status,
-      sent_at: new Date().toISOString()
-    });
-
-    res.json({
-      message: `Campaign ${campaign.status}`,
-      campaignId: campaign._id,
-      sentCount,
-      failedCount,
-      suppressedCount,
-      totalRecipients: recipients.length,
-    });
-    logAudit(req.user.uid, 'email.sent', 'email_campaign', campaign._id, { sentCount, failedCount, suppressedCount });
-  } catch (error) {
-    console.error('Error sending email campaign:', error);
-    res.status(500).json({ error: 'Failed to send campaign: ' + error.message });
+    const { campaign, existing } = await require('./utils/emailCampaignFlow').createCampaign(req.user.uid, req.body, false);
+    res.status(202).json({ message: existing ? 'Campaign already queued' : 'Campaign queued', campaignId: campaign._id, status: campaign.status, totalRecipients: campaign.recipients.length });
+  } catch (err) {
+    console.error('Error queueing email campaign:', err);
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -2141,27 +2020,55 @@ app.delete('/api/email/suppressions/:email', verifyToken, async (req, res) => {
   }
 });
 
-// Public one-click unsubscribe (linked from List-Unsubscribe header/footer)
+async function suppressFromUnsubscribeToken(token) {
+  const { campaignId, email } = require('./utils/emailCampaignFlow').parseUnsubscribeToken(token);
+  const campaign = await EmailCampaign.findById(campaignId).select('ownerUid recipients.email').lean();
+  if (!campaign || !campaign.recipients.some(r => r.email.toLowerCase() === email)) {
+    throw Object.assign(new Error('Invalid unsubscribe link'), { status: 400 });
+  }
+  await EmailSuppression.findOneAndUpdate(
+    { ownerUid: campaign.ownerUid, email },
+    { reason: 'unsubscribed', campaignId },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+}
+
+function unsubscribeError(res, err) {
+  res.status(err.status || 500).json({ error: err.status ? err.message : 'Could not unsubscribe' });
+}
+
+// Human confirmation page posts JSON; the recipient is always taken from the signed token.
 app.post('/api/email/unsubscribe', async (req, res) => {
   try {
-    const { email, campaignId } = req.body || {};
-    if (!isValidEmail(email)) return res.status(400).json({ error: 'Valid email is required' });
-    let ownerUid = null;
-    if (campaignId && isValidObjectId(campaignId)) {
-      const camp = await EmailCampaign.findById(campaignId).select('ownerUid').lean();
-      if (camp) ownerUid = camp.ownerUid;
-    }
-    if (!ownerUid) return res.status(400).json({ error: 'campaignId is required to identify the sender' });
-    await EmailSuppression.findOneAndUpdate(
-      { ownerUid, email: String(email).toLowerCase().trim() },
-      { reason: 'unsubscribed', campaignId: isValidObjectId(campaignId) ? campaignId : null },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    await suppressFromUnsubscribeToken(req.body?.token);
     res.json({ message: 'Unsubscribed successfully' });
-  } catch (error) {
-    console.error('Error unsubscribing:', error);
-    res.status(500).json({ error: 'Failed to unsubscribe' });
+  } catch (err) { unsubscribeError(res, err); }
+});
+
+// RFC 8058: a mail client POSTs List-Unsubscribe=One-Click to this URL.
+// A GET is safe and opens the human confirmation page without changing data.
+app.get('/api/email/unsubscribe/one-click', (req, res) => {
+  const token = req.query?.token;
+  if (typeof token !== 'string' || token.length > 2048) return res.status(400).json({ error: 'Invalid unsubscribe link' });
+  res.redirect(302, `${safeFrontendUrl()}/unsubscribe?token=${encodeURIComponent(token)}`);
+});
+
+function parseOneClickBody(req, res, next) {
+  if (req.is('application/x-www-form-urlencoded')) return express.urlencoded({ extended: false, limit: '1kb' })(req, res, next);
+  if (req.is('multipart/form-data')) {
+    return require('multer')({ limits: { fields: 1, fieldSize: 100, parts: 1 } }).none()(req, res, next);
   }
+  return res.status(415).json({ error: 'Unsupported unsubscribe request' });
+}
+
+app.post('/api/email/unsubscribe/one-click', parseOneClickBody, async (req, res) => {
+  if (req.body?.['List-Unsubscribe'] !== 'One-Click') {
+    return res.status(400).json({ error: 'Invalid one-click unsubscribe request' });
+  }
+  try {
+    await suppressFromUnsubscribeToken(req.query?.token);
+    res.set('Cache-Control', 'no-store').json({ message: 'Unsubscribed successfully' });
+  } catch (err) { unsubscribeError(res, err); }
 });
 
 // --- Campaigns List ---
@@ -2202,9 +2109,14 @@ app.get('/api/email/send-log/:campaignId', verifyToken, async (req, res) => {
 
 app.get('/api/email/campaigns', verifyToken, async (req, res) => {
   try {
-    const campaigns = await EmailCampaign.find({ ownerUid: req.user.uid })
+    const allowed = new Set(['queued', 'scheduled', 'sending', 'sent', 'partial', 'failed', 'needs_review', 'cancelled']);
+    const statuses = String(req.query.status || '').split(',').filter(Boolean);
+    if (statuses.some(status => !allowed.has(status))) return res.status(400).json({ error: 'Invalid status filter' });
+    const filter = { ownerUid: req.user.uid };
+    if (statuses.length) filter.status = { $in: statuses };
+    const campaigns = await EmailCampaign.find(filter)
       .populate('draftId', 'subject dataSourceFile')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).limit(100);
     res.json({ campaigns });
   } catch (error) {
     console.error('Error fetching campaigns:', error);
@@ -2229,70 +2141,65 @@ app.get('/api/email/campaigns/:id', verifyToken, async (req, res) => {
   }
 });
 
+app.post('/api/email/campaigns/:id/retry', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid campaign id format' });
+    const original = await EmailCampaign.findOne({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!original) return res.status(404).json({ error: 'Campaign not found' });
+    if (!['sent', 'partial', 'failed', 'needs_review'].includes(original.status)) return res.status(409).json({ error: 'Campaign is not finished' });
+    const ids = req.body?.recipientIds;
+    if (!Array.isArray(ids) || !ids.length || ids.length > 500 || ids.some(id => !isValidObjectId(id))) return res.status(400).json({ error: 'Select 1 to 500 recipients' });
+    const selected = original.recipients.filter(r => ids.includes(r._id.toString()));
+    if (selected.length !== ids.length) return res.status(400).json({ error: 'Invalid recipient selection' });
+    if (selected.some(r => !['failed', 'pending', 'unknown'].includes(r.status))) return res.status(400).json({ error: 'Only failed, pending, or unknown recipients can be retried' });
+    if (selected.some(r => r.status === 'unknown') && req.body?.includeUnknown !== true) return res.status(409).json({ error: 'Confirm retry of unknown delivery results' });
+    const requestId = req.body?.requestId;
+    if (requestId && (typeof requestId !== 'string' || requestId.length > 100)) return res.status(400).json({ error: 'Invalid requestId' });
+    if (requestId) {
+      const existing = await EmailCampaign.findOne({ ownerUid: req.user.uid, requestId });
+      if (existing) return res.status(202).json({ campaignId: existing._id, status: existing.status });
+    }
+    let retryAccount = original.accountId
+      ? await EmailAccount.findOne({ _id: original.accountId, ownerUid: req.user.uid }) : null;
+    if (!retryAccount) retryAccount = await resolveEmailAccount(EmailAccount, req.user.uid, null);
+    if (!retryAccount) return res.status(400).json({ error: 'Configure an email account before retrying' });
+    let retry;
+    try { retry = await EmailCampaign.create({
+      ownerUid: req.user.uid, name: `Retry: ${original.name}`, draftId: original.draftId,
+      accountId: retryAccount._id,
+      snapshot: { subject: original.snapshot?.subject || '', bodyHtml: original.snapshot?.bodyHtml || '', senderEmail: retryAccount.email },
+      parentCampaignId: original._id,
+      requestId: requestId || undefined, status: 'queued', scheduledAt: new Date(),
+      recipients: selected.map(r => ({ email: r.email, name: r.name, variables: r.variables, status: 'pending' })),
+    }); } catch (err) {
+      if (err.code === 11000 && requestId) {
+        const existing = await EmailCampaign.findOne({ ownerUid: req.user.uid, requestId });
+        if (existing) return res.status(202).json({ campaignId: existing._id, status: existing.status });
+      }
+      throw err;
+    }
+    try { await scheduleCampaign(retry._id.toString(), new Date()); }
+    catch (err) {
+      retry.status = 'failed'; retry.lastError = `Could not queue retry: ${err.message}`; await retry.save();
+      return res.status(503).json({ error: retry.lastError });
+    }
+    res.status(202).json({ campaignId: retry._id, status: retry.status, totalRecipients: retry.recipients.length });
+  } catch (err) {
+    console.error('Error retrying campaign:', err);
+    res.status(500).json({ error: 'Failed to retry campaign' });
+  }
+});
+
 // --- Scheduled Campaigns ---
 
 app.post('/api/email/schedule', verifyToken, async (req, res) => {
   try {
-    const { draftId, recipients, campaignName, scheduledAt, accountId } = req.body;
-
-    if (!draftId) return res.status(400).json({ error: 'draftId is required' });
-    if (!isValidObjectId(draftId)) return res.status(400).json({ error: 'Invalid draftId format' });
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-      return res.status(400).json({ error: 'recipients array is required' });
-    }
-    if (recipients.length > 500) {
-      return res.status(400).json({ error: 'Too many recipients (max 500 per campaign). Split into smaller batches.' });
-    }
-    const badScheduleEmails = recipients.filter(r => !isValidEmail(r.email));
-    if (badScheduleEmails.length > 0) {
-      return res.status(400).json({ error: `Invalid recipient email(s): ${badScheduleEmails.slice(0, 5).map(r => r.email).join(', ')}` });
-    }
-    if (accountId && !isValidObjectId(accountId)) return res.status(400).json({ error: 'Invalid accountId format' });
-    if (!scheduledAt) return res.status(400).json({ error: 'scheduledAt is required' });
-
-    const sendDate = new Date(scheduledAt);
-    if (isNaN(sendDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid scheduledAt date' });
-    }
-    if (sendDate <= new Date()) {
-      return res.status(400).json({ error: 'scheduledAt must be in the future' });
-    }
-
-    const draft = await EmailDraft.findOne({ _id: draftId, ownerUid: req.user.uid });
-    if (!draft) return res.status(404).json({ error: 'Draft not found' });
-
     await migrateLegacyEmailConfig(req.user.uid);
-    const account = await resolveEmailAccount(EmailAccount, req.user.uid, accountId);
-    if (!account) {
-      return res.status(400).json({ error: 'No email account configured. Please add an email account first.' });
-    }
-
-    const campaign = await EmailCampaign.create({
-      ownerUid: req.user.uid,
-      name: campaignName || `Scheduled Campaign ${sendDate.toLocaleDateString()}`,
-      draftId,
-      accountId: account._id,
-      status: 'scheduled',
-      scheduledAt: sendDate,
-      recipients: recipients.map(r => ({
-        email: r.email,
-        name: r.name || '',
-        variables: r.variables || {},
-        status: 'pending',
-      })),
-    });
-
-    await scheduleCampaign(campaign._id.toString(), sendDate);
-    logAudit(req.user.uid, 'email.scheduled', 'email_campaign', campaign._id, { scheduledAt: sendDate.toISOString() });
-
-    res.json({
-      message: 'Campaign scheduled successfully',
-      campaignId: campaign._id,
-      scheduledAt: sendDate.toISOString(),
-    });
-  } catch (error) {
-    console.error('Error scheduling campaign:', error);
-    res.status(500).json({ error: 'Failed to schedule campaign: ' + error.message });
+    const { campaign, existing } = await require('./utils/emailCampaignFlow').createCampaign(req.user.uid, req.body, true);
+    res.json({ message: existing ? 'Campaign already scheduled' : 'Campaign scheduled successfully', campaignId: campaign._id, status: campaign.status, scheduledAt: campaign.scheduledAt });
+  } catch (err) {
+    console.error('Error scheduling campaign:', err);
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -2325,10 +2232,13 @@ app.delete('/api/email/schedule/:campaignId', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Campaign is not scheduled' });
     }
 
-    await cancelScheduledCampaign(campaign._id.toString());
-
-    campaign.status = 'cancelled';
-    await campaign.save();
+    const changed = await EmailCampaign.findOneAndUpdate(
+      { _id: campaign._id, ownerUid: req.user.uid, status: 'scheduled' },
+      { $set: { status: 'cancelled' } }, { returnDocument: 'after' }
+    );
+    if (!changed) return res.status(409).json({ error: 'Campaign has started sending' });
+    try { await cancelScheduledCampaign(campaign._id.toString()); }
+    catch (err) { console.error('Could not remove cancelled Agenda job:', err); }
 
     res.json({ message: 'Scheduled campaign cancelled' });
   } catch (error) {
@@ -2383,54 +2293,6 @@ function configureCloudinary() {
   return cloudinary;
 }
 
-/**
- * Compress image buffer to WebP format under target file size.
- * Uses iterative quality reduction (brute-force) since Sharp has no
- * built-in target-size option. Starts at quality 80, steps down by 10.
- *
- * @param {Buffer} buffer - Raw image buffer from Multer
- * @param {number} maxBytes - Target max file size in bytes (default: 50KB)
- * @param {number} dimension - Square output dimension (default: 256px)
- * @returns {Promise<Buffer>} Compressed WebP image buffer
- */
-async function compressToTargetSize(buffer, maxBytes = 50 * 1024, dimension = 256) {
-  const sharp = require('sharp');
-  // Strategy: keep quality HIGH (90) and shrink DIMENSIONS first.
-  // Quality is only lowered as a last resort, so big uploads land in KB
-  // by getting smaller — not uglier.
-  const meta = await sharp(buffer).metadata().catch(() => ({}));
-  const srcW = meta.width || dimension;
-  const srcH = meta.height || dimension;
-  const startDim = Math.min(dimension, Math.max(srcW, srcH));
-
-  let dim = startDim;
-  let quality = 90;
-  let output = buffer;
-  let outDim = dim;
-
-  // Phase 1: fixed high quality, step dimensions down (256 -> 224 -> ... -> 128)
-  while (dim >= 128) {
-    output = await sharp(buffer)
-      .resize(dim, dim, { fit: 'cover', position: 'center' })
-      .webp({ quality, effort: 4 })
-      .toBuffer();
-    outDim = dim;
-    if (output.length <= maxBytes) break;
-    dim -= 32;
-  }
-
-  // Phase 2 (rare, tiny images still over target): trim quality, keep size
-  while (output.length > maxBytes && quality > 60) {
-    quality -= 10;
-    output = await sharp(buffer)
-      .resize(outDim, outDim, { fit: 'cover', position: 'center' })
-      .webp({ quality, effort: 4 })
-      .toBuffer();
-  }
-
-  return { buffer: output, width: outDim, height: outDim, quality };
-}
-
 // GET /api/cloudinary/status — check if Cloudinary is configured
 app.get('/api/cloudinary/status', verifyToken, async (req, res) => {
   try {
@@ -2452,19 +2314,20 @@ app.post('/api/cloudinary/avatar', verifyToken, (req, res, next) => { getUpload(
   try {
     const cloudinary = configureCloudinary();
     if (!cloudinary) {
-      return res.status(500).json({ error: 'Cloudinary not configured. Set CLOUDINARY_CLOUDNAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECREAT env vars.' });
+      return res.status(500).json({ error: 'Cloudinary not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET env vars.' });
     }
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }
+    if (!supabase) return res.status(503).json({ error: 'Profile storage is unavailable' });
 
     const userId = req.user.uid;
     const publicId = `avatars/${userId}`;
 
-    // Compress: any size in -> KB out, dimensions shrink first, quality stays high.
-    // Re-uploads overwrite the same public_id, so changing the image replaces it.
-    const compressed = await compressToTargetSize(req.file.buffer, 50 * 1024, 512);
+    // The 112px avatar renders sharply at 256px on high-density screens.
+    const { compressAvatar } = require('./utils/avatarImage');
+    const compressed = await compressAvatar(req.file.buffer);
     const compressedBuffer = compressed.buffer;
     const sizeKb = Math.ceil(compressedBuffer.length / 1024);
 
@@ -2488,20 +2351,17 @@ app.post('/api/cloudinary/avatar', verifyToken, (req, res, next) => { getUpload(
       uploadStream.end(compressedBuffer);
     });
 
-    // Update Supabase profiles table with new avatar_url (upsert so
-    // first-time users without a profiles row don't silently lose the URL)
-    try {
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .upsert({ id: userId, email: req.user.email || null, avatar_url: uploadResult.secure_url, updated_at: new Date().toISOString() });
-      if (profileErr) console.warn('Failed to update profile avatar_url in Supabase:', profileErr.message);
-    } catch (supabaseErr) {
-      console.warn('Failed to update profile avatar_url in Supabase:', supabaseErr.message);
-    }
+    // Cloudinary's secure_url includes the new asset version. Persist it so
+    // refreshed pages bypass old browser and CDN copies.
+    const { error: profileErr } = await supabase
+      .from('profiles')
+      .upsert({ id: userId, email: req.user.email || null, avatar_url: uploadResult.secure_url, updated_at: new Date().toISOString() });
+    if (profileErr) throw new Error(`Could not save profile photo: ${profileErr.message}`);
 
     res.json({
       secure_url: uploadResult.secure_url,
       public_id: uploadResult.public_id,
+      version: uploadResult.version,
       format: 'webp',
       size_kb: sizeKb,
       width: compressed.width,
@@ -3465,6 +3325,14 @@ if (require.main === module) {
   app.listen(PORT, "0.0.0.0", async () => {
     await mongoConnectPromise;
     await runStartupChecks();
+    if (mongoose.connection.readyState === 1) {
+      try {
+        await require('./utils/emailCampaignFlow').recoverInterruptedCampaigns();
+        await getAgenda();
+        await require('./utils/emailCampaignFlow').requeueWaitingCampaigns();
+        emailWorkerReconciled = true;
+      } catch (err) { console.error('Email worker initialization failed:', err); }
+    }
     console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
   });
 }

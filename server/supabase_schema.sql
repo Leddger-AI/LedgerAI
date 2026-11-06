@@ -102,6 +102,16 @@ CREATE TABLE IF NOT EXISTS email_send_log (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- One audit row per campaign, including after worker restart/reconciliation.
+DELETE FROM email_send_log WHERE id IN (
+  SELECT id FROM (
+    SELECT id, row_number() OVER (PARTITION BY user_id, campaign_id ORDER BY created_at, id) AS rn
+    FROM email_send_log WHERE campaign_id IS NOT NULL
+  ) duplicates WHERE rn > 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_email_send_log_campaign_unique
+  ON email_send_log(user_id, campaign_id);
+
 -- OTP Challenges table — short-lived verification codes gating destructive
 -- actions (Delete Data / Delete Account). One row per (user_id, action);
 -- upserted on resend, deleted on successful verification or expiry check.

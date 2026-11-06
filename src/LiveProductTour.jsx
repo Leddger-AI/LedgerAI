@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './LiveProductTour.css';
 
 export default function LiveProductTour() {
@@ -174,14 +174,15 @@ export default function LiveProductTour() {
           </div>
           <div className="lpt-browser-tabs">
             {tabs.map((tab) => (
-              <div 
+              <button type="button"
                 key={tab.id}
                 id={`lpt-tab-${tab.id}`}
                 className={`lpt-tab ${activeTab === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
+                aria-pressed={activeTab === tab.id}
               >
                 {tab.label}
-              </div>
+              </button>
             ))}
           </div>
         </div>

@@ -16,7 +16,7 @@ Configure the web app on Netlify using the following settings:
 * **Environment Variables**:
   * `VITE_SUPABASE_URL`: Your Supabase project URL (e.g. `https://your-project.supabase.co`).
   * `VITE_SUPABASE_ANON_KEY`: Your Supabase anon public key.
-  * `VITE_API_URL`: The public URL of your deployed backend (e.g. `https://ledgerai-vjt8.onrender.com`).
+  * `VITE_API_URL`: The public URL of your deployed backend (`https://ledgerai-908y.onrender.com` for the current Netlify release).
 
 ---
 
@@ -32,6 +32,10 @@ Deploy the Node.js/Express backend as a **Web Service** on Render:
   * `SUPABASE_URL`: Your Supabase project URL.
   * `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role secret key (NOT the anon key).
   * `MONGODB_URI`: Your MongoDB connection string (for spreadsheet storage).
+  * `FRONTEND_URL`: The Netlify site origin used by human unsubscribe links.
+  * `PUBLIC_API_URL`: The external HTTPS Render API origin used by mailbox one-click unsubscribe. If omitted, Render's `RENDER_EXTERNAL_URL` is used.
+  * `ENCRYPTION_KEY`: A stable 64-character hex secret for encrypted sender credentials and signed unsubscribe links.
+  * `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: Avatar storage credentials.
   * `PORT`: `5000` (or let Render assign it).
   * `GOOGLE_CLIENT_ID`: Google OAuth client ID (for email notifications).
   * `GOOGLE_CLIENT_SECRET`: Google OAuth client secret.
@@ -39,19 +43,36 @@ Deploy the Node.js/Express backend as a **Web Service** on Render:
   * `GOOGLE_EMAIL`: The Gmail address sending notifications.
   * `GEMINI_API_KEY`: *(Optional, Google Gemini API key for AI attribution)*.
 
+Before deploying the aligned email worker to an existing database, run
+`server/email_send_log_migration.sql` in the Supabase SQL editor. Keep the
+Render API service awake: its Agenda worker processes both immediate and
+scheduled email campaigns. A sleeping service will delay delivery.
+
+The migration was applied to the configured `Leddger-AI` Supabase project on
+30 October 2026. A read-only query confirmed the unique
+`idx_email_send_log_campaign_unique` index on `(user_id, campaign_id)`.
+
+Before running migrations or testing a real avatar replacement, verify that
+the configured Supabase project is active and that its hostname resolves. The
+API must be able to read `profiles`; Cloudinary connectivity alone does not
+confirm that an uploaded avatar can be saved to a user's profile.
+
 ---
 
-## 🤖 3. UptimeRobot (Keep Awake)
+## 🤖 3. Worker monitoring
 
-To prevent Render's free tier from going to sleep after 15 minutes of inactivity:
-1. Log in to [UptimeRobot.com](https://uptimerobot.com/).
-2. Create a new monitor of type **`HTTP(s)`**.
-3. Name it `LedgerAI Node API`.
-4. Set the URL to your Render health endpoint:
+Scheduled delivery needs an always-on Render compute plan. Render's Free web
+services spin down after 15 minutes without inbound traffic and can restart at
+other times; a periodic ping is monitoring, not a delivery guarantee. See
+[Render's Free service limits](https://render.com/docs/free).
+
+Monitor the email worker health endpoint (HTTP 200 means MongoDB and Agenda are
+ready):
    ```text
-   https://your-render-app.onrender.com/api/user/departments
+   https://your-render-app.onrender.com/api/email/worker-health
    ```
-5. Set the monitoring interval to **`5 minutes`**.
+Configure alerts for non-200 responses and check a scheduled test campaign
+through a backend restart before rollout.
 
 ---
 
