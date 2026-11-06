@@ -119,8 +119,6 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
         </div>
         
         <div className="cz-hero-right">
-          <div className="cz-concentric-rings"></div>
-          
           <div className="cz-visual-lockup">
             {/* Chart Card */}
             <div className="cz-chart-card">
