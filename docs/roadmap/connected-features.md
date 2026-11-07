@@ -16,8 +16,8 @@ Authentication and owner-scoped records support every link. Supabase owns drafts
 | Order | Feature | Status on 8 Nov | Depends on | Next acceptance check |
 |---|---|---|---|---|
 | 0 | Email/mobile release preflight | Render branch build live; worker health and controlled campaigns pass; Netlify production rollout pending | Render configuration, Supabase, MongoDB | Browser flow, backend restart recovery, avatar replacement |
-| 1 | Public forms and candidate identity | Staged PR #70; production migration and live API journey passed 8 Nov | Draft config, Supabase transaction | Desktop and 390 × 844 public browser submission |
-| 2 | Candidate workspace | Live API search/detail/status refresh passed; Sourcing browser check pending | Candidate API and migration | Open history and update status in Sourcing UI |
+| 1 | Public forms and candidate identity | Staged PR #70; production migration, live API, and desktop/mobile preview submissions passed 8 Nov | Draft config, Supabase transaction | Production frontend rollout |
+| 2 | Candidate workspace | Live API search/detail/status refresh passed; Sourcing browser check pending | Candidate API and migration | Open history and update status in Sourcing UI through social login |
 | 3 | Candidate communication | Planned | Reliable campaign worker and candidate identity | Choose candidates as an audience and display recipient outcomes in history |
 | 4 | Interviews and calendar | Demo screens today | Candidate identity, meeting persistence | Candidate-linked interview with real time and link; no fixed June 2026 grid |
 | 5 | Projects, teams, budgets | Projects and Teams use local sample state | Saved project/team entities, meetings | Persistent ownership, attribution, and cost rollups |

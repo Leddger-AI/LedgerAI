@@ -1,6 +1,6 @@
 # 14: Application and candidate lifecycle
 
-Updated: 8 November 2026. Code is staged in PR #70 on `codex/email-mobile-release`. The production Supabase migration and direct Render API branch deployment were verified on 8 Nov. The hosted API journey passed with disposable records; Netlify production frontend rollout and browser journey remain pending.
+Updated: 8 November 2026. Code is staged in PR #70 on `codex/email-mobile-release`. The production Supabase migration and direct Render API branch deployment were verified on 8 Nov. The hosted API journey and desktop/390 × 844 public form submissions passed with disposable records; Netlify production frontend rollout and hosted Sourcing UI verification remain pending.
 
 ## User journey
 
