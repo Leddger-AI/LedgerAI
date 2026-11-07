@@ -1,6 +1,6 @@
 # Application → candidate implementation record
 
-Updated: 8 November 2026. Branch: `codex/email-mobile-release`, implementation commit `f06d45e`. This document separates code completed locally from database, browser, and production verification still required.
+Updated: 8 November 2026. Branch: `codex/email-mobile-release`, implementation commit `f06d45e`. This document separates code completed locally and the hosted database migration from browser and production verification still required.
 
 ## Changes made
 
@@ -17,7 +17,9 @@ Updated: 8 November 2026. Branch: `codex/email-mobile-release`, implementation c
 
 ## Database migration and compatibility
 
-Apply `server/application_candidate_migration.sql` in a test Supabase database first. Inspect `candidate_backfill_review`, then call `backfill_application_candidates()` and review its linked/review counts. Apply to the Leddger-AI project only after test verification. The migration is additive and does not delete rows. Old submissions remain readable without `candidate_id`; old candidate rows retain their IDs. Historical student rows with missing email or multiple matching candidate records remain for manual review. Existing `/api/submissions` responses retain all previous fields and add `candidateId`; email campaign APIs are unchanged.
+`server/application_candidate_migration.sql` was tested in an isolated PostgreSQL-compatible database, then applied to the configured Leddger-AI Supabase project (`tcoxhlhxhsqktztlwqvw`) on 8 Nov. The hosted database had 0 candidates and 0 submissions before migration. The migration is additive and does not delete rows. Old submissions remain readable without `candidate_id`; old candidate rows retain their IDs. Historical student rows with missing email or multiple matching candidate records remain for manual review. Existing `/api/submissions` responses retain all previous fields and add `candidateId`; email campaign APIs are unchanged.
+
+After applying it, a hosted schema query confirmed `candidates.normalized_email` and `form_submissions.candidate_id`. `candidate_backfill_review` returned 0 rows; `backfill_application_candidates()` returned `linked_count = 0`, `review_count = 0`. A second hosted query confirmed 0 candidates, 0 submissions, and 0 review rows. The exact `record_form_submission(text,text,uuid,text,jsonb,boolean,text,text)` signature is executable by `service_role` and not by `anon` or `authenticated`. These are production schema and privilege checks, not a live application journey or an independent Supabase staging database test.
 
 Deploy order: migration → API → frontend → controlled student/employee/team submission → candidate search/detail/status refresh. Because the new API calls the RPC for every public submission, deploying it before the migration would make submissions fail. If rollback is needed, restore the previous API before removing any database objects; leave additive columns and recorded submissions intact.
 
@@ -33,19 +35,20 @@ Deploy order: migration → API → frontend → controlled student/employee/tea
 - The SQL migration ran twice in an isolated PGlite PostgreSQL-compatible database. Queries confirmed repeat application idempotence of the schema setup, same-owner email reuse, cross-owner separation, missing-email review, no candidate for a team submission, rollback when a submission insert fails, an unambiguous historical backfill, ambiguous historical records left unlinked, and no anonymous execute permission on the submission function. This is a useful function test, not a substitute for checking the hosted Supabase schema and policies.
 - ESLint on `App.jsx` still reports 13 existing issues outside the small route-shell edit; the other touched frontend files passed. The build passed despite the existing bundle-size warning.
 
-API checks use mocked Supabase, the browser check uses a local fixture, and migration checks use PGlite. They do **not** establish that the hosted Supabase project has the expected schema, that its row-level rules behave as intended, or that the full browser journey works against the deployed services. Record those results here when performed.
+API checks use mocked Supabase, the browser check uses a local fixture, and functional migration checks use PGlite. The hosted queries above establish the production schema and function privileges, but they do **not** establish that row-level rules behave as intended under real user sessions or that the full browser journey works against deployed services. Record those results here when performed.
 
 ## Release preflight and blockers
 
 - Production main remains `9276d51` at the time of this check. The active Render API `https://ledgerai-908y.onrender.com/api/email/worker-health` returned **404** on 8 Nov, so the staged worker is not yet live.
-- The configured Leddger-AI Supabase project is active, but this new candidate migration has **not been applied**. Do not send production student applications through this branch until it is applied and checked.
+- The configured Leddger-AI Supabase project is active and the candidate migration is **applied and checked**. The candidate API and frontend are still staged in PR #70, so no production student application has been tested through them.
 - The earlier [release preflight](../deployment/release-preflight-2026-11-01.md) records missing production `ENCRYPTION_KEY` and `FRONTEND_URL` at that time; recheck before release.
 - [Render Free documentation](https://render.com/docs/free) now states that outbound SMTP ports 465 and 587 are blocked. Leddger's Gmail sender defaults to port 587. A local SMTP smoke test on another port is insufficient to claim production email delivery. Render Free also sleeps after 15 idle minutes, delaying Agenda jobs.
-- A hosted Supabase staging check, real database end-to-end browser sequence, live candidate flow, and live email/avatar checks are **pending**. No production rollout is claimed by this document.
+- The Render dashboard required sign-in in the available browser session, so current production `ENCRYPTION_KEY`, `FRONTEND_URL`, and service settings could not be verified there. The public active API still returned **404** at `/api/email/worker-health` on 8 Nov.
+- An independent hosted Supabase staging check, real database end-to-end browser sequence, live candidate flow, and live email/avatar checks are **pending**. No production rollout is claimed by this document.
 
 ## Next verification checklist
 
-1. Test migration, RPC permissions, repeated/concurrent student submissions, and backfill in an isolated Supabase database. Verify different owners never share a candidate.
+1. Test RPC permissions, repeated/concurrent student submissions, and backfill in an independent hosted Supabase test database. Verify different owners never share a candidate. The local PostgreSQL-compatible function checks and production schema/privilege checks above are complete.
 2. Test new and legacy drafts for all three template types, including expired and scheduled forms, invalid fields, and optional/required uploads.
 3. At desktop and 390 × 844, complete builder → preview → publish → submit → Sourcing → candidate detail → status update → refresh.
 4. Resolve the email transport and production environment blockers, then verify worker health, controlled delivery, and restart recovery before publishing the combined release.

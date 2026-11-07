@@ -16,7 +16,7 @@ Authentication and owner-scoped records support every link. Supabase owns drafts
 | Order | Feature | Status on 8 Nov | Depends on | Next acceptance check |
 |---|---|---|---|---|
 | 0 | Email/mobile release preflight | Staged PR #70; production worker route returns 404 | Render configuration, Supabase, MongoDB | Worker health 200, controlled campaign, restart recovery, avatar replacement |
-| 1 | Public forms and candidate identity | Implemented locally in this branch; migration not applied live | Draft config, Supabase transaction | Submit each template type; student application creates/links candidate |
+| 1 | Public forms and candidate identity | Implemented in staged PR #70; production database migration applied 8 Nov; live API journey pending | Draft config, Supabase transaction | Submit each template type; student application creates/links candidate |
 | 2 | Candidate workspace | Implemented locally in Sourcing; live check pending | Candidate API and migration | Search, open history, update status, refresh |
 | 3 | Candidate communication | Planned | Reliable campaign worker and candidate identity | Choose candidates as an audience and display recipient outcomes in history |
 | 4 | Interviews and calendar | Demo screens today | Candidate identity, meeting persistence | Candidate-linked interview with real time and link; no fixed June 2026 grid |

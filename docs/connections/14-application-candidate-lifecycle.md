@@ -1,6 +1,6 @@
 # 14: Application and candidate lifecycle
 
-Updated: 8 November 2026. Code exists locally on `codex/email-mobile-release`; database migration and production verification remain pending.
+Updated: 8 November 2026. Code is staged in PR #70 on `codex/email-mobile-release`. The production Supabase migration was applied and its schema and function privileges verified on 8 Nov; API deployment and live journey verification remain pending.
 
 ## User journey
 
@@ -30,7 +30,7 @@ Builder saves a draft → recruiter activates/schedules → public form loads sa
 
 The migration is `server/application_candidate_migration.sql`. `candidates.normalized_email` stores trimmed lower-case email. `form_submissions.candidate_id` is nullable and references `candidates.id`. A transaction-level advisory lock on `(owner_id, normalized_email)` prevents two simultaneous submissions through the RPC from creating separate candidates. Email is matched only within one owner. Existing duplicate candidate identities are not automatically merged; a new application needing review is kept separate. No email creates a `needs_contact_review` candidate. Employee and team submissions have a null candidate link.
 
-Historical data remains readable. The restricted `candidate_backfill_review` view identifies unlinked student submissions. `backfill_application_candidates()` links only unambiguous valid-email rows; it reports linked and review counts. Run it only after inspecting the review view in the target database. The migration and function permissions must be tested before production application.
+Historical data remains readable. The restricted `candidate_backfill_review` view identifies unlinked student submissions. `backfill_application_candidates()` links only unambiguous valid-email rows; it reports linked and review counts. The production project had 0 submissions before migration; after the view returned 0 rows, the backfill reported 0 linked and 0 needing review. Hosted function privilege checks confirmed only `service_role` can execute the submission function. Independent hosted staging and end-to-end application checks remain pending.
 
 ## Error and access paths
 
@@ -43,4 +43,4 @@ Historical data remains readable. The restricted `candidate_backfill_review` vie
 
 ## Shared dependencies and deployment order
 
-Supabase Auth/JWT, Supabase Postgres, MongoDB analytics mirror, and optional owner email notification. Apply and verify the migration before deploying the new API, because submission now calls `record_form_submission`. Deploy API before frontend, test all template types, then refresh Sourcing. The email campaign and Agenda behavior is described in [09](./09-email-campaign-schedule.md); this milestone does not add candidate campaign history.
+Supabase Auth/JWT, Supabase Postgres, MongoDB analytics mirror, and optional owner email notification. The migration is applied and verified before API deployment because submission calls `record_form_submission`. Deploy API before frontend, test all template types, then refresh Sourcing. The email campaign and Agenda behavior is described in [09](./09-email-campaign-schedule.md); this milestone does not add candidate campaign history.
