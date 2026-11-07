@@ -1,6 +1,6 @@
 # Application → candidate implementation record
 
-Updated: 8 November 2026. Branch: `codex/email-mobile-release`. This document separates code completed locally from database, browser, and production verification still required.
+Updated: 8 November 2026. Branch: `codex/email-mobile-release`, implementation commit `f06d45e`. This document separates code completed locally from database, browser, and production verification still required.
 
 ## Changes made
 
@@ -28,6 +28,7 @@ Deploy order: migration → API → frontend → controlled student/employee/tea
 - API suite: **77 tests passed** after adding published `templateType`, atomic RPC call, invalid configured-field rejection, and candidate owner-scope tests.
 - Touched frontend files: ESLint passed after correcting a pre-existing synchronous effect call in Sourcing.
 - Frontend production build passed. Existing size warning remains: spreadsheet chunk about 4.26 MB uncompressed.
+- Draft PR #70 was updated with the implementation; its Netlify deploy-preview checks passed on 8 Nov. The preview frontend still targets the older production API, so it does not verify candidate submission against the new backend.
 - Browser check with an **isolated local fixture**, not Supabase: student fields rendered and submitted; the candidate appeared in Sourcing; status changed to `screening` and remained after refresh; legacy employee and team fields rendered. At 390 × 844, the form had no horizontal overflow (`scrollWidth` 390px). The test exposed the landing intro/navigation on public forms; the route shell was corrected and rechecked.
 - The SQL migration ran twice in an isolated PGlite PostgreSQL-compatible database. Queries confirmed repeat application idempotence of the schema setup, same-owner email reuse, cross-owner separation, missing-email review, no candidate for a team submission, rollback when a submission insert fails, an unambiguous historical backfill, ambiguous historical records left unlinked, and no anonymous execute permission on the submission function. This is a useful function test, not a substitute for checking the hosted Supabase schema and policies.
 - ESLint on `App.jsx` still reports 13 existing issues outside the small route-shell edit; the other touched frontend files passed. The build passed despite the existing bundle-size warning.
