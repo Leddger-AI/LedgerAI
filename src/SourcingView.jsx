@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { UserSearch, Plus, Copy, Check, ExternalLink, FileText, Users, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getAuthToken } from './supabaseAuth';
+import { migrateToBlocks, blockToField } from './utils/formSchema';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -25,6 +26,10 @@ export default function SourcingView() {
   const navigate = useNavigate();
   const [drafts, setDrafts] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [candidates, setCandidates] = useState([]);
+  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [candidateSearch, setCandidateSearch] = useState('');
+  const [candidateError, setCandidateError] = useState('');
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState(null);
   const copyTimerRef = useRef(null);
@@ -38,9 +43,10 @@ export default function SourcingView() {
     try {
       const token = await getAuthToken();
       if (!token) return;
-      const [draftsRes, subsRes] = await Promise.all([
+      const [draftsRes, subsRes, candidatesRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/drafts`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/submissions`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/candidates`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       if (draftsRes.ok) {
         const data = await draftsRes.json();
@@ -50,6 +56,10 @@ export default function SourcingView() {
         const data = await subsRes.json();
         setSubmissions(data.submissions || []);
       }
+      if (candidatesRes.ok) {
+        const data = await candidatesRes.json();
+        setCandidates(data.candidates || []);
+      } else setCandidateError('Could not load candidates. Refresh to try again.');
     } catch (err) {
       console.error('Error fetching sourcing data:', err);
     } finally {
@@ -58,7 +68,8 @@ export default function SourcingView() {
   }, []);
 
   useEffect(() => {
-    fetchData();
+    const timer = setTimeout(fetchData, 0);
+    return () => clearTimeout(timer);
   }, [fetchData]);
 
   const handleCopyLink = (draft) => {
@@ -74,14 +85,20 @@ export default function SourcingView() {
   const getDraftFields = (draft) => {
     try {
       const cfg = typeof draft.config === 'string' ? JSON.parse(draft.config) : draft.config;
-      const fields = [];
-      if (cfg?.fields) {
-        cfg.fields.forEach(f => { if (f.enabled) fields.push(f.label || f.key); });
-      }
-      return fields.length > 0 ? fields : ['Form fields'];
+      const fields = migrateToBlocks(draft.templateType || 'student', cfg || {}).blocks
+        .map(blockToField).filter(f => !f.hidden && !['heading', 'divider', 'paragraph'].includes(f.type));
+      return fields.length ? fields.map(f => f.label || f.id) : ['No fields configured'];
     } catch {
       return ['Form fields'];
     }
+  };
+
+  const fieldLabel = (draftId, id) => {
+    const draft = drafts.find(d => d.draftId === draftId);
+    if (!draft) return id;
+    const field = migrateToBlocks(draft.templateType || 'student', draft.config || {}).blocks
+      .map(blockToField).find(f => f.id === id);
+    return field?.label || id;
   };
 
   const getSubmissionCount = (draftId) => {
@@ -89,7 +106,33 @@ export default function SourcingView() {
   };
 
   const totalSubmissions = submissions.length;
+  const filteredCandidates = candidates.filter(c => `${c.name || ''} ${c.email || ''}`.toLowerCase().includes(candidateSearch.toLowerCase()));
   const activeCount = drafts.filter(d => d.status === 'active').length;
+
+  const openCandidate = async id => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/api/candidates/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Could not load candidate.');
+      setSelectedCandidate(await res.json());
+      setCandidateError('');
+    } catch (err) { setCandidateError(err.message); }
+  };
+
+  const updateStatus = async status => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE_URL}/api/candidates/${selectedCandidate.candidate.id}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error('Could not save candidate status.');
+      const { candidate } = await res.json();
+      setSelectedCandidate(current => ({ ...current, candidate }));
+      setCandidates(current => current.map(c => c.id === candidate.id ? candidate : c));
+      setCandidateError('');
+    } catch (err) { setCandidateError(err.message); }
+  };
 
   return (
     <div className="sourcing-container">
@@ -130,7 +173,7 @@ export default function SourcingView() {
             <div className="kpi-icon-wrapper purple"><Users size={16} /></div>
           </div>
           <div className="kpi-body">
-            <span className="kpi-value">{totalSubmissions} Candidates</span>
+            <span className="kpi-value">{totalSubmissions} Submissions</span>
             <span className="kpi-trend positive">Across all templates</span>
           </div>
         </div>
@@ -140,7 +183,7 @@ export default function SourcingView() {
             <div className="kpi-icon-wrapper cyan"><UserSearch size={16} /></div>
           </div>
           <div className="kpi-body">
-            <span className="kpi-value">{submissions.length} Profiles</span>
+            <span className="kpi-value">{candidates.length} Profiles</span>
             <span className="kpi-trend positive">Ready to review</span>
           </div>
         </div>
@@ -209,6 +252,37 @@ export default function SourcingView() {
           ))}
         </div>
       )}
+
+      <div className="glass-panel" style={{ padding: 24, marginBottom: 24 }}>
+        <h3 style={{ fontSize: 16, marginBottom: 12 }}>Candidates</h3>
+        <input className="form-input" aria-label="Search candidates" placeholder="Search name or email"
+          value={candidateSearch} onChange={e => setCandidateSearch(e.target.value)} style={{ maxWidth: 360, marginBottom: 16 }} />
+        {candidateError && <p role="alert">{candidateError}</p>}
+        {filteredCandidates.length === 0 ? <p>No candidates found.</p> : <div style={{ display: 'grid', gap: 8 }}>
+          {filteredCandidates.map(candidate => <button type="button" key={candidate.id}
+            onClick={() => openCandidate(candidate.id)} className="table-action-btn"
+            style={{ textAlign: 'left', padding: 12, display: 'flex', justifyContent: 'space-between' }}>
+            <span>{candidate.name || 'Name needs review'} · {candidate.email || 'Email needs review'}</span>
+            <span>{candidate.status}</span>
+          </button>)}
+        </div>}
+      </div>
+      {selectedCandidate && <section className="glass-panel" style={{ padding: 24, marginBottom: 24 }} aria-label="Candidate detail">
+        <button type="button" onClick={() => setSelectedCandidate(null)}>Close</button>
+        <h3>{selectedCandidate.candidate.name || 'Name needs review'}</h3>
+        <p>{selectedCandidate.candidate.email || 'Email needs review'}</p>
+        <label>Status <select className="form-input" style={{ maxWidth: 240 }} value={selectedCandidate.candidate.status}
+          onChange={e => updateStatus(e.target.value)}>
+          {['new', 'needs_contact_review', 'screening', 'interview', 'offer', 'hired', 'rejected', 'withdrawn'].map(status =>
+            <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}
+        </select></label>
+        <h4>Applications</h4>
+        {selectedCandidate.applications.map(application => <details key={application.submissionId} style={{ marginTop: 12 }}>
+          <summary>{application.title} · {formatRelativeTime(application.submittedAt)}</summary>
+          <dl>{Object.entries(application.submittedData || {}).map(([key, value]) =>
+            <div key={key}><dt style={{ fontWeight: 600 }}>{fieldLabel(application.draftId, key)}</dt><dd>{String(value)}</dd></div>)}</dl>
+        </details>)}
+      </section>}
 
       {/* Talent Pool Table */}
       <div className="glass-panel" style={{ padding: '24px' }}>

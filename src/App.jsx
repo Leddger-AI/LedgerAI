@@ -1153,8 +1153,8 @@ export default function App() {
 
   return (
     <>
-      {showIntro && <SiteIntro onDone={() => setShowIntro(false)} />}
-      {location.pathname !== '/welcome' && location.pathname !== '/login' && location.pathname !== '/auth/github' && !location.pathname.startsWith('/dashboard') && (
+      {showIntro && !location.pathname.startsWith('/form/') && <SiteIntro onDone={() => setShowIntro(false)} />}
+      {location.pathname !== '/welcome' && location.pathname !== '/login' && location.pathname !== '/auth/github' && !location.pathname.startsWith('/dashboard') && !location.pathname.startsWith('/form/') && (
         <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
       )}
       <Suspense fallback={

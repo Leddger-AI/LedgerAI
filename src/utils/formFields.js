@@ -41,6 +41,25 @@ const STUDENT_DEFS = [
   { id: 'actionItems', toggle: 'actionItems', section: 'feedback', type: 'textarea', label: 'Action Items / Next Steps:' },
 ];
 
+const EMPLOYEE_DEFS = [
+  ['fullName', 'text', 'Full Name'], ['employeeId', 'text', 'Employee ID'],
+  ['companyEmail', 'compoundEmail', 'Company Email'], ['linkedin', 'url', 'LinkedIn'],
+  ['portfolio', 'url', 'Portfolio'], ['projects', 'url', 'Projects'],
+  ['jobTitle', 'text', 'Job Title'], ['department', 'text', 'Department'],
+  ['reviewPeriod', 'text', 'Review Period'], ['jobKnowledge', 'rating', 'Job Knowledge'],
+  ['qualityWork', 'rating', 'Quality of Work'], ['leadership', 'rating', 'Leadership'],
+  ['accomplishments', 'textarea', 'Accomplishments'], ['improvements', 'textarea', 'Improvements'],
+  ['smartGoals', 'textarea', 'SMART Goals'], ['profilePhoto', 'photo', 'Profile Photo'],
+  ['resume', 'file', 'Resume / CV'],
+].map(([id, type, label]) => ({ id, toggle: id, section: 'general', type, label }));
+
+const TEAM_DEFS = [
+  ['teamTitle', 'text', 'Team Name'], ['teamLead', 'text', 'Team Lead'],
+  ['teamMembers', 'textarea', 'Team Members'], ['department', 'text', 'Department'],
+  ['teamObjective', 'textarea', 'Team Objective / Charter'], ['budgetCode', 'text', 'Budget Code'],
+].map(([id, type, label]) => ({ id, toggle: id, section: 'general', type, label,
+  required: ['teamTitle', 'teamLead', 'department', 'teamObjective'].includes(id) }));
+
 export const SECTION_TITLES = {
   basic: 'Basic Details',
   mentorship: 'Mentorship Details',
@@ -48,7 +67,7 @@ export const SECTION_TITLES = {
   feedback: 'Qualitative Feedback',
 };
 
-const DEFS_BY_TYPE = { student: STUDENT_DEFS };
+const DEFS_BY_TYPE = { student: STUDENT_DEFS, employee: EMPLOYEE_DEFS, team: TEAM_DEFS };
 
 export function fieldDefs(templateType) {
   return DEFS_BY_TYPE[templateType] || STUDENT_DEFS;

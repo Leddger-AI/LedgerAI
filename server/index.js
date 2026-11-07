@@ -17,6 +17,7 @@ const EmailCampaign = require('./models/EmailCampaign');
 const EmailAccount = require('./models/EmailAccount');
 const TemplateData = require('./models/TemplateData');
 const TemplateSubmission = require('./models/TemplateSubmission');
+const { unsupportedRequiredField, validateSubmission, candidateIdentity } = require('./utils/publicFormFields');
 const AnalyticsReport = require('./models/AnalyticsReport');
 const {
   getOverviewStats,
@@ -535,6 +536,8 @@ app.put('/api/drafts/:draftId/activate', verifyToken, async (req, res) => {
     if (findError || !draft) {
       return res.status(404).json({ error: 'Draft not found' });
     }
+    const unsupported = unsupportedRequiredField(draft.template_type, draft.config);
+    if (unsupported) return res.status(400).json({ error: `${unsupported.label || unsupported.id} requires file upload, which is not available yet` });
 
     const { data: updated, error: updateError } = await supabase
       .from('form_drafts')
@@ -638,6 +641,8 @@ app.put('/api/drafts/:draftId/schedule', verifyToken, async (req, res) => {
       .single();
 
     if (findError || !draft) return res.status(404).json({ error: 'Draft not found' });
+    const unsupported = unsupportedRequiredField(draft.template_type, draft.config);
+    if (unsupported) return res.status(400).json({ error: `${unsupported.label || unsupported.id} requires file upload, which is not available yet` });
 
     const { data: updated, error: updateError } = await supabase
       .from('form_drafts')
@@ -818,7 +823,7 @@ app.get('/api/forms/:draftId', async (req, res) => {
 
     if (draft.status !== 'active') return res.status(403).json({ error: 'This form link is not yet active.' });
 
-    res.json({ title: draft.title, config: draft.config });
+    res.json({ title: draft.title, config: draft.config, templateType: draft.template_type });
   } catch (error) {
     console.error('Error fetching form:', error);
     res.status(500).json({ error: 'Failed to fetch form' });
@@ -874,18 +879,16 @@ app.post('/api/forms/:draftId/submit', submitLimiter, async (req, res) => {
       }
     }
     if (draft.status !== 'active') return res.status(403).json({ error: 'This form is not currently active' });
+    const validationError = validateSubmission(draft.template_type, draft.config, submittedData);
+    if (validationError) return res.status(400).json({ error: validationError });
 
     const submissionId = uuidv4();
-
-    const { error: submitError } = await supabase
-      .from('form_submissions')
-      .insert({
-        submission_id: submissionId,
-        draft_id: draft.draft_id,
-        user_id: draft.user_id,
-        title: draft.title,
-        submitted_data: submittedData
-      });
+    const identity = draft.template_type === 'student' ? candidateIdentity(submittedData, draft.config) : { name: null, email: null };
+    const { error: submitError } = await supabase.rpc('record_form_submission', {
+      p_submission_id: submissionId, p_draft_id: draft.draft_id, p_owner_id: draft.user_id,
+      p_title: draft.title, p_data: submittedData, p_is_application: draft.template_type === 'student',
+      p_name: identity.name, p_email: identity.email,
+    });
 
     if (submitError) throw submitError;
 
@@ -938,6 +941,7 @@ app.get('/api/submissions', verifyToken, async (req, res) => {
 
     const mapped = (data || []).map(s => ({
       submissionId: s.submission_id,
+      candidateId: s.candidate_id || null,
       draftId: s.draft_id,
       title: s.title,
       submittedData: s.submitted_data,
@@ -968,6 +972,7 @@ app.get('/api/submissions/:draftId', verifyToken, async (req, res) => {
 
     const mapped = (data || []).map(s => ({
       submissionId: s.submission_id,
+      candidateId: s.candidate_id || null,
       draftId: s.draft_id,
       title: s.title,
       submittedData: s.submitted_data,
@@ -978,6 +983,59 @@ app.get('/api/submissions/:draftId', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching submissions for draft:', error);
     res.status(500).json({ error: 'Failed to fetch submissions' });
+  }
+});
+
+const CANDIDATE_STATUSES = new Set(['new', 'needs_contact_review', 'screening', 'interview', 'offer', 'hired', 'rejected', 'withdrawn']);
+
+app.get('/api/candidates', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('candidates').select('id,name,email,status,created_at,updated_at')
+      .eq('user_id', req.user.uid).order('updated_at', { ascending: false }).limit(500);
+    if (error) throw error;
+    res.json({ candidates: (data || []).map(c => ({ id: c.id, name: c.name, email: c.email,
+      status: c.status, createdAt: c.created_at, updatedAt: c.updated_at })) });
+  } catch (error) {
+    console.error('Error fetching candidates:', error);
+    res.status(500).json({ error: 'Failed to fetch candidates' });
+  }
+});
+
+app.get('/api/candidates/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Invalid candidate ID' });
+    const { data: candidate, error } = await supabase.from('candidates').select('*')
+      .eq('id', req.params.id).eq('user_id', req.user.uid).single();
+    if (error || !candidate) return res.status(404).json({ error: 'Candidate not found' });
+    const { data: applications, error: applicationsError } = await supabase.from('form_submissions').select('*')
+      .eq('candidate_id', req.params.id).eq('user_id', req.user.uid).order('submitted_at', { ascending: false });
+    if (applicationsError) throw applicationsError;
+    res.json({ candidate: { id: candidate.id, name: candidate.name, email: candidate.email,
+      status: candidate.status, createdAt: candidate.created_at, updatedAt: candidate.updated_at },
+      applications: (applications || []).map(s => ({ submissionId: s.submission_id, draftId: s.draft_id,
+        title: s.title, submittedData: s.submitted_data, submittedAt: s.submitted_at })) });
+  } catch (error) {
+    console.error('Error fetching candidate detail:', error);
+    res.status(500).json({ error: 'Failed to fetch candidate detail' });
+  }
+});
+
+app.patch('/api/candidates/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isUuid(req.params.id)) return res.status(400).json({ error: 'Invalid candidate ID' });
+    const { status } = req.body || {};
+    if (!CANDIDATE_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid candidate status' });
+    const { data, error } = await supabase.from('candidates')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).eq('user_id', req.user.uid).select('*').maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Candidate not found' });
+    logAudit(req.user.uid, 'candidate.status_updated', 'candidate', req.params.id, { status });
+    res.json({ candidate: { id: data.id, name: data.name, email: data.email, status: data.status,
+      createdAt: data.created_at, updatedAt: data.updated_at } });
+  } catch (error) {
+    console.error('Error updating candidate:', error);
+    res.status(500).json({ error: 'Failed to update candidate' });
   }
 });
 

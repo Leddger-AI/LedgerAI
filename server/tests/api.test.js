@@ -38,6 +38,7 @@ function createChain() {
 
 const mockSupabase = {
   from: jest.fn(() => createChain()),
+  rpc: jest.fn().mockResolvedValue({ data: [{ saved_submission_id: 'test', saved_candidate_id: null }], error: null }),
 };
 
 jest.mock('../supabaseClient', () => mockSupabase);
@@ -664,6 +665,15 @@ describe('Forms & Submissions API', () => {
       expect(res.body.title).toBe('Active Form');
       expect(res.body.config).toBeDefined();
     });
+
+    test('returns template type for published applications', async () => {
+      mockSupabaseQuery.data = { draft_id: 'd1', title: 'Application', template_type: 'student',
+        config: { toggles: { fullName: true } }, status: 'active',
+        expires_at: new Date(Date.now() + 86400000).toISOString() };
+      const res = await request(app).get('/api/forms/d1');
+      expect(res.status).toBe(200);
+      expect(res.body.templateType).toBe('student');
+    });
   });
 
   describe('POST /api/forms/:draftId/submit', () => {
@@ -696,6 +706,28 @@ describe('Forms & Submissions API', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('submitted');
+    });
+
+    test('student application links a normalized candidate in the atomic RPC', async () => {
+      mockSupabaseQuery.data = { draft_id: 'd1', user_id: 'test-user-uid', title: 'Application',
+        template_type: 'student', config: { toggles: { fullName: true, collegeEmail: true } },
+        status: 'active', expires_at: new Date(Date.now() + 86400000).toISOString() };
+      const res = await request(app).post('/api/forms/d1/submit').send({
+        submittedData: { fullName: ' Ava ', collegeEmail: ' Ava@Example.COM ' },
+      });
+      expect(res.status).toBe(200);
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('record_form_submission',
+        expect.objectContaining({ p_is_application: true, p_name: 'Ava', p_email: 'ava@example.com' }));
+    });
+
+    test('rejects invalid configured fields before storage', async () => {
+      mockSupabaseQuery.data = { draft_id: 'd1', user_id: 'test-user-uid', title: 'Application',
+        template_type: 'student', config: { blocks: [{ uuid: 'fld-collegeEmail', type: 'email',
+          payload: { label: 'Email', isRequired: true } }] }, status: 'active',
+        expires_at: new Date(Date.now() + 86400000).toISOString() };
+      const res = await request(app).post('/api/forms/d1/submit').send({ submittedData: {} });
+      expect(res.status).toBe(400);
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
     });
 
     test('F8: rejects submission for expired form', async () => {
@@ -846,6 +878,34 @@ describe('Forms & Submissions API', () => {
 });
 
 // ==========================================
+// CANDIDATE WORKSPACE
+describe('Candidate API', () => {
+  const id = '9da2d7ca-a51c-4459-a1e2-232c6e0e4936';
+
+  test('list is scoped to authenticated owner', async () => {
+    mockSupabaseQuery.data = [];
+    const res = await request(app).get('/api/candidates').set('x-test-uid', 'owner-a');
+    expect(res.status).toBe(200);
+    const chain = mockSupabase.from.mock.results.find(result => result.value)?.value;
+    expect(chain.eq).toHaveBeenCalledWith('user_id', 'owner-a');
+  });
+
+  test('rejects invalid status without writing', async () => {
+    const res = await request(app).patch(`/api/candidates/${id}`)
+      .set('x-test-uid', 'owner-a').send({ status: 'anything' });
+    expect(res.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalledWith('candidates');
+  });
+
+  test('returns 404 when candidate does not belong to owner', async () => {
+    mockSupabaseQuery.data = null;
+    const res = await request(app).get(`/api/candidates/${id}`).set('x-test-uid', 'owner-b');
+    expect(res.status).toBe(404);
+    const chain = mockSupabase.from.mock.results.find(result => result.value)?.value;
+    expect(chain.eq).toHaveBeenCalledWith('user_id', 'owner-b');
+  });
+});
+
 // PROFILE (issue #24: timezone persistence)
 // ==========================================
 
