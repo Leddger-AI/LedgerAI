@@ -20,7 +20,6 @@ function getNodemailer() {
 
 const createTransporter = async () => {
   const OAuth2 = getOAuth2();
-  const nodemailer = getNodemailer();
 
   const oauth2Client = new OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -31,6 +30,12 @@ const createTransporter = async () => {
   oauth2Client.setCredentials({
     refresh_token: process.env.GOOGLE_REFRESH_TOKEN
   });
+
+  if (process.env.EMAIL_TRANSPORT === 'gmail_api') {
+    return require('./gmailApiTransport').createGmailApiTransport(oauth2Client);
+  }
+
+  const nodemailer = getNodemailer();
 
   const accessToken = await new Promise((resolve, reject) => {
     oauth2Client.getAccessToken((err, token) => {

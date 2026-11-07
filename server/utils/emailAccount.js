@@ -1,7 +1,6 @@
 const { decrypt } = require('./crypto');
 
 async function buildTransporterFromAccount(account) {
-  const nodemailer = require('nodemailer');
   if (account.authMethod === 'oauth2') {
     const { google } = require('googleapis');
     const OAuth2 = google.auth.OAuth2;
@@ -11,13 +10,16 @@ async function buildTransporterFromAccount(account) {
       'https://developers.google.com/oauthplayground'
     );
     oauth2Client.setCredentials({ refresh_token: decrypt(account.refreshToken) });
+    if (process.env.EMAIL_TRANSPORT === 'gmail_api') {
+      return require('./gmailApiTransport').createGmailApiTransport(oauth2Client);
+    }
     const accessToken = await new Promise((resolve, reject) => {
       oauth2Client.getAccessToken((err, token) => {
         if (err) reject(err);
         resolve(token);
       });
     });
-    return nodemailer.createTransport({
+    return require('nodemailer').createTransport({
       service: 'gmail',
       auth: {
         type: 'OAuth2',
@@ -29,7 +31,10 @@ async function buildTransporterFromAccount(account) {
       },
     });
   } else {
-    return nodemailer.createTransport({
+    if (process.env.EMAIL_TRANSPORT === 'gmail_api') {
+      throw new Error('This server requires a Gmail OAuth2 sender; app-password SMTP is unavailable');
+    }
+    return require('nodemailer').createTransport({
       host: account.smtpHost,
       port: account.smtpPort,
       secure: account.smtpPort === 465,

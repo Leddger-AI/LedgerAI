@@ -194,7 +194,7 @@ async function processCampaign(campaignId) {
       } catch (err) {
         // SMTP acceptance followed by a DB error, or a connection timeout,
         // has an uncertain delivery result. Never retry it automatically.
-        if (smtpAccepted || ['ETIMEDOUT', 'ECONNRESET', 'ECONNABORTED'].includes(err.code)) {
+        if (smtpAccepted || ['ETIMEDOUT', 'ECONNRESET', 'ECONNABORTED', 'EDELIVERYUNKNOWN'].includes(err.code)) {
           await updateRecipient(campaign._id, recipient._id, 'unknown', { error: `Delivery result uncertain: ${err.message}` });
         } else {
           await updateRecipient(campaign._id, recipient._id, 'failed', { error: err.message });
