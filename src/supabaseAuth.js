@@ -1,5 +1,15 @@
 import { supabase } from './supabaseClient';
 
+// Opt-in local UI testing against the API's development auth bypass.
+// Vite removes this branch from production builds because DEV is false.
+const localEmailTest = import.meta.env.DEV && import.meta.env.VITE_LOCAL_EMAIL_TEST === 'true';
+const localTestToken = 'demo-access-token';
+const localTestUser = {
+  id: 'local-email-test',
+  email: 'local-email-test@example.invalid',
+  user_metadata: { full_name: 'Local Email Test' },
+};
+
 /**
  * Google OAuth login.
  * @returns {Promise<{user: any, accessToken: string, providerToken: string|null}>}
@@ -98,6 +108,7 @@ export const signOut = async () => {
  * Returns null if no active session.
  */
 export const getCurrentSession = async () => {
+  if (localEmailTest) return { user: localTestUser, accessToken: localTestToken, providerToken: null };
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
 
@@ -114,6 +125,7 @@ export const getCurrentSession = async () => {
  * @returns {Promise<string|null>}
  */
 export const getAuthToken = async () => {
+  if (localEmailTest) return localTestToken;
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token || null;
 };
@@ -124,6 +136,7 @@ export const getAuthToken = async () => {
  * @returns {Promise<object|null>}
  */
 export const getCurrentUser = async () => {
+  if (localEmailTest) return localTestUser;
   const { data: { user } } = await supabase.auth.getUser();
   return user;
 };
@@ -134,6 +147,10 @@ export const getCurrentUser = async () => {
  * @returns {{unsubscribe: () => void}} subscription
  */
 export const onAuthChange = (callback) => {
+  if (localEmailTest) {
+    const timer = setTimeout(() => callback('INITIAL_SESSION', { user: localTestUser, access_token: localTestToken }), 0);
+    return { unsubscribe: () => clearTimeout(timer) };
+  }
   const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
   return subscription;
 };

@@ -1,17 +1,23 @@
 // Shared email template helpers — used by index.js (immediate send)
 // and scheduler.js (scheduled send) so both paths behave identically.
 
-function escapeRegExp(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function normalizeVariableKey(key) {
+  return String(key || '').toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
 }
 
 function substituteTemplateVars(template, variables) {
-  let out = template || '';
-  for (const [key, value] of Object.entries(variables || {})) {
-    const placeholder = new RegExp(`{{\\s*${escapeRegExp(key)}\\s*}}`, 'g');
-    out = out.replace(placeholder, value == null ? '' : String(value));
-  }
-  return out;
+  const values = Object.fromEntries(Object.entries(variables || {}).map(([key, value]) => [normalizeVariableKey(key), value]));
+  return String(template || '').replace(/{{\s*([^{}]+?)\s*}}/g, (match, label) => {
+    const key = normalizeVariableKey(label);
+    return Object.hasOwn(values, key) ? String(values[key] ?? '') : match;
+  });
+}
+
+function canonicalizeTemplate(template) {
+  return String(template || '').replace(/{{\s*([^{}]+?)\s*}}/g, (match, label) => {
+    const key = normalizeVariableKey(label);
+    return key ? `{{${key}}}` : match;
+  });
 }
 
 function isValidEmail(email) {
@@ -21,4 +27,4 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
 }
 
-module.exports = { escapeRegExp, substituteTemplateVars, isValidEmail };
+module.exports = { normalizeVariableKey, substituteTemplateVars, canonicalizeTemplate, isValidEmail };

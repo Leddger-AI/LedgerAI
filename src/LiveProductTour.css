@@ -67,7 +67,10 @@
   bottom: -1px;
   border: 1px solid transparent;
   border-bottom: none;
+  font-family: inherit;
 }
+
+.lpt-tab:focus-visible { outline: 2px solid #0D9488; outline-offset: -2px; }
 
 .lpt-tab.active {
   background-color: #F8FAFC;
@@ -574,4 +577,20 @@
 .lpt-badge-sub {
   color: #15803d;
   font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .lpt-browser-mockup { height: 760px; }
+  .lpt-browser-header { height: auto; min-height: 54px; padding: 8px; align-items: stretch; }
+  .lpt-browser-dots { display: none; }
+  .lpt-browser-tabs { width: 100%; align-items: center; }
+  .lpt-tab { flex: 1; min-width: 0; min-height: 44px; padding: 7px 5px; font-size: 10px; line-height: 1.25; }
+  .lpt-dashboard-content { padding: 12px; overflow: auto; }
+  .lpt-page-transition-wrapper { top: 12px; right: 12px; bottom: 12px; left: 12px; gap: 12px; overflow: auto; }
+  .lpt-sourcing-hub, .lpt-analytics-engine { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .lpt-card { min-width: 0; padding: 14px; }
+  .lpt-dropzone { margin-left: 0; }
+  .lpt-file-asset { position: relative; top: auto; left: auto; padding: 8px; }
+  .lpt-f1-zone { gap: 8px; }
+  .lpt-cursor { display: none; }
 }

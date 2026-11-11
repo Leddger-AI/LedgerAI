@@ -28,36 +28,13 @@ async function checkSupabase() {
   }
 }
 
-async function checkRedis() {
-  let client = null;
-  try {
-    const redisUrl = process.env.REDIS_URL;
-    if (!redisUrl) {
-      return { ok: false, msg: 'REDIS_URL not set' };
-    }
-    let redis;
-    try { redis = require('redis'); } catch (_) {
-      return { ok: false, msg: 'redis module not installed' };
-    }
-    client = redis.createClient({ url: redisUrl });
-    client.on('error', (err) => {});
-    await client.connect();
-    const pong = await client.ping();
-    await client.quit();
-    return { ok: true, msg: `Connected (PING response: ${pong})` };
-  } catch (e) {
-    if (client) { try { await client.quit(); } catch (_) {} }
-    return { ok: false, msg: e.message };
-  }
-}
-
 async function checkCloudinary() {
   try {
-    const cloudName = process.env.CLOUDINARY_CLOUDNAME;
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUDNAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECREAT;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECREAT;
     if (!cloudName || !apiKey || !apiSecret) {
-      return { ok: false, msg: 'Missing CLOUDINARY_CLOUDNAME/API_KEY/API_SECREAT env vars' };
+      return { ok: false, msg: 'Missing CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET env vars' };
     }
     let cloudinary;
     try { cloudinary = require('cloudinary').v2; } catch (_) {
@@ -153,14 +130,13 @@ function checkEnvVars() {
     'GOOGLE_CLIENT_SECRET',
     'GOOGLE_REFRESH_TOKEN',
     'GOOGLE_EMAIL',
-    'REDIS_URL',
-    'CLOUDINARY_CLOUDNAME',
     'CLOUDINARY_API_KEY',
-    'CLOUDINARY_API_SECREAT',
   ];
   const missing = required.filter(k => !process.env[k]);
+  if (!process.env.CLOUDINARY_CLOUD_NAME && !process.env.CLOUDINARY_CLOUDNAME) missing.push('CLOUDINARY_CLOUD_NAME');
+  if (!process.env.CLOUDINARY_API_SECRET && !process.env.CLOUDINARY_API_SECREAT) missing.push('CLOUDINARY_API_SECRET');
   if (missing.length === 0) {
-    return { ok: true, msg: `${required.length}/${required.length} required vars present` };
+    return { ok: true, msg: `${required.length + 2}/${required.length + 2} required vars present` };
   }
   return { ok: false, msg: `Missing: ${missing.join(', ')}` };
 }
@@ -170,7 +146,6 @@ async function runStartupChecks() {
     { name: 'MongoDB', fn: checkMongoDB },
     { name: 'Supabase', fn: checkSupabase },
     { name: 'Encryption', fn: checkEncryptionKey },
-    { name: 'Redis', fn: checkRedis },
     { name: 'Cloudinary', fn: checkCloudinary },
     { name: 'Gmail OAuth2', fn: checkGmailOAuth2 },
     { name: 'Agenda.js', fn: checkAgenda },

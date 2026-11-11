@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Site-entry intro: plays on every full visit + reload (App mounts once per
 // document load, so in-app route changes never replay it).
-// WebM first (smallest), fast MP4 fallback, poster while buffering.
+// Transparent WebM blends with the overlay; MP4 fallback is composited onto
+// the same cream so the video frame never appears as a separate rectangle.
 // Skippable: click anywhere, Skip button, or auto-dismiss on end/timeout.
 const MAX_INTRO_MS = 8000;
 
@@ -18,6 +19,10 @@ export default function SiteIntro({ onDone }) {
   };
 
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      finish();
+      return undefined;
+    }
     const t = setTimeout(finish, MAX_INTRO_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,14 +49,18 @@ export default function SiteIntro({ onDone }) {
         muted
         playsInline
         preload="auto"
-        poster="/animations/starting-poster.jpg"
         onEnded={finish}
         onError={finish}
-        style={{ width: 'min(640px, 78vw)', height: 'auto', maxHeight: '70vh', objectFit: 'contain', border: 'none', outline: 'none', boxShadow: 'none', background: '#f3ebd8' }}
+        style={{ width: 'min(640px, 78vw)', height: 'auto', maxHeight: '70vh', objectFit: 'contain', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent' }}
       >
-        <source src="/animations/starting.webm" type="video/webm" />
-        <source src="/animations/starting-fast.mp4" type="video/mp4" />
+        <source src="/animations/starting-transparent.webm" type="video/webm" />
+        <source src="/animations/starting-seamless.mp4" type="video/mp4" />
       </video>
+      <button
+        type="button"
+        onClick={(event) => { event.stopPropagation(); finish(); }}
+        style={{ position: 'absolute', right: 'max(20px, env(safe-area-inset-right))', bottom: 'max(20px, env(safe-area-inset-bottom))', minWidth: 72, minHeight: 44, border: '1px solid #141414', borderRadius: 6, background: '#f3ebd8', color: '#141414', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}
+      >Skip</button>
     </div>
   );
 }

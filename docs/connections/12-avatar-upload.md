@@ -1,146 +1,33 @@
-# 12: Avatar Upload Pipeline
+# 12: Avatar upload and replacement
 
-## Feature Summary
+## Current flow
 
-User uploads a profile avatar from Settings → Profile. The image is received by the backend via multer, compressed with Sharp (WebP format, 256x256, under 50KB), uploaded to Cloudinary with a user-scoped public ID (overwriting previous avatar), and the resulting URL is saved to the Supabase `profiles` table.
-
-## ASCII Flow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  FRONTEND (SettingsView.jsx → ProfileSection)                    │
-│                                                                   │
-│  User clicks "Upload Avatar" → file picker opens                 │
-│  User selects image file                                          │
-│  └─ FormData with file → POST /api/cloudinary/avatar            │
-│     Headers: { Authorization: Bearer <jwt> }                    │
-│     Body: multipart/form-data (file field)                      │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  BACKEND (server/index.js:1711)                                   │
-│  POST /api/cloudinary/avatar                                      │
-│  ├─ verifyToken → req.user.uid                                   │
-│  ├─ multer middleware: upload.single('file') → req.file.buffer  │
-│  ├─ configureCloudinary() → check env vars                      │
-│  │  └─ If not configured → 500: "Cloudinary not configured"     │
-│  │                                                                │
-│  ├─ COMPRESS IMAGE (server/index.js:1667)                        │
-│  │  ├─ compressToTargetSize(buffer, 50KB, 256)                 │
-│  │  ├─ Uses Sharp: resize to 256x256, convert to WebP           │
-│  │  ├─ Quality adjusted to stay under 50KB target               │
-│  │  └─ Returns compressed buffer                                 │
-│  │                                                                │
-│  ├─ UPLOAD TO CLOUDINARY                                          │
-│  │  ├─ publicId = `avatars/${userId}`                           │
-│  │  ├─ cloudinary.uploader.upload_stream({                      │
-│  │  │    public_id: publicId,                                    │
-│  │  │    overwrite: true,  ← replaces old avatar                │
-│  │  │    resource_type: 'image',                                 │
-│  │  │    format: 'webp'                                          │
-│  │  │  })                                                         │
-│  │  └─ Returns: { secure_url, public_id, ... }                 │
-│  │                                                                │
-│  ├─ UPDATE SUPABASE PROFILE                                       │
-│  │  └─ supabase.from('profiles').update({                       │
-│  │       avatar_url: uploadResult.secure_url,                   │
-│  │       updated_at: now                                          │
-│  │     }).eq('id', userId)                                       │
-│  │     └─ Non-fatal if fails (warned in console)                │
-│  │                                                                │
-│  └─ res.json({                                                   │
-│       secure_url, public_id, format: 'webp',                    │
-│       size_kb, width: 256, height: 256                           │
-│     })                                                            │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  CLOUDINARY (external)                                            │
-│                                                                   │
-│  Image stored at:                                                 │
-│  ├─ Path: avatars/{userId}                                       │
-│  ├─ Format: WebP (compressed)                                    │
-│  ├─ Size: < 50KB                                                 │
-│  ├─ Dimensions: 256x256                                          │
-│  └─ URL: https://res.cloudinary.com/{cloud}/image/upload/...     │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  DELETE AVATAR                                                    │
-│  DELETE /api/cloudinary/avatar (server/index.js:1771)            │
-│  ├─ cloudinary.uploader.destroy('avatars/' + userId)            │
-│  ├─ supabase.from('profiles').update({ avatar_url: null })      │
-│  └─ res.json({ success: true })                                  │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  GENERIC FILE UPLOAD (non-avatar)                                 │
-│  POST /api/cloudinary/upload (server/index.js:1801)              │
-│  ├─ multer: upload.single('file')                                │
-│  ├─ folder = req.body.folder || 'leddger-ai'                    │
-│  ├─ cloudinary.uploader.upload_stream({                         │
-│  │    folder, resource_type: 'auto'                              │
-│  │  })                                                            │
-│  └─ res.json({ secure_url, public_id, format, bytes })         │
-│                                                                   │
-│  DELETE /api/cloudinary/:publicId (server/index.js:1843)         │
-│  └─ cloudinary.uploader.destroy(publicId)                       │
-└─────────────────────────────────────────────────────────────────┘
+```text
+Settings → Profile → Change photo
+  → validate JPEG/PNG/WebP/GIF and 5 MB limit
+  → immediately preview the local file in Settings and the header
+  → POST /api/cloudinary/avatar with Bearer token and multipart file
+  → Sharp rotates, crops, and compresses to WebP at up to 256px
+  → Cloudinary overwrites avatars/<userId> with invalidate: true
+  → Supabase profiles upsert saves the versioned secure_url
+  → browser preloads that URL, then replaces the local preview
 ```
 
-## File-by-File Trace
+The client restores the previous photo if the request fails. After a successful upload it preloads the versioned CDN URL before replacing the local preview. If that preload fails or times out, it keeps the working preview visible for the current view; the saved CDN URL is used on the next profile load. The upload and removal controls are disabled while an upload is running. An older profile fetch or upload completion cannot replace a newer local photo change. On a page refresh, profile controls render from session data immediately while the saved profile loads. The app fetches the saved avatar alongside meetings and alerts and preserves the current photo through same-user auth refresh events.
 
-| Step | File | Lines | What Happens |
-|------|------|-------|--------------|
-| 1. Upload avatar | `server/index.js` | 1711-1768 | `POST /api/cloudinary/avatar` |
-| 2. Multer setup | `server/index.js` | 1628-1643 | `multer({ storage: memoryStorage })` |
-| 3. Cloudinary config | `server/index.js` | 1653-1665 | `configureCloudinary()` |
-| 4. Compress | `server/index.js` | 1667-1692 | `compressToTargetSize()` with Sharp |
-| 5. Upload stream | `server/index.js` | 1730-1744 | `cloudinary.uploader.upload_stream()` |
-| 6. Update profile | `server/index.js` | 1747-1754 | Supabase `profiles.avatar_url` |
-| 7. Delete avatar | `server/index.js` | 1771-1798 | `DELETE /api/cloudinary/avatar` |
-| 8. Generic upload | `server/index.js` | 1801-1840 | `POST /api/cloudinary/upload` |
-| 9. Generic delete | `server/index.js` | 1843-1857 | `DELETE /api/cloudinary/:publicId` |
-| 10. Status check | `server/index.js` | 1695-1708 | `GET /api/cloudinary/status` |
+## API and storage
 
-## Shared Dependencies
+- `POST /api/cloudinary/avatar` requires authentication and a `file` field. Multer keeps the file in memory and rejects files over 5 MB or outside the accepted image types.
+- `server/utils/avatarImage.js` uses Sharp with WebP effort 2, starting at 256px and reducing dimensions or quality only if necessary to target 50 KB. It returns the actual output dimensions and quality.
+- The Cloudinary asset uses `avatars/<userId>`, `overwrite: true`, and `invalidate: true`. Cloudinary's `secure_url` includes the upload version. This URL is saved to `profiles.avatar_url` and returned with the version and compression details.
+- The API returns an error if Supabase cannot save the URL. A Cloudinary upload can therefore succeed while profile persistence fails; the user sees an error and can retry.
+- `DELETE /api/cloudinary/avatar` destroys the asset and clears `profiles.avatar_url`. The legacy scoped delete route also exists for the owner's avatar.
+- `GET /api/cloudinary/status` checks Cloudinary configuration and connectivity.
 
-- **Cloudinary** — image storage (lazy-loaded via `require('cloudinary')`)
-- **Sharp** — image compression (WebP, resize, quality adjustment)
-- **multer** — file upload middleware (memory storage, 5MB limit)
-- **Supabase** — `profiles` table for `avatar_url` storage
-- **Supabase Auth** — JWT for API authentication
+Cloudinary says CDN invalidation can take seconds to minutes. Using the new versioned delivery URL avoids waiting for the old cached URL to expire. See [Cloudinary's overwrite guidance](https://cloudinary.com/documentation/developer_onboarding_faq_overwriting_assets).
 
-## Error Paths
+## Configuration and checks
 
-| Scenario | What Happens |
-|----------|-------------|
-| Cloudinary not configured | 500: "Cloudinary not configured. Set env vars." |
-| No file provided | 400: "No file provided" |
-| File too large | Multer rejects (5MB limit) |
-| Sharp compression fails | 500: "Failed to upload avatar" |
-| Supabase profile update fails | Non-fatal warning, avatar URL still returned |
-| Cloudinary upload fails | 500: "Failed to upload avatar" |
+The backend needs `CLOUDINARY_CLOUDNAME` (or `CLOUDINARY_CLOUD_NAME`), `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECREAT` (or `CLOUDINARY_API_SECRET`), `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`. The frontend needs its Supabase settings and backend API URL.
 
-## Environment Variables
-
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `CLOUDINARY_CLOUDNAME` | Yes | Cloudinary cloud name |
-| `CLOUDINARY_API_KEY` | Yes | Cloudinary API key |
-| `CLOUDINARY_API_SECREAT` | Yes | Cloudinary API secret (note: typo in env var name) |
-| `SUPABASE_URL` | Yes | Supabase for profile update |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role |
-
-## Compression Details
-
-The `compressToTargetSize()` function uses Sharp to:
-1. Resize image to 256x256 (fit: cover)
-2. Convert to WebP format
-3. Adjust quality (starting at 80) iteratively until under 50KB
-4. Return compressed buffer
-
-This ensures all avatars are uniformly small and optimized for web display.
+The isolated tests cover compression, the versioned upload response, and Supabase save failure. Browser testing covers immediate preview and restoration after a failed upload. On 30 October 2026, the configured `Leddger-AI` Supabase project was restored from `INACTIVE` to `ACTIVE_HEALTHY`. A read-only check confirmed that the `profiles` table is accessible and all three saved avatar URLs load. Those existing URLs predate the versioned upload change; a real replacement through an authenticated user session remains the final end-to-end check before rollout.

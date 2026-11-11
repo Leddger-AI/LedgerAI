@@ -23,6 +23,7 @@ These docs serve as a **living architectural reference** so any developer can tr
 | 11 | [account-deletion.md](./11-account-deletion.md) | Account Deletion | Delete → cascade across Supabase + MongoDB + Cloudinary |
 | 12 | [avatar-upload.md](./12-avatar-upload.md) | Avatar Upload | File select → Sharp compress → Cloudinary → Supabase URL |
 | 13 | [ram-optimization.md](./13-ram-optimization.md) | RAM Optimization (512MB Render) | Lazy-load heavy modules → ~70MB saved at startup |
+| 14 | [14-application-candidate-lifecycle.md](./14-application-candidate-lifecycle.md) | Applications to Candidates | Publish → submit → atomic candidate link → Sourcing review |
 
 ## How to Read Each Map
 

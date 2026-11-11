@@ -90,6 +90,12 @@ function normalizeUser(rawUser) {
   };
 }
 
+function keepCurrentAvatar(previous, rawUser) {
+  const normalized = normalizeUser(rawUser);
+  if (previous?.id === normalized?.id) normalized.photoURL = previous.photoURL;
+  return normalized;
+}
+
 // Lazy loaded page components to resolve startup slow-loading (buffering) warnings
 const RecruiterDashboard = lazy(() => import('./pages/RecruiterDashboard.jsx'));
 const StudentPortal = lazy(() => import('./pages/StudentPortal.jsx'));
@@ -98,6 +104,7 @@ const Welcome = lazy(() => import('./pages/Welcome.jsx'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
 const PublicFormView = lazy(() => import('./pages/PublicFormView.jsx'));
+const UnsubscribeView = lazy(() => import('./pages/UnsubscribeView.jsx'));
 const DraftsView = lazy(() => import('./pages/DraftsView.jsx'));
 
 
@@ -260,6 +267,7 @@ export default function App() {
   const lastSignedInUidRef = useRef(null);
   const stopTimeoutRef = useRef(null);
   const failsafeRef = useRef(null);
+  const avatarChangeGenerationRef = useRef(0);
 
   const clearLoginAnimFlag = useCallback(() => {
     hasShownLoginLoaderRef.current = false;
@@ -319,6 +327,7 @@ export default function App() {
   // no modal, banner, or per-user state leaks to the next session).
   // (Declared before the auth listener effect that uses it.)
   const resetAuthState = useCallback(() => {
+    avatarChangeGenerationRef.current += 1;
     setLoading(false);
     setUser(null);
     setTokens(null);
@@ -336,13 +345,15 @@ export default function App() {
     // Check existing session on mount — silent refresh, no fullscreen animation
     getCurrentSession().then(async (session) => {
       if (session) {
-        setUser(normalizeUser(session.user));
+        setUser((previous) => keepCurrentAvatar(previous, session.user));
         setTokens({
           accessToken: session.accessToken
         });
-        await fetchMeetings(session.accessToken);
-        await fetchAlerts(session.accessToken);
-        await mergeProfileAvatar(session.accessToken);
+        await Promise.allSettled([
+          fetchMeetings(session.accessToken),
+          fetchAlerts(session.accessToken),
+          mergeProfileAvatar(session.accessToken, session.user.id),
+        ]);
         setLoading(false);
         setAuthReady(true);
       }
@@ -382,20 +393,24 @@ export default function App() {
         if (isOAuthRedirect && typeof window !== 'undefined' && window.history?.replaceState) {
           window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
         }
-        setUser(normalizeUser(session.user));
+        setUser((previous) => keepCurrentAvatar(previous, session.user));
         setTokens({
           accessToken: session.access_token
         });
         if (isFresh) {
           startLoading(true);
-          await fetchMeetings(session.access_token);
-          await fetchAlerts(session.access_token);
-          await mergeProfileAvatar(session.access_token);
+          await Promise.allSettled([
+            fetchMeetings(session.access_token),
+            fetchAlerts(session.access_token),
+            mergeProfileAvatar(session.access_token, session.user.id),
+          ]);
           stopLoading();
         } else {
-          await fetchMeetings(session.access_token);
-          await fetchAlerts(session.access_token);
-          await mergeProfileAvatar(session.access_token);
+          await Promise.allSettled([
+            fetchMeetings(session.access_token),
+            fetchAlerts(session.access_token),
+            mergeProfileAvatar(session.access_token, session.user.id),
+          ]);
           setLoading(false);
         }
         setAuthReady(true);
@@ -404,7 +419,7 @@ export default function App() {
 
       // For TOKEN_REFRESHED: silently update tokens without loading animation
       if (event === 'TOKEN_REFRESHED' && session?.user) {
-        setUser(normalizeUser(session.user));
+        setUser((previous) => keepCurrentAvatar(previous, session.user));
         setTokens({
           accessToken: session.access_token
         });
@@ -493,20 +508,22 @@ export default function App() {
   // Merge Supabase profiles.avatar_url (Cloudinary) into session user.
   // Auth metadata alone never carries the uploaded avatar, so without this
   // the header falls back to dicebear after every refresh.
-  const mergeProfileAvatar = useCallback(async (accessToken) => {
+  const mergeProfileAvatar = useCallback(async (accessToken, userId) => {
+    const generation = avatarChangeGenerationRef.current;
     try {
       const res = await fetch(`${API_BASE_URL}/api/user/profile`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
-      if (data && data.avatar_url) {
-        setUser((prev) => (prev ? { ...prev, photoURL: data.avatar_url } : prev));
+      if (data && Object.hasOwn(data, 'avatar_url') && generation === avatarChangeGenerationRef.current) {
+        setUser((prev) => (prev && prev.id === userId ? { ...prev, photoURL: data.avatar_url || null } : prev));
       }
     } catch (_) { /* avatar is optional — never break auth */ }
   }, []);
 
   const handleAvatarChange = useCallback((url) => {
+    avatarChangeGenerationRef.current += 1;
     setUser((prev) => (prev ? { ...prev, photoURL: url || null } : prev));
   }, []);
 
@@ -1136,8 +1153,8 @@ export default function App() {
 
   return (
     <>
-      {showIntro && <SiteIntro onDone={() => setShowIntro(false)} />}
-      {location.pathname !== '/welcome' && location.pathname !== '/login' && location.pathname !== '/auth/github' && !location.pathname.startsWith('/dashboard') && (
+      {showIntro && !location.pathname.startsWith('/form/') && <SiteIntro onDone={() => setShowIntro(false)} />}
+      {location.pathname !== '/welcome' && location.pathname !== '/login' && location.pathname !== '/auth/github' && !location.pathname.startsWith('/dashboard') && !location.pathname.startsWith('/form/') && (
         <Navbar onStartDashboard={handleStartDashboard} loading={loading} />
       )}
       <Suspense fallback={
@@ -1210,6 +1227,7 @@ export default function App() {
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/form/:title/:draftId" element={<PublicFormView />} />
+          <Route path="/unsubscribe" element={<UnsubscribeView />} />
           
           <Route path="/dashboard/*" element={
             <ProtectedRoute user={user} authReady={authReady}>
