@@ -1,6 +1,6 @@
 # Application → candidate implementation record
 
-Updated: 11 November 2026. Branch: `codex/email-mobile-release`, implementation commit `f06d45e`. This document separates completed API and database verification from frontend rollout and browser checks still required.
+Updated: 11 November 2026. Released through [PR #70](https://github.com/Leddger-AI/LedgerAI/pull/70), merge commit `07758ee`. This document separates completed API, database, and public form verification from the recruiter browser checks still required.
 
 ## Changes made
 
@@ -47,13 +47,20 @@ The unit API checks use mocked Supabase, the first browser check uses a local fi
 
 On 11 Nov, the Render Free service answered worker health with `503 {"ready":false}` immediately after waking, then `200 {"ready":true}` once Agenda finished initialization. It remained on live commit `69e451a`. The branch again passed **15 backend suites, 269 tests**, and the frontend production build. The build still warns about the large spreadsheet chunk.
 
+## Production rollout, 11 November
+
+- [PR #70](https://github.com/Leddger-AI/LedgerAI/pull/70) merged to `main` as `07758ee`. Render automatically deployed that merge commit and reported `live`; its worker health moved from 503 during initialization to **200** with `ready: true`.
+- `https://leddger-ai.netlify.app/` returned HTTP **200**. Its entry JavaScript asset (`assets/index-Dj3fZdg_.js`) matched the passing PR preview's entry asset, establishing that production serves the same frontend build tested for public form submission on desktop and at 390 × 844.
+- Public API guard checks returned 404 for an unknown form, 401 for an unauthenticated candidate list, and 400 for a malformed unsubscribe token. No new recipient or applicant data was created for this post-merge check.
+- The hosted Sourcing journey through social login, avatar replacement, and a scheduled campaign across a Render restart were not exercised after merge. The earlier live API and controlled campaign tests ran on the same code before merge; the Netlify production build matches the preview. No guarantee of on-time scheduled sends is made on Render Free.
+
 ## Release preflight and blockers
 
-- Production GitHub `main` and the Netlify production frontend remain on the earlier release at the time of this check. The active Render API was deployed directly from branch commit `69e451a`; its worker health is HTTP **200**, but a later auto-deploy from `main` could replace this branch build until the release is merged.
-- The configured Leddger-AI Supabase project is active and the candidate migration is **applied and checked**. The candidate API is directly deployed from the branch and has handled disposable live student applications. The frontend remains staged in PR #70 and its public form was tested against that API.
+- GitHub `main`, Render, and Netlify production now serve the merged release. Render worker health is HTTP **200** after Agenda initialization; the Free plan can return 503 during cold startup.
+- The configured Leddger-AI Supabase project is active and the candidate migration is **applied and checked**. The candidate API handled disposable live student applications before merge; the production frontend now matches the preview build used for the public form browser tests.
 - The earlier [release preflight](../deployment/release-preflight-2026-11-01.md) recorded missing `ENCRYPTION_KEY` and `FRONTEND_URL`; both were configured on the active Render service on 8 Nov. Secret values are kept out of this document and Git.
 - [Render Free documentation](https://render.com/docs/free) states that outbound SMTP ports 465 and 587 are blocked. OAuth senders now use the [Gmail HTTPS send API](https://developers.google.com/workspace/gmail/api/guides/sending) when `EMAIL_TRANSPORT=gmail_api`; the configured Google token includes `gmail.send`, and local and hosted self-sends passed. App-password SMTP senders remain unusable on this Free service. Render Free sleeps after 15 idle minutes, delaying Agenda jobs despite the successful awake-service scheduled test.
-- An independent hosted Supabase staging check, hosted Sourcing browser journey with a social OAuth account, backend restart during a scheduled campaign, and live avatar replacement are **pending**. Desktop/390 × 844 public form browser submission passed on the Netlify preview. The Netlify production frontend has not been rolled out by this direct API deployment.
+- An independent hosted Supabase staging check, hosted Sourcing browser journey with a social OAuth account, backend restart during a scheduled campaign, and live avatar replacement are **pending**. Desktop/390 × 844 public form browser submission passed on the preview build now deployed to production.
 
 ## Next verification checklist
 
