@@ -20,11 +20,13 @@ Authentication and owner-scoped records support every link. Supabase owns drafts
 | 2 | Candidate workspace | Released; live API search/detail/status refresh passed; Sourcing browser check pending | Candidate API and migration | Open history and update status in Sourcing UI through social login |
 | 2a | Connected Command Center | Implemented and refactored locally; isolated browser checks at phone, tablet, and desktop widths; production deployment pending | Candidate and campaign records | Signed-in production snapshot, source health, and navigation check |
 | 3 | Candidate communication | Planned | Reliable campaign worker and candidate identity | Choose candidates as an audience and display recipient outcomes in history |
-| 4 | Interviews and calendar | Demo screens today | Candidate identity, meeting persistence | Candidate-linked interview with real time and link; no fixed June 2026 grid |
+| 4 | Interviews and calendar | General Meeting log now reads saved meetings locally; candidate interview scheduling and Calendar remain demo screens | Candidate identity, meeting persistence | Candidate-linked interview with real time and link; no fixed June 2026 grid |
 | 5 | Projects, teams, budgets | Projects and Teams use local sample state | Saved project/team entities, meetings | Persistent ownership, attribution, and cost rollups |
 | 6 | Analytics and exports | Template analytics real; general Export Center simulated | Reliable source records | Every metric links to source; export downloads an actual file |
 | 7 | Knowledge Base and AI | Separate Rust backend; live integration unverified | Auth and deployed service | No fabricated fallback documents; source attribution |
 | 8 | Product-wide mobile and accessibility | Landing work staged, dashboard uneven | Each real workflow | 390 × 844 and keyboard journeys; usable touch targets |
+
+The 13 November [Home and Meeting log pass](../changes/home-meeting-live-pass.md) also removed a fixed Inbox count and sample alert history. This is local code, not a production verification. The dashboard retains the cream frame with white windows.
 
 ## Future features that fit the connected data
 

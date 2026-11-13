@@ -5,7 +5,7 @@ import {
 import {
   Bell, Wallet, AlertTriangle, ShieldCheck, ChevronRight, Plus,
   ArrowUpRight, ArrowDownRight, Minus, Star, LayoutDashboard,
-  CalendarDays, Timer,
+  Timer,
 } from 'lucide-react';
 import './DashboardHome.css';
 import { getFirstName } from '../utils/greeting';
@@ -75,8 +75,8 @@ export default function DashboardHome({
     {
       icon: Wallet, tint: ACCENT, soft: 'rgba(228,87,61,0.12)',
       value: `$${Number(total).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      label: 'Attributed',
-      delta: Number(total) > 0 ? 'up' : 'clear', onClick: () => go('Command Center'),
+      label: 'Meeting cost',
+      delta: Number(total) > 0 ? 'up' : 'clear', onClick: () => go('Budgets'),
     },
     {
       icon: AlertTriangle, tint: '#DC2626', soft: 'rgba(220,38,38,0.12)',
@@ -87,8 +87,8 @@ export default function DashboardHome({
     {
       icon: ShieldCheck, tint: '#B45309', soft: 'rgba(245,179,1,0.18)',
       value: accuracyLabel,
-      label: 'Accuracy',
-      delta: accuracy === null ? 'clear' : accuracy >= 70 ? 'up' : 'down', onClick: () => go('Command Center'),
+      label: 'AI confidence',
+      delta: accuracy === null ? 'clear' : accuracy >= 70 ? 'up' : 'down', onClick: () => go('Attribution'),
     },
   ];
 
@@ -122,12 +122,12 @@ export default function DashboardHome({
             <p>
               {started
                 ? `You have attributed ${approvalRate}% of your meetings. Your current progress is ${approvalRate >= 70 ? 'great' : 'getting there'}.`
-                : 'Sync your calendar and attribute your first meeting to kick things off.'}
+                : 'Record a meeting, then review its attribution to get started.'}
             </p>
             {started && (
               <div className="hd-bar"><div className="hd-fill" style={{ width: `${approvalRate}%` }} /></div>
             )}
-            <button type="button" className="hd-white-btn" onClick={() => go('SettingsProfile')}>View Profile</button>
+            <button type="button" className="hd-white-btn" onClick={() => go(started ? 'Attribution' : 'Live Ticker')}>{started ? 'Review attribution' : 'Record a meeting'}</button>
           </div>
         </div>
 
@@ -151,10 +151,10 @@ export default function DashboardHome({
               <div className="hd-chart-empty">
                 <span className="hd-chart-empty-ico"><Wallet size={22} /></span>
                 <b>No spend tracked yet</b>
-                <p>Sync your calendar or tick a live meeting and your cost curve will appear here.</p>
+                <p>Record a live meeting and its cost curve will appear here.</p>
                 <div className="hd-chart-empty-cta">
-                  <button type="button" className="hd-accent-btn" onClick={() => go('Calendar')}><CalendarDays size={14} /> Open calendar</button>
-                  <button type="button" className="hd-grey-btn sm" onClick={() => go('Live Ticker')}><Timer size={14} /> Live ticker</button>
+                  <button type="button" className="hd-accent-btn" onClick={() => go('Live Ticker')}><Timer size={14} /> Record a meeting</button>
+                  <button type="button" className="hd-grey-btn sm" onClick={() => go('Meet')}>View meetings</button>
                 </div>
               </div>
             ) : (
@@ -187,7 +187,7 @@ export default function DashboardHome({
         {/* RIGHT — targets + meetings (titles outside cards, like reference) */}
         <div className="hd-col">
           <div className="hd-card">
-            <h3 className="hd-title">Targets</h3>
+            <h3 className="hd-title">Cost by project</h3>
             {targets.length === 0 ? (
               <p className="hd-empty">No spend yet. <button type="button" className="hd-link" onClick={() => go('Budgets')}>Set a budget</button></p>
             ) : targets.map((t, i) => (
@@ -201,10 +201,10 @@ export default function DashboardHome({
           </div>
 
           <div className="hd-meet-section">
-            <h3 className="hd-section-title">Meetings</h3>
+            <h3 className="hd-section-title">Recent meetings</h3>
             {upcoming.length === 0 ? (
               <div className="hd-card">
-                <p className="hd-empty">Nothing scheduled. <button type="button" className="hd-link" onClick={() => go('Calendar')}>Open calendar</button></p>
+                <p className="hd-empty">No meetings yet. <button type="button" className="hd-link" onClick={() => go('Live Ticker')}>Record a meeting</button></p>
               </div>
             ) : upcoming.map((m) => (
               <button type="button" key={m.id} className="hd-card hd-meet" onClick={() => go('Meet')}>
@@ -216,7 +216,7 @@ export default function DashboardHome({
                 <ChevronRight size={15} className="hd-chev" />
               </button>
             ))}
-            <button type="button" className="hd-card hd-add" onClick={() => go('Calendar')} title="Open calendar"><Plus size={16} /></button>
+            <button type="button" className="hd-card hd-add" onClick={() => go('Live Ticker')} title="Record a meeting"><Plus size={16} /></button>
           </div>
         </div>
       </div>

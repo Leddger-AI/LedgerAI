@@ -1,166 +1,91 @@
-import { useState, useRef, useEffect } from 'react';
-import { Video, Calendar, Clock, Users, Check, PlusCircle, Link2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, ArrowRight, Clock3, RefreshCw, Timer, Video } from 'lucide-react';
+import { getAuthToken } from './supabaseAuth';
+import './MeetView.css';
 
-const upcomingMeets = [
-  { id: 1, candidate: 'Ava Thompson', role: 'Senior Frontend Engineer', time: 'Today, 3:00 PM', duration: '45m', type: 'Technical Interview', link: 'meet.ledgerai.app/ava-thompson-fe' },
-  { id: 2, candidate: 'Marcus Lee', role: 'Backend / Rust Engineer', time: 'Tomorrow, 11:00 AM', duration: '30m', type: 'Screening Call', link: 'meet.ledgerai.app/marcus-lee-be' },
-  { id: 3, candidate: 'Priya Nair', role: 'Senior Frontend Engineer', time: 'Fri, 2:30 PM', duration: '1h', type: 'Panel Interview', link: 'meet.ledgerai.app/priya-nair-fe' }
-];
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-const pastMeets = [
-  { id: 4, candidate: 'Daniel Osei', role: 'Summer Internship 2026', time: 'Yesterday', outcome: 'Advanced to next round' },
-  { id: 5, candidate: 'Sofia Ramirez', role: 'Backend / Rust Engineer', time: '3 days ago', outcome: 'Not moving forward' }
-];
+function when(value) {
+  if (!value) return 'No time set';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'No time set' : date.toLocaleString();
+}
 
 export default function MeetView({ onNavigate }) {
-  const [copiedId, setCopiedId] = useState(null);
-  const copyTimerRef = useRef(null);
+  const [meetings, setMeetings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const requestRef = useRef(null);
 
-  useEffect(() => () => {
-    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  const refresh = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    setError('');
+    try {
+      const token = await getAuthToken();
+      if (controller.signal.aborted) return;
+      if (!token) throw new Error('Sign in to view your meetings.');
+      const response = await fetch(`${API_BASE_URL}/api/meetings`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('Could not load your meetings. Try again.');
+      const data = await response.json();
+      if (!Array.isArray(data.meetings)) throw new Error('The meetings response was incomplete. Try again.');
+      if (!controller.signal.aborted) setMeetings(data.meetings);
+    } catch (cause) {
+      if (!controller.signal.aborted && cause.name !== 'AbortError') {
+        setError(cause.message || 'Could not load your meetings.');
+      }
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
   }, []);
 
-  const handleCopy = (m) => {
-    if (!navigator.clipboard?.writeText) return;
-    navigator.clipboard.writeText(`https://${m.link}`).then(() => {
-      setCopiedId(m.id);
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => setCopiedId(null), 1500);
-    }).catch(() => {});
-  };
+  useEffect(() => {
+    Promise.resolve().then(refresh);
+    return () => requestRef.current?.abort();
+  }, [refresh]);
 
-  const handleJoin = (m) => {
-    if (m.link) window.open(`https://${m.link}`, '_blank', 'noopener,noreferrer');
-  };
+  const reviewCount = meetings.filter(meeting => meeting.requires_human_review).length;
+  const totalCost = meetings.reduce((sum, meeting) => sum + (Number(meeting.cost) || 0), 0);
+  const go = tab => onNavigate?.(tab);
 
-  return (
-    <div className="meet-container">
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">
-            <Video size={20} style={{ color: 'var(--color-cyan)' }} />
-            Candidate Meetings
-          </h2>
-          <p className="section-subtitle">Schedule and manage interviews with candidates sourced from your application templates</p>
-          <span className="confidence-badge low" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }}>
-            Sample preview
-          </span>
-        </div>
-        <button
-          type="button"
-          className="table-action-btn"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: 'rgba(20, 20, 20, 0.06)', borderColor: 'var(--border-color)' }}
-          onClick={() => onNavigate && onNavigate('Calendar')}
-        >
-          <PlusCircle size={16} />
-          <span>Schedule Meeting</span>
-        </button>
-      </div>
+  return <div className="meeting-log">
+    <header className="meeting-log-header">
+      <div><span className="meeting-log-eyebrow">WORKSPACE / MEETINGS</span><h1>Meeting log</h1>
+        <p>Saved meetings, their estimated time cost, and attribution review.</p></div>
+      <button type="button" className="meeting-log-refresh" onClick={refresh} disabled={loading}>
+        <RefreshCw size={16} aria-hidden="true" /> {loading ? 'Updating…' : 'Refresh'}
+      </button>
+    </header>
 
-      <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        <div className="glass-panel kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Upcoming Meetings</span>
-            <div className="kpi-icon-wrapper cyan"><Calendar size={16} /></div>
-          </div>
-          <div className="kpi-body">
-            <span className="kpi-value">{upcomingMeets.length} Scheduled</span>
-            <span className="kpi-trend positive">Next 7 days</span>
-          </div>
-        </div>
-        <div className="glass-panel kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Interview Hours</span>
-            <div className="kpi-icon-wrapper purple"><Clock size={16} /></div>
-          </div>
-          <div className="kpi-body">
-            <span className="kpi-value">2.25 hrs</span>
-            <span className="kpi-trend positive">This week</span>
-          </div>
-        </div>
-        <div className="glass-panel kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Candidates Interviewed</span>
-            <div className="kpi-icon-wrapper cyan"><Users size={16} /></div>
-          </div>
-          <div className="kpi-body">
-            <span className="kpi-value">{pastMeets.length} Completed</span>
-            <span className="kpi-trend positive">This month</span>
-          </div>
-        </div>
-      </div>
+    {error && <div className="meeting-log-error" role="alert"><AlertCircle size={17} />
+      <span>{error}</span><button type="button" onClick={refresh}>Try again</button></div>}
 
-      {/* Upcoming meetings list */}
-      <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>Upcoming Interviews</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {upcomingMeets.map(m => (
-            <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', border: '1px solid var(--border-color)', borderRadius: '10px', backgroundColor: 'rgba(20,20,20,0.02)' }}>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '13.5px', color: 'var(--text-primary)' }}>{m.candidate}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{m.role} &middot; {m.type}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--text-primary)' }}>{m.time}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.duration}</div>
-                </div>
-                <button type="button"
-                  onClick={() => handleCopy(m)}
-                  style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: 'var(--text-secondary)' }}
-                >
-                  {copiedId === m.id ? <Check size={12} style={{ color: 'var(--color-success)' }} /> : <Link2 size={12} />}
-                  {copiedId === m.id ? 'Copied' : 'Copy Link'}
-                </button>
-                <button
-                  type="button"
-                  className="table-action-btn"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', fontSize: '12px', backgroundColor: 'var(--color-success-glow)', borderColor: 'transparent', color: 'var(--color-success)' }}
-                  onClick={() => handleJoin(m)}
-                >
-                  <Video size={13} />
-                  Join
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+    {(!error || meetings.length > 0) && <div className="meeting-log-summary" aria-label="Meeting summary">
+      <div><span>Saved meetings</span><strong>{loading && !meetings.length ? '—' : meetings.length}</strong></div>
+      <div><span>Need attribution review</span><strong>{loading && !meetings.length ? '—' : reviewCount}</strong></div>
+      <div><span>Estimated time cost</span><strong>{loading && !meetings.length ? '—' : `$${totalCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</strong></div>
+    </div>}
 
-      {/* Past meetings */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>Past Interviews</h3>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="meetings-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
-                <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Candidate</th>
-                <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Role</th>
-                <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>When</th>
-                <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase' }}>Outcome</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pastMeets.map(m => (
-                <tr key={m.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '13px' }}>
-                  <td style={{ padding: '14px 16px', fontWeight: '600', color: 'var(--text-primary)' }}>{m.candidate}</td>
-                  <td style={{ padding: '14px 16px', color: 'var(--text-secondary)' }}>{m.role}</td>
-                  <td style={{ padding: '14px 16px', color: 'var(--text-muted)' }}>{m.time}</td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <span style={{
-                      fontSize: '11px', padding: '3px 8px', borderRadius: '4px', fontWeight: '600',
-                      backgroundColor: m.outcome.includes('Advanced') ? 'var(--color-success-glow)' : 'var(--color-danger-glow)',
-                      color: m.outcome.includes('Advanced') ? 'var(--color-success)' : 'var(--color-danger)'
-                    }}>
-                      {m.outcome}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+    {(!error || meetings.length > 0) && <section className="meeting-log-list" aria-labelledby="meeting-log-title">
+      <div className="meeting-log-list-head"><h2 id="meeting-log-title">Recent records</h2>
+        <button type="button" onClick={() => go('Live Ticker')}><Timer size={16} /> Record a meeting</button></div>
+      {loading && !meetings.length ? <p className="meeting-log-empty" role="status">Loading your meetings…</p>
+        : !error && meetings.length === 0 ? <div className="meeting-log-empty"><Video size={24} />
+          <p>No meetings saved yet.</p><button type="button" onClick={() => go('Live Ticker')}>Record your first meeting <ArrowRight size={15} /></button>
+        </div> : meetings.map(meeting => <div className="meeting-log-row" key={meeting.id}>
+          <div className="meeting-log-row-main"><strong>{meeting.title || 'Untitled meeting'}</strong>
+            <span><Clock3 size={14} /> {when(meeting.start_time || meeting.created_at)} · {Number(meeting.duration_minutes) || 0} min · {meeting.ai_project || 'Unattributed'}</span></div>
+          <div className="meeting-log-row-end">
+            <span className="meeting-log-cost">${(Number(meeting.cost) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+            {meeting.requires_human_review
+              ? <button type="button" onClick={() => go('Attribution')}>Review attribution <ArrowRight size={15} /></button>
+              : <span className="meeting-log-status">Attributed</span>}
+          </div>
+        </div>)}
+    </section>}
+  </div>;
 }

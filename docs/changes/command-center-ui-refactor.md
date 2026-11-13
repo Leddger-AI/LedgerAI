@@ -10,7 +10,7 @@ Make the Command Center a useful first page for the application â†’ candidate â†
 
 | Area | New behavior | Why |
 |---|---|---|
-| First screen | A dark priority panel picks a next action from saved campaign, candidate, and form counts | The most urgent actionable item is visible immediately |
+| First screen | A white priority panel picks a next action from saved campaign, candidate, and form counts | The most urgent actionable item is visible immediately |
 | Workflow | Four compact stages connect form publishing, candidate review, email preparation, and delivery review | Users can continue at the right step without scanning ten metrics |
 | Overview | Four high-value cards show active forms, contact review, scheduled email, and delivery review | Keep the page scannable; secondary totals remain in the priority panel |
 | Review queue | Candidate and delivery issues share one inbox; applications and active campaigns are in recent movement | Separate work needing a decision from recent activity |
@@ -22,6 +22,12 @@ Make the Command Center a useful first page for the application â†’ candidate â†
 | Routing | Queued and sending campaign rows open Email Automation; scheduled rows open Schedule; reviewable failures open Sent | Each campaign opens the screen that contains its status |
 
 The layout remains read-only. Form publishing, candidate status updates, and campaign writes continue through their existing domain APIs. The page does not expose direct database management.
+
+## White window revision, 13 November 2026
+
+The owner clarified the visual boundary with a Home screenshot. The cream `#F2E8D5` is the frame and gutters around the three dashboard windows. The icon rail, section navigation, and main window are white. Inner cards may use color where it communicates an action or status. `src/App.css` now makes the main viewport white without changing the cream outer frame. `src/pages/CommandCenterView.css` makes its priority panel, cards, notices, shortcuts, and health badges white with neutral borders and text. No Command Center data rule changed in this visual revision.
+
+Browser inspection at 1195 px confirmed the three windows as `rgb(255, 255, 255)` and the frame as `rgb(242, 232, 213)`. At 390 Ã— 844 the document scroll width was 390 px. The preview used an isolated local test account and sample API; those counts are **not production data**. See [Home and meeting live-data pass](./home-meeting-live-pass.md) for the next connected-page changes.
 
 ## Responsive work
 

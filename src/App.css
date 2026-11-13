@@ -368,8 +368,7 @@
   flex: 1;
   padding: 32px;
   overflow-y: auto;
-  background: radial-gradient(circle at 80% 10%, rgba(20, 20, 20, 0.03) 0%, rgba(0, 0, 0, 0) 50%),
-              radial-gradient(circle at 10% 80%, rgba(20, 20, 20, 0.02) 0%, rgba(0, 0, 0, 0) 50%);
+  background: #fff;
 }
 
 /* Cap content width so ultrawide screens don't stretch cards.

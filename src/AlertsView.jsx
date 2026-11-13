@@ -1,141 +1,99 @@
-import React, { useState } from 'react';
-import { Bell, AlertTriangle, AlertCircle, Sparkles, Check, CheckCircle2, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, Bell, Check, CheckCircle2, RefreshCw } from 'lucide-react';
+import { getAuthToken } from './supabaseAuth';
+import './AlertsView.css';
 
-export default function AlertsView({ alerts, onResolveAlert }) {
-  const [resolvedHistory, setResolvedHistory] = useState([
-    {
-      id: 99,
-      type: 'info',
-      title: 'Database Sync Cleared',
-      desc: 'Manual sync successfully completed for past 7 days calendar history.',
-      resolvedAt: '1 hour ago'
-    },
-    {
-      id: 98,
-      type: 'warning',
-      title: 'Phoenix Database Budget Resolved',
-      desc: 'VP Marcus Vance approved budget allocation adjustment (+ $2,500) for PHX-408 code.',
-      resolvedAt: 'Yesterday'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+export default function AlertsView({ onResolveAlert }) {
+  const [alerts, setAlerts] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [error, setError] = useState('');
+  const requestRef = useRef(null);
+  const refresh = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(true);
+    setError('');
+    try {
+      const token = await getAuthToken();
+      if (controller.signal.aborted) return;
+      if (!token) throw new Error('Sign in to view your alerts.');
+      const response = await fetch(`${API_BASE_URL}/api/alerts`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('Could not load alerts. Try again.');
+      const data = await response.json();
+      if (!Array.isArray(data.alerts)) throw new Error('The alerts response was incomplete. Try again.');
+      if (!controller.signal.aborted) {
+        setAlerts(data.alerts.map(item => ({
+          id: item.id, title: item.title, desc: item.description,
+          resolved: item.resolved, createdAt: item.created_at,
+        })));
+        setLoaded(true);
+      }
+    } catch (cause) {
+      if (!controller.signal.aborted && cause.name !== 'AbortError') setError(cause.message || 'Could not load alerts.');
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
-  ]);
+  }, []);
 
-  const activeAlerts = alerts.filter(a => !a.resolved);
+  useEffect(() => {
+    Promise.resolve().then(refresh);
+    return () => requestRef.current?.abort();
+  }, [refresh]);
 
-  const handleResolveClick = (id, alertItem) => {
-    // Add to resolved history
-    const historyItem = {
-      ...alertItem,
-      resolvedAt: 'Just now'
-    };
-    setResolvedHistory([historyItem, ...resolvedHistory]);
-    // Call parent resolve handler
-    onResolveAlert(id);
+  const active = alerts.filter(alert => !alert.resolved);
+  const resolved = alerts.filter(alert => alert.resolved);
+
+  const resolve = async id => {
+    setSavingId(id);
+    setError('');
+    const saved = await onResolveAlert?.(id);
+    if (saved) setAlerts(previous => previous.map(alert => alert.id === id ? { ...alert, resolved: true } : alert));
+    else setError('Could not resolve this alert. Please try again.');
+    setSavingId(null);
   };
 
-  return (
-    <div className="alerts-view-container" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '24px' }}>
-      
-      {/* Left Column: Active Alerts Feed */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <div className="section-header" style={{ marginBottom: '20px', borderBottom: 'none', paddingBottom: 0 }}>
-          <div>
-            <h2 className="section-title">
-              <Bell size={18} style={{ color: 'var(--color-pink)', marginRight: '6px' }} />
-              Active Anomalies & Alerts Feed
-            </h2>
-            <p className="section-subtitle">Real-time alerts triggered by AI models and budget cost threshold rules</p>
-          </div>
-          
-          <span className="confidence-badge low" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }}>
-            {activeAlerts.length} Active Warnings
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {activeAlerts.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 10px' }}>
-              <CheckCircle2 size={48} style={{ color: 'var(--color-success)', marginBottom: '16px' }} />
-              <h3 style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>All Systems Healthy</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-                No budget anomalies or low confidence attributions detected.
-              </p>
-            </div>
-          ) : (
-            activeAlerts.map((alert) => (
-              <div className={`glass-panel alert-item ${alert.type}`} key={alert.id} style={{ display: 'flex', gap: '16px', padding: '20px', position: 'relative' }}>
-                <div className={`alert-icon-wrapper ${alert.type}`} style={{
-                  width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: alert.type === 'danger' ? 'rgba(244, 63, 94, 0.1)' : 
-                                   alert.type === 'warning' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(0, 240, 255, 0.1)',
-                  color: alert.type === 'danger' ? 'var(--color-pink)' : 
-                         alert.type === 'warning' ? 'var(--color-warning)' : 'var(--color-cyan)',
-                  flexShrink: 0
-                }}>
-                  {alert.type === 'danger' && <AlertTriangle size={20} />}
-                  {alert.type === 'warning' && <AlertCircle size={20} />}
-                  {alert.type === 'info' && <Sparkles size={20} />}
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>{alert.title}</h4>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '14px' }}>{alert.desc}</p>
-                  
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      className="table-action-btn"
-                      style={{
-                        padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px',
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--color-success)'
-                      }}
-                      onClick={() => handleResolveClick(alert.id, alert)}
-                    >
-                      <Check size={14} />
-                      <span>{alert.type === 'warning' ? 'Resolve Tagging' : 'Review & Resolve'}</span>
-                    </button>
-                    <button 
-                      className="table-action-btn"
-                      style={{ padding: '6px 14px', fontSize: '12px', backgroundColor: 'transparent', borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
-                    >
-                      Snooze
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Right Column: Resolved History */}
-      <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <CheckCircle2 size={16} style={{ color: 'var(--color-success)' }} />
-          Resolution Ledger
-        </h3>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {resolvedHistory.map((item) => (
-            <div key={item.id} style={{ padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(255,255,255,0.01)', position: 'relative' }}>
-              <span style={{ position: 'absolute', top: '14px', right: '14px', fontSize: '10px', color: 'var(--text-muted)' }}>
-                {item.resolvedAt}
-              </span>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <span style={{
-                  width: '6px', height: '6px', borderRadius: '50%',
-                  backgroundColor: 'var(--color-success)'
-                }} />
-                <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{item.title}</strong>
-              </div>
-              
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                {item.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </div>
-  );
+  return <div className="alerts-page">
+    <header className="alerts-page-header">
+      <div><span className="alerts-eyebrow">HOME / ALERTS</span>
+        <h1>Alerts</h1>
+        <p>Review alerts saved to your workspace and track which ones you have resolved.</p></div>
+      <button type="button" className="alerts-refresh" onClick={refresh} disabled={loading}><RefreshCw size={16} /> {loading ? 'Updating…' : 'Refresh'}</button>
+    </header>
+    {error && <div className="alerts-error" role="alert"><AlertCircle size={17} />{error}</div>}
+    {!loaded && loading && <p className="alerts-loading" role="status">Loading your alerts…</p>}
+    {loaded &&
+    <div className="alerts-grid">
+      <section className="alerts-panel" aria-labelledby="active-alerts-title">
+        <div className="alerts-panel-heading"><div><span className="alerts-eyebrow">NEEDS ATTENTION</span>
+          <h2 id="active-alerts-title">Active alerts</h2></div><span className="alerts-count">{active.length}</span></div>
+        {active.length === 0 ? <div className="alerts-empty"><CheckCircle2 size={24} />
+          <p>No active alerts right now.</p></div>
+          : active.map(alert => <article className="alerts-item" key={alert.id}>
+            <span className="alerts-item-icon"><Bell size={18} /></span>
+            <div><h3>{alert.title}</h3><p>{alert.desc || 'No further details were saved.'}</p>
+              <small>{alert.createdAt ? new Date(alert.createdAt).toLocaleString() : 'Saved alert'}</small></div>
+            <button type="button" onClick={() => resolve(alert.id)} disabled={savingId === alert.id}>
+              <Check size={15} /> {savingId === alert.id ? 'Saving…' : 'Resolve'}
+            </button>
+          </article>)}
+      </section>
+      <section className="alerts-panel" aria-labelledby="resolved-alerts-title">
+        <div className="alerts-panel-heading"><div><span className="alerts-eyebrow">HISTORY</span>
+          <h2 id="resolved-alerts-title">Resolved alerts</h2></div><span className="alerts-count">{resolved.length}</span></div>
+        {resolved.length === 0 ? <div className="alerts-empty"><p>No resolved alerts yet.</p></div>
+          : resolved.map(alert => <article className="alerts-item" key={alert.id}>
+            <span className="alerts-item-icon"><CheckCircle2 size={18} /></span>
+            <div><h3>{alert.title}</h3><p>{alert.desc || 'No further details were saved.'}</p>
+              <small>Resolved</small></div>
+          </article>)}
+      </section>
+    </div>}
+  </div>;
 }

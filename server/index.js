@@ -1324,7 +1324,19 @@ app.get('/api/meetings', verifyToken, async (req, res) => {
       .eq('user_id', req.user.uid)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    res.json({ meetings: data || [] });
+    const defaultRate = await MeetingRate.findOne({
+      ownerUid: req.user.uid, dept: 'default', level: 'default', region: 'default',
+    }).lean();
+    const hourlyRate = defaultRate ? defaultRate.hourlyRate : DEFAULT_HOURLY_RATE;
+    const meetings = (data || []).map(meeting => {
+      const minutes = Number(meeting.duration_minutes) || 0;
+      const attendees = Array.isArray(meeting.attendees) ? meeting.attendees.length : 0;
+      return {
+        ...meeting,
+        cost: Math.round((minutes / 60) * hourlyRate * Math.max(attendees, 1) * 100) / 100,
+      };
+    });
+    res.json({ meetings });
   } catch (error) {
     console.error('Error fetching meetings:', error);
     res.status(500).json({ error: 'Failed to fetch meetings' });
@@ -1382,7 +1394,8 @@ const DEFAULT_HOURLY_RATE = 75;
 app.get('/api/rates', verifyToken, async (req, res) => {
   try {
     const rates = await MeetingRate.find({ ownerUid: req.user.uid }).sort({ dept: 1, level: 1 });
-    res.json({ rates, defaultHourlyRate: DEFAULT_HOURLY_RATE });
+    const accountDefault = rates.find(rate => rate.dept === 'default' && rate.level === 'default' && rate.region === 'default');
+    res.json({ rates, defaultHourlyRate: accountDefault ? accountDefault.hourlyRate : DEFAULT_HOURLY_RATE });
   } catch (error) {
     console.error('Error fetching rates:', error);
     res.status(500).json({ error: 'Failed to fetch rates' });

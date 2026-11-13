@@ -1303,6 +1303,30 @@ describe('Meetings API', () => {
     expect(res.status).toBe(200);
     expect(res.body.meetings).toHaveLength(1);
     expect(res.body.meetings[0].title).toBe('Team Standup');
+    expect(res.body.meetings[0].cost).toBe(37.5);
+  });
+
+  test('meeting cost uses the signed-in owner default rate', async () => {
+    const MeetingRate = require('../models/MeetingRate');
+    await MeetingRate.create({ ownerUid: 'test-user-uid', hourlyRate: 120 });
+    await MeetingRate.create({ ownerUid: 'another-owner', hourlyRate: 500 });
+    mockSupabaseQuery.data = [{ id: 'm1', duration_minutes: 30, attendees: [{ name: 'A' }, { name: 'B' }] }];
+
+    const res = await request(app).get('/api/meetings').set('x-test-uid', 'test-user-uid');
+
+    expect(res.status).toBe(200);
+    expect(res.body.meetings[0].cost).toBe(120);
+  });
+
+  test('Live Ticker receives the same owner default rate used for meeting cost', async () => {
+    const MeetingRate = require('../models/MeetingRate');
+    await MeetingRate.create({ ownerUid: 'test-user-uid', hourlyRate: 120 });
+    await MeetingRate.create({ ownerUid: 'another-owner', hourlyRate: 500 });
+
+    const res = await request(app).get('/api/rates').set('x-test-uid', 'test-user-uid');
+
+    expect(res.status).toBe(200);
+    expect(res.body.defaultHourlyRate).toBe(120);
   });
 
   test('M2: POST /api/meetings creates a meeting', async () => {

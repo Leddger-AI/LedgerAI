@@ -191,7 +191,7 @@ export default function App() {
       { id: 'Alerts', label: 'Alerts', icon: AlertTriangle }
     ],
     Inbox: [
-      { id: 'Email Automation', label: 'Email', icon: Mail, count: 46 },
+      { id: 'Email Automation', label: 'Email', icon: Mail },
       { id: 'Email Body', label: 'Body', icon: FileText },
       { id: 'Roster Studio', label: 'Roster Studio', icon: Table2 },
       { id: 'divider2', isDivider: true },
@@ -566,24 +566,22 @@ export default function App() {
       }
       if (response.ok) {
         const data = await response.json();
-        if (data.meetings && data.meetings.length > 0) {
-          const mapped = data.meetings.map((m, idx) => ({
-            id: m.id || idx,
-            start_time: m.start_time || null,
-            title: m.title,
-            duration: m.duration_minutes ? `${Math.floor(m.duration_minutes / 60)}h ${m.duration_minutes % 60}m` : '1h 0m',
-            attendeeCount: Array.isArray(m.attendees) ? m.attendees.length : 0,
-            cost: m.cost || 0,
-            project: m.ai_project || 'Internal Operations',
-            confidence: m.ai_confidence || 0,
-            status: m.requires_human_review ? 'needs_review' : 'approved',
-            time: m.start_time ? new Date(m.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All-day'
-          }));
-          setMeetings(mapped);
-        }
+        const mapped = (data.meetings || []).map((m) => ({
+          id: m.id,
+          start_time: m.start_time || null,
+          title: m.title,
+          duration: `${Math.floor((m.duration_minutes || 0) / 60)}h ${(m.duration_minutes || 0) % 60}m`,
+          attendeeCount: Array.isArray(m.attendees) ? m.attendees.length : 0,
+          cost: Number(m.cost) || 0,
+          project: m.ai_project || 'Unattributed',
+          confidence: m.ai_confidence == null ? null : (m.ai_confidence <= 1 ? m.ai_confidence * 100 : m.ai_confidence),
+          status: m.requires_human_review ? 'needs_review' : 'approved',
+          time: m.start_time ? new Date(m.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unscheduled'
+        }));
+        setMeetings(mapped);
       }
     } catch {
-      console.warn('Failed to fetch meetings from Supabase, using mock data.');
+      console.warn('Failed to fetch meetings from the API.');
     }
   };
 
@@ -599,19 +597,19 @@ export default function App() {
       }
       if (response.ok) {
         const data = await response.json();
-        if (data.alerts && data.alerts.length > 0) {
-          const mapped = data.alerts.map((a) => ({
-            id: a.id,
-            type: a.type,
-            title: a.title,
-            desc: a.description,
-            resolved: a.resolved
-          }));
-          setAlerts(mapped);
-        }
+        const mapped = (data.alerts || []).map((a) => ({
+          id: a.id,
+          type: a.type,
+          title: a.title,
+          desc: a.description,
+          resolved: a.resolved,
+          createdAt: a.created_at,
+          resolvedAt: a.resolved_at,
+        }));
+        setAlerts(mapped);
       }
     } catch {
-      console.warn('Failed to fetch alerts from Supabase, using mock data.');
+      console.warn('Failed to fetch alerts from the API.');
     }
   };
 
@@ -621,10 +619,11 @@ export default function App() {
     // accuracy is null (rendered as "—") when there are no meetings — never
     // a fake placeholder. costOverTime buckets real meeting costs by date.
     const totalCost = Math.round(meetings.reduce((acc, m) => acc + m.cost, 0));
-    const accuracy = meetings.length > 0
-      ? Math.round(meetings.reduce((acc, m) => acc + m.confidence, 0) / meetings.length)
+    const confidenceValues = meetings.map(m => m.confidence).filter(Number.isFinite);
+    const accuracy = confidenceValues.length > 0
+      ? Math.round(confidenceValues.reduce((acc, value) => acc + value, 0) / confidenceValues.length)
       : null;
-    const anomalies = meetings.filter(m => m.status === 'needs_review' || m.confidence < 60).length;
+    const anomalies = meetings.filter(m => m.status === 'needs_review' || (m.confidence != null && m.confidence < 60)).length;
 
     // Parse unattributed hours (unassigned or operations with low confidence)
     const unattributedMinutes = meetings
@@ -745,15 +744,17 @@ export default function App() {
   };
 
   const handleResolveAlert = async (id) => {
-    setAlerts(prev => prev.map(a => (a.id === id ? { ...a, resolved: true } : a)));
     try {
       const token = await getAuthToken();
-      if (!token || isDemoToken(token)) return;
-      await fetch(`${API_BASE_URL}/api/alerts/${id}/resolve`, {
+      if (!token || isDemoToken(token)) return false;
+      const response = await fetch(`${API_BASE_URL}/api/alerts/${id}/resolve`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` },
       });
-    } catch { /* optimistic update already applied */ }
+      if (!response.ok) return false;
+      setAlerts(prev => prev.map(a => (a.id === id ? { ...a, resolved: true } : a)));
+      return true;
+    } catch { return false; }
   };
 
   const saveEditModal = () => {
@@ -876,7 +877,6 @@ export default function App() {
                 const SubIcon = subItem.icon;
                 const isActive = activeTab === subItem.id;
                 
-                // Fallback for counts specifically for alerts if missing from mockup data
                 let displayCount = subItem.count;
                 if (subItem.id === 'Alerts' && activeAlertsCount > 0) {
                   displayCount = activeAlertsCount;
@@ -988,7 +988,7 @@ export default function App() {
           ) : activeTab === 'Analysis' ? (
             <AnalysisView meetings={meetings} />
           ) : activeTab === 'Alerts' ? (
-            <AlertsView alerts={alerts} onResolveAlert={handleResolveAlert} />
+            <AlertsView onResolveAlert={handleResolveAlert} />
           ) : activeTab === 'Attribution' ? (
             <AttributionQueue />
           ) : activeTab === 'Live Ticker' ? (
