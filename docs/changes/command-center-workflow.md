@@ -34,6 +34,7 @@ No database migration was required. The endpoint only reads existing tables and 
 
 ## Related references
 
+- [Command Center UI refactor](./command-center-ui-refactor.md)
 - [Command Center flow](../connections/15-command-center-workflow.md)
 - [Application and candidate flow](../connections/14-application-candidate-lifecycle.md)
 - [Email campaign flow](../connections/09-email-campaign-schedule.md)
