@@ -18,12 +18,13 @@ These docs serve as a **living architectural reference** so any developer can tr
 | 06 | [analytics-detail-load.md](./06-analytics-detail-load.md) | Template Detail Analytics | Click template → detail + submissions + GitHub analysis |
 | 07 | [analytics-sync.md](./07-analytics-sync.md) | Analytics Data Sync | Sync button → Supabase → MongoDB backfill |
 | 08 | [analytics-export-to-drive.md](./08-analytics-export-to-drive.md) | Export to Google Drive | Save to Drive → CSV/JSON → Google Drive upload |
-| 09 | [email-campaign-schedule.md](./09-email-campaign-schedule.md) | Email Campaign Scheduling | Compose → schedule → Agenda → nodemailer → send log |
+| 09 | [email-campaign-schedule.md](./09-email-campaign-schedule.md) | Email Campaign Scheduling | Compose → queue/schedule → Agenda → delivery results → send log |
 | 10 | [template-draft-lifecycle.md](./10-template-draft-lifecycle.md) | Template Draft Lifecycle | Create → schedule → activate → submit → expire |
 | 11 | [account-deletion.md](./11-account-deletion.md) | Account Deletion | Delete → cascade across Supabase + MongoDB + Cloudinary |
 | 12 | [avatar-upload.md](./12-avatar-upload.md) | Avatar Upload | File select → Sharp compress → Cloudinary → Supabase URL |
 | 13 | [ram-optimization.md](./13-ram-optimization.md) | RAM Optimization (512MB Render) | Lazy-load heavy modules → ~70MB saved at startup |
 | 14 | [14-application-candidate-lifecycle.md](./14-application-candidate-lifecycle.md) | Applications to Candidates | Publish → submit → atomic candidate link → Sourcing review |
+| 15 | [15-command-center-workflow.md](./15-command-center-workflow.md) | Command Center | One authenticated snapshot → source health → connected workflow navigation |
 
 ## How to Read Each Map
 

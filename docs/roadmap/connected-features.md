@@ -1,6 +1,6 @@
 # Connected feature roadmap
 
-Updated: 11 November 2026. This is a living implementation roadmap, not a claim that every listed feature is live. See [application and candidate changes](../changes/application-candidate-workflow.md) for verification evidence.
+Updated: 13 November 2026. This is a living implementation roadmap, not a claim that every listed feature is live. See [application and candidate changes](../changes/application-candidate-workflow.md) and [Command Center changes](../changes/command-center-workflow.md) for verification evidence.
 
 ## Product spine
 
@@ -18,6 +18,7 @@ Authentication and owner-scoped records support every link. Supabase owns drafts
 | 0 | Email/mobile release preflight | Released on Render and Netlify 11 Nov; worker health and controlled campaigns pass | Render configuration, Supabase, MongoDB | Render restart recovery, avatar replacement, Free-plan timing |
 | 1 | Public forms and candidate identity | Released; production migration, live API, and desktop/mobile preview submissions passed | Draft config, Supabase transaction | Production form smoke with a real owner account |
 | 2 | Candidate workspace | Released; live API search/detail/status refresh passed; Sourcing browser check pending | Candidate API and migration | Open history and update status in Sourcing UI through social login |
+| 2a | Connected Command Center | Implemented locally; browser fixture checked at 390 × 844 and API tests passed; production deployment pending | Candidate and campaign records | Signed-in production snapshot, source health, and navigation check |
 | 3 | Candidate communication | Planned | Reliable campaign worker and candidate identity | Choose candidates as an audience and display recipient outcomes in history |
 | 4 | Interviews and calendar | Demo screens today | Candidate identity, meeting persistence | Candidate-linked interview with real time and link; no fixed June 2026 grid |
 | 5 | Projects, teams, budgets | Projects and Teams use local sample state | Saved project/team entities, meetings | Persistent ownership, attribution, and cost rollups |

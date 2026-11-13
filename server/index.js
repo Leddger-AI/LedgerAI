@@ -75,6 +75,7 @@ const { createOtpChallenge, verifyOtpChallenge } = require('./utils/otp');
 const { scheduleCampaign, cancelScheduledCampaign, stopAgenda, getAgenda, isAgendaReady, scheduleDraftActivation, cancelDraftActivation, scheduleAnalyticsReport, cancelAnalyticsReport } = require('./scheduler');
 const { v4: uuidv4, validate: isUuid } = require('uuid');
 const { runStartupChecks } = require('./startupCheck');
+const { getCommandCenterSnapshot } = require('./utils/commandCenter');
 
 const app = express();
 const allowedOrigins = process.env.CORS_ORIGINS
@@ -125,6 +126,20 @@ let emailWorkerReconciled = false;
 app.get('/api/email/worker-health', (req, res) => {
   const ready = mongoose.connection.readyState === 1 && isAgendaReady() && emailWorkerReconciled;
   res.status(ready ? 200 : 503).json({ ready });
+});
+
+app.get('/api/command-center', verifyToken, async (req, res) => {
+  try {
+    const workerReady = mongoose.connection.readyState === 1 && isAgendaReady() && emailWorkerReconciled;
+    const snapshot = await getCommandCenterSnapshot({
+      uid: req.user.uid, supabase, workerReady,
+      models: { EmailCampaign, EmailAccount, Spreadsheet },
+    });
+    res.json(snapshot);
+  } catch (error) {
+    console.error('Error building command center:', error);
+    res.status(500).json({ error: 'Failed to load command center' });
+  }
 });
 
 // Helper: Ensure user profile exists in Supabase

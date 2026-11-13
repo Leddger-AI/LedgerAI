@@ -60,7 +60,7 @@ import AnalyticsPage from './pages/AnalyticsPage.jsx';
 import AttributionQueue from './pages/AttributionQueue.jsx';
 import LiveTicker from './pages/LiveTicker.jsx';
 import Budgets from './pages/Budgets.jsx';
-import OverviewDashboard from './pages/OverviewDashboard.jsx';
+import CommandCenterView from './pages/CommandCenterView.jsx';
 import DashboardHome from './pages/DashboardHome.jsx';
 import PreviewStudio from './pages/PreviewStudio.jsx';
 import StudentTemplateBuilder from './pages/StudentTemplateBuilder.jsx';
@@ -938,12 +938,7 @@ export default function App() {
               onNavigate={handleNavClick}
             />
           ) : activeTab === 'Command Center' ? (
-            <OverviewDashboard
-              dynamicData={dynamicData}
-              projectSpendsSum={projectSpendsSum}
-              meetings={meetings}
-              onNavigate={handleNavClick}
-            />
+            <CommandCenterView onNavigate={handleNavClick} />
           ) : activeTab === 'Knowledge Base' ? (
             <KnowledgeBase />
           ) : activeTab === 'Student Template' ? (
