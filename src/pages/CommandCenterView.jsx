@@ -39,7 +39,11 @@ export default function CommandCenterView({ onNavigate }) {
       if (!response.ok) throw new Error('Could not load the workflow. Try refreshing.');
       setSnapshot(await response.json());
     } catch (cause) {
-      if (!signal?.aborted && cause.name !== 'AbortError') setError(cause.message || 'Could not load the workflow.');
+      if (!signal?.aborted && cause.name !== 'AbortError') {
+        setError(cause instanceof TypeError
+          ? 'Could not reach the workflow service. Check your connection and try again.'
+          : cause.message || 'Could not load the workflow.');
+      }
     } finally {
       if (!signal?.aborted) setLoading(false);
     }

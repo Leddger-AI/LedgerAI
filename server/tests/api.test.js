@@ -70,6 +70,7 @@ jest.mock('../scheduler', () => ({
   scheduleCampaign: jest.fn(() => Promise.resolve()),
   cancelScheduledCampaign: jest.fn(() => Promise.resolve()),
   stopAgenda: jest.fn(() => Promise.resolve()),
+  isAgendaReady: jest.fn(() => true),
   scheduleDraftActivation: jest.fn(() => Promise.resolve()),
   cancelDraftActivation: jest.fn(() => Promise.resolve()),
 }));
@@ -175,6 +176,36 @@ const createEmailAccount = async (ownerUid = 'test-user-uid', overrides = {}) =>
     ...overrides,
   });
 };
+
+describe('Command Center API', () => {
+  test('combines owner-scoped campaign records with the workspace snapshot', async () => {
+    const ownerDraft = await createEmailDraft('owner-a');
+    await EmailCampaign.create({ ownerUid: 'owner-a', draftId: ownerDraft._id,
+      name: 'Owner A campaign', status: 'scheduled' });
+    const otherDraft = await createEmailDraft('owner-b');
+    await EmailCampaign.create({ ownerUid: 'owner-b', draftId: otherDraft._id,
+      name: 'Owner B campaign', status: 'failed' });
+    mockSupabaseQuery.count = 2;
+    const response = await request(app).get('/api/command-center').set('x-test-uid', 'owner-a');
+    expect(response.status).toBe(200);
+    expect(response.body.counts.scheduledCampaigns).toBe(1);
+    expect(response.body.counts.campaignsToReview).toBe(0);
+    expect(response.body.queues.campaigns.map(c => c.name)).toEqual(['Owner A campaign']);
+    expect(response.body.sources.forms).toBe('ready');
+    expect(mockSupabase.from.mock.results.every(({ value }) =>
+      value.eq.mock.calls.some(([key, uid]) => key === 'user_id' && uid === 'owner-a'))).toBe(true);
+  });
+
+  test('keeps MongoDB results when the workspace database query fails', async () => {
+    await createSpreadsheet('owner-a', 'Recipients');
+    mockSupabaseQuery.error = new Error('Workspace unavailable');
+    const response = await request(app).get('/api/command-center').set('x-test-uid', 'owner-a');
+    expect(response.status).toBe(200);
+    expect(response.body.sources.forms).toBe('unavailable');
+    expect(response.body.counts.candidates).toBeNull();
+    expect(response.body.counts.files).toBe(1);
+  });
+});
 
 // ==========================================
 // DRAFTS ENDPOINTS
