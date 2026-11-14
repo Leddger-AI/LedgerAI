@@ -1,225 +1,211 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
-} from 'recharts';
-import {
-  Bell, Wallet, AlertTriangle, ShieldCheck, ChevronRight, Plus,
-  ArrowUpRight, ArrowDownRight, Minus, Star, LayoutDashboard,
-  Timer,
+  Activity, AlertCircle, ArrowRight, ArrowUpRight, Bell, CheckCircle2,
+  Clock3, FileText, Mail, RefreshCw, Send, Timer, Users, Wallet,
 } from 'lucide-react';
-import './DashboardHome.css';
+import { getAuthToken } from '../supabaseAuth';
 import { getFirstName } from '../utils/greeting';
+import './DashboardHome.css';
 
-const ACCENT = '#E4573D';
-const TARGET_COLORS = [ACCENT, '#F5B301', '#DC2626'];
-const TRACK_TINTS = ['#FDE9E2', '#FDF3D7', '#FBE0D9'];
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const previewData = import.meta.env.DEV && import.meta.env.VITE_LOCAL_EMAIL_TEST === 'true';
+const reviewStatuses = new Set(['partial', 'failed', 'needs_review']);
+const activeStatuses = new Set(['queued', 'scheduled', 'sending']);
 
-function HdIllustration() {
-  return (
-    <svg viewBox="0 0 220 150" className="hd-illo-svg" role="img" aria-label="Person reviewing charts">
-      <ellipse cx="110" cy="132" rx="86" ry="12" fill="#F1EDE8" />
-      {/* board */}
-      <rect x="104" y="18" width="92" height="76" rx="6" fill="#fff" stroke="#E2E8F0" strokeWidth="2" />
-      {/* pie */}
-      <circle cx="130" cy="48" r="14" fill={ACCENT} />
-      <path d="M130 48 L130 34 A14 14 0 0 1 142 55 Z" fill="#3F3F46" />
-      <circle cx="130" cy="48" r="5" fill="#fff" />
-      {/* bars */}
-      <rect x="152" y="58" width="8" height="16" rx="2" fill={ACCENT} opacity="0.85" />
-      <rect x="163" y="48" width="8" height="26" rx="2" fill="#F5B301" />
-      <rect x="174" y="40" width="8" height="34" rx="2" fill={ACCENT} opacity="0.45" />
-      {/* stand */}
-      <line x1="150" y1="94" x2="150" y2="126" stroke="#94A3B8" strokeWidth="3" strokeLinecap="round" />
-      <line x1="138" y1="126" x2="162" y2="126" stroke="#94A3B8" strokeWidth="3" strokeLinecap="round" />
-      {/* person */}
-      <circle cx="66" cy="34" r="11" fill="#F2C9A4" />
-      <path d="M55 32 a11 11 0 0 1 22 0 l0 -3 a11 8 0 0 0 -22 0 Z" fill="#3F3F46" />
-      <rect x="52" y="48" width="30" height="42" rx="10" fill={ACCENT} />
-      <rect x="58" y="58" width="14" height="18" rx="2" fill="#F5B301" />
-      <rect x="52" y="88" width="11" height="34" rx="5" fill="#3F3F46" />
-      <rect x="66" y="88" width="11" height="34" rx="5" fill="#3F3F46" />
-      <rect x="78" y="58" width="26" height="9" rx="4.5" fill="#F2C9A4" />
-      {/* plant */}
-      <rect x="24" y="112" width="12" height="12" rx="2" fill={ACCENT} opacity="0.7" />
-      <path d="M30 112 c-2 -8 -8 -10 -12 -11 M30 112 c0 -9 4 -13 9 -15 M30 112 c3 -7 8 -9 12 -9" stroke="#16A34A" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-    </svg>
-  );
+function count(value) {
+  return value == null ? '—' : Number(value).toLocaleString();
 }
 
-export default function DashboardHome({
-  user, meetings = [], dynamicData, projectSpendsSum = [], alertsCount = 0, onNavigate,
-}) {
+function dateLabel(value) {
+  if (!value) return 'Date unavailable';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function chooseAction(counts, sources) {
+  if (sources.campaigns === 'ready' && counts.campaignsToReview > 0) return {
+    eyebrow: 'DELIVERY REVIEW', title: 'A campaign needs your decision',
+    detail: `${count(counts.campaignsToReview)} campaign${counts.campaignsToReview === 1 ? '' : 's'} with delivery issues to review.`,
+    label: 'Review results', route: 'Sent',
+  };
+  if (sources.forms === 'ready' && counts.candidatesToReview > 0) return {
+    eyebrow: 'CANDIDATE REVIEW', title: 'Check candidate contact details',
+    detail: `${count(counts.candidatesToReview)} candidate${counts.candidatesToReview === 1 ? '' : 's'} waiting for a contact check.`,
+    label: 'Open Sourcing', route: 'Sourcing',
+  };
+  if (sources.forms !== 'ready' || sources.campaigns !== 'ready') return {
+    eyebrow: 'CONNECTION CHECK', title: 'Some workspace data is unavailable',
+    detail: 'Refresh to reconnect before deciding what needs attention.',
+    label: 'Retry connection', route: null,
+  };
+  if (counts.activeForms === 0) return {
+    eyebrow: 'START HERE', title: 'Publish an application form',
+    detail: 'Create a form and share its link to start collecting responses.',
+    label: 'Open forms', route: 'Drafts',
+  };
+  if (counts.queuedCampaigns > 0) return {
+    eyebrow: 'EMAIL DELIVERY', title: 'Track your queued campaign',
+    detail: `${count(counts.queuedCampaigns)} campaign${counts.queuedCampaigns === 1 ? '' : 's'} waiting for delivery.`,
+    label: 'View campaigns', route: 'Email Automation',
+  };
+  return {
+    eyebrow: 'WORKSPACE READY', title: 'Keep the workflow moving',
+    detail: 'Review the latest form responses and candidate history.',
+    label: 'Open Sourcing', route: 'Sourcing',
+  };
+}
+
+export default function DashboardHome({ user, onNavigate }) {
+  const [snapshot, setSnapshot] = useState(null);
+  const [meetings, setMeetings] = useState([]);
+  const [workflowState, setWorkflowState] = useState('loading');
+  const [meetingState, setMeetingState] = useState('loading');
+  const [refreshing, setRefreshing] = useState(false);
+  const [today] = useState(() => new Date());
+  const requestRef = useRef(null);
+  const go = tab => onNavigate?.(tab);
+
+  const refresh = useCallback(async () => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setRefreshing(true);
+    try {
+      const token = await getAuthToken();
+      if (controller.signal.aborted) return;
+      if (!token) throw new Error('Sign in to load your workspace.');
+      const headers = { Authorization: `Bearer ${token}` };
+      const [workflowResult, meetingResult] = await Promise.allSettled([
+        fetch(`${API_BASE_URL}/api/command-center`, { headers, signal: controller.signal }).then(async response => {
+          if (!response.ok) throw new Error('Workflow unavailable');
+          const data = await response.json();
+          if (!data || !data.counts || !data.sources || !data.queues) throw new Error('Workflow response incomplete');
+          return data;
+        }),
+        fetch(`${API_BASE_URL}/api/meetings`, { headers, signal: controller.signal }).then(async response => {
+          if (!response.ok) throw new Error('Meetings unavailable');
+          const data = await response.json();
+          if (!Array.isArray(data.meetings)) throw new Error('Meetings response incomplete');
+          return data.meetings;
+        }),
+      ]);
+      if (controller.signal.aborted) return;
+      if (workflowResult.status === 'fulfilled') {
+        setSnapshot(workflowResult.value);
+        setWorkflowState('ready');
+      } else setWorkflowState('unavailable');
+      if (meetingResult.status === 'fulfilled') {
+        setMeetings(meetingResult.value);
+        setMeetingState('ready');
+      } else setMeetingState('unavailable');
+    } catch {
+      if (!controller.signal.aborted) {
+        setWorkflowState('unavailable');
+        setMeetingState('unavailable');
+      }
+    } finally {
+      if (!controller.signal.aborted) setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    Promise.resolve().then(refresh);
+    return () => requestRef.current?.abort();
+  }, [refresh]);
+
   const first = getFirstName(user);
-  const go = (tab) => onNavigate && onNavigate(tab);
-
-  const needsReview = useMemo(
-    () => (meetings || []).filter((m) => m.status === 'needs_review').length,
-    [meetings],
-  );
-  const approvalRate = useMemo(() => {
-    const list = meetings || [];
-    if (!list.length) return 0;
-    return Math.round((list.filter((m) => m.status === 'approved').length / list.length) * 100);
-  }, [meetings]);
-  const total = dynamicData?.totalCost ?? 0;
-  const accuracy = dynamicData?.accuracy ?? null;
-  const accuracyLabel = accuracy === null ? '—' : `${accuracy}%`;
-  const trend = dynamicData?.costOverTime || [];
-  const isEmptySpend = Number(total) <= 0 && trend.every((p) => !Number(p?.cost));
-  const tickInterval = Math.max(0, Math.ceil(trend.length / 4) - 1);
-  const targets = (projectSpendsSum || []).slice(0, 3);
-  const upcoming = (meetings || []).slice(0, 3);
-  const started = approvalRate > 0;
-
-  const kpis = [
-    {
-      icon: Wallet, tint: ACCENT, soft: 'rgba(228,87,61,0.12)',
-      value: `$${Number(total).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      label: 'Meeting cost',
-      delta: Number(total) > 0 ? 'up' : 'clear', onClick: () => go('Budgets'),
-    },
-    {
-      icon: AlertTriangle, tint: '#DC2626', soft: 'rgba(220,38,38,0.12)',
-      value: Number(needsReview).toLocaleString(),
-      label: 'Needs review',
-      delta: needsReview > 0 ? 'open' : 'clear', onClick: () => go('Attribution'),
-    },
-    {
-      icon: ShieldCheck, tint: '#B45309', soft: 'rgba(245,179,1,0.18)',
-      value: accuracyLabel,
-      label: 'AI confidence',
-      delta: accuracy === null ? 'clear' : accuracy >= 70 ? 'up' : 'down', onClick: () => go('Attribution'),
-    },
+  const counts = snapshot?.counts || {};
+  const sources = workflowState === 'ready' ? snapshot.sources : {};
+  const sourceUnavailable = workflowState === 'ready' && (sources.forms !== 'ready' || sources.campaigns !== 'ready');
+  const queues = snapshot?.queues || {};
+  const action = workflowState === 'loading' ? {
+    eyebrow: 'CONNECTING WORKSPACE', title: 'Loading your next step',
+    detail: 'Checking form, candidate, and campaign activity.',
+    label: 'Loading…', route: null,
+  } : chooseAction(counts, sources);
+  const stale = workflowState === 'unavailable' && !!snapshot;
+  const meetingStale = meetingState === 'unavailable' && !!meetings.length;
+  const totalCost = meetingState === 'ready' ? meetings.reduce((sum, meeting) => sum + (Number(meeting.cost) || 0), 0) : null;
+  const reviewMeetings = meetingState === 'ready' ? meetings.filter(meeting => meeting.requires_human_review).length : null;
+  const campaigns = (queues.campaigns || []).filter(item => activeStatuses.has(item.status) || reviewStatuses.has(item.status)).slice(0, 3);
+  const responses = (queues.applications || []).slice(0, 3);
+  const metricCards = [
+    { label: 'Form responses', value: counts.submissions, detail: 'All published form types', icon: FileText, route: 'Sourcing', tone: 'coral' },
+    { label: 'Candidates', value: counts.candidates, detail: 'Distinct people in your workspace', icon: Users, route: 'Sourcing', tone: 'sage' },
+    { label: 'Contact review', value: counts.candidatesToReview, detail: 'Candidates needing a contact check', icon: AlertCircle, route: 'Sourcing', tone: 'amber' },
+    { label: 'Delivery review', value: counts.campaignsToReview, detail: 'Campaigns with issues to inspect', icon: Send, route: 'Sent', tone: 'blue' },
+  ];
+  const steps = [
+    { number: '01', title: 'Publish a form', value: counts.activeForms, unit: 'active links', route: 'Drafts', icon: FileText },
+    { number: '02', title: 'Review people', value: counts.candidatesToReview, unit: 'contact checks', route: 'Sourcing', icon: Users },
+    { number: '03', title: 'Prepare outreach', value: counts.queuedCampaigns == null || counts.scheduledCampaigns == null ? null : counts.queuedCampaigns + counts.scheduledCampaigns, unit: 'queued or scheduled', route: 'Email Automation', icon: Mail },
+    { number: '04', title: 'Track delivery', value: counts.campaignsToReview, unit: 'need review', route: 'Sent', icon: Activity },
   ];
 
-  return (
-    <div className="hd-wrap">
-      {/* Top strip — intentionally empty except the bell */}
-      <div className="hd-topstrip">
-        <button type="button" className="hd-bell" onClick={() => go('Alerts')} title={`${alertsCount} active alerts`}>
-          <Bell size={18} />
-          {alertsCount > 0 && <span className="hd-bell-dot" />}
-        </button>
+  return <div className="hd-page">
+    <header className="hd-header">
+      <div><span className="hd-eyebrow">LEDDGER / YOUR WORKSPACE</span>
+        <h1>Good to see you, {first}.</h1>
+        <p>{today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} · Your work, in one place.</p></div>
+      <div className="hd-header-actions">
+        {previewData && <span className="hd-preview">Local preview data</span>}
+        <button type="button" className="hd-icon-action" onClick={() => go('Alerts')} aria-label="Open alerts"><Bell size={18} /></button>
+        <button type="button" className="hd-refresh" onClick={refresh} disabled={refreshing}><RefreshCw size={16} />{refreshing ? 'Updating…' : 'Refresh'}</button>
       </div>
+    </header>
 
-      <div className="hd-grid">
-        {/* LEFT — greeting + illustration + progress card (reference order) */}
-        <div className="hd-col">
-          <div className="hd-greet">
-            <h1>Hi {first},</h1>
-            <h2>Welcome back!</h2>
-            <p>
-              This page is designed to give you the important signals about your workspace.
-              Let&apos;s get your attribution to 100% together!
-            </p>
-          </div>
-          <div className="hd-card hd-illo">
-            <HdIllustration />
-          </div>
-          <div className="hd-card hd-congrats">
-            <span className="hd-star"><Star size={16} /></span>
-            <h3>{started ? `Congratulations ${first}` : `Let's get started, ${first}`}</h3>
-            <p>
-              {started
-                ? `You have attributed ${approvalRate}% of your meetings. Your current progress is ${approvalRate >= 70 ? 'great' : 'getting there'}.`
-                : 'Record a meeting, then review its attribution to get started.'}
-            </p>
-            {started && (
-              <div className="hd-bar"><div className="hd-fill" style={{ width: `${approvalRate}%` }} /></div>
-            )}
-            <button type="button" className="hd-white-btn" onClick={() => go(started ? 'Attribution' : 'Live Ticker')}>{started ? 'Review attribution' : 'Record a meeting'}</button>
-          </div>
-        </div>
+    {(workflowState === 'unavailable' || meetingState === 'unavailable' || sourceUnavailable) &&
+      <div className="hd-notice" role="status"><AlertCircle size={17} />
+        <span>{stale || meetingStale ? 'Some figures are from the last successful refresh. ' : ''}Unavailable values are shown as —. Refresh to try again.</span>
+      </div>}
 
-        {/* MIDDLE — KPIs + big chart */}
-        <div className="hd-col">
-          {kpis.map((k) => (
-            <button type="button" key={k.label} className="hd-card hd-kpi" onClick={k.onClick}>
-              <span className="hd-kpi-ico" style={{ background: k.soft, color: k.tint }}>
-                <k.icon size={18} />
-              </span>
-              <span className="hd-kpi-txt"><b>{k.value}</b><small>{k.label}</small></span>
-              <span className="hd-kpi-delta" style={{ color: k.delta === 'down' ? '#DC2626' : k.delta === 'open' ? '#64748B' : k.delta === 'clear' ? '#94A3B8' : '#16A34A' }}>
-                {k.delta === 'down' ? <ArrowDownRight size={16} /> : k.delta === 'open' ? <ChevronRight size={16} /> : k.delta === 'clear' ? <Minus size={16} /> : <ArrowUpRight size={16} />}
-              </span>
-            </button>
-          ))}
-
-          <div className="hd-card hd-chart">
-            <span className="hd-label">Meeting spend</span>
-            {isEmptySpend ? (
-              <div className="hd-chart-empty">
-                <span className="hd-chart-empty-ico"><Wallet size={22} /></span>
-                <b>No spend tracked yet</b>
-                <p>Record a live meeting and its cost curve will appear here.</p>
-                <div className="hd-chart-empty-cta">
-                  <button type="button" className="hd-accent-btn" onClick={() => go('Live Ticker')}><Timer size={14} /> Record a meeting</button>
-                  <button type="button" className="hd-grey-btn sm" onClick={() => go('Meet')}>View meetings</button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="hd-bignum">${Number(total).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                <div className="hd-chart-area">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={trend} margin={{ top: 5, right: 4, left: 4, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="hdSpark" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={ACCENT} stopOpacity={0.35} />
-                          <stop offset="95%" stopColor={ACCENT} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval={tickInterval} />
-                      <YAxis hide domain={[0, 'auto']} />
-                      <Tooltip formatter={(v) => [`$${Number(v).toLocaleString()}`, 'Cost']} />
-                      <Area type="monotone" dataKey="cost" stroke={ACCENT} strokeWidth={2.5} fill="url(#hdSpark)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </>
-            )}
-            <button type="button" className="hd-grey-btn" onClick={() => go('Command Center')}>
-              <LayoutDashboard size={15} /> View Dashboard <ChevronRight size={15} />
-            </button>
-          </div>
-        </div>
-
-        {/* RIGHT — targets + meetings (titles outside cards, like reference) */}
-        <div className="hd-col">
-          <div className="hd-card">
-            <h3 className="hd-title">Cost by project</h3>
-            {targets.length === 0 ? (
-              <p className="hd-empty">No spend yet. <button type="button" className="hd-link" onClick={() => go('Budgets')}>Set a budget</button></p>
-            ) : targets.map((t, i) => (
-              <button type="button" key={t.name} className="hd-target" onClick={() => go('Budgets')}>
-                <span className="hd-target-row"><small>{t.name}</small><small>{t.percentage}%</small></span>
-                <span className="hd-bar sm" style={{ background: TRACK_TINTS[i % TRACK_TINTS.length] }}>
-                  <span className="hd-fill" style={{ width: `${t.percentage}%`, background: TARGET_COLORS[i % TARGET_COLORS.length] }} />
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="hd-meet-section">
-            <h3 className="hd-section-title">Recent meetings</h3>
-            {upcoming.length === 0 ? (
-              <div className="hd-card">
-                <p className="hd-empty">No meetings yet. <button type="button" className="hd-link" onClick={() => go('Live Ticker')}>Record a meeting</button></p>
-              </div>
-            ) : upcoming.map((m) => (
-              <button type="button" key={m.id} className="hd-card hd-meet" onClick={() => go('Meet')}>
-                <img
-                  src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(m.title || 'M')}`}
-                  alt="" className="hd-avatar"
-                />
-                <span className="hd-meet-txt"><b>{m.title || 'Untitled'}</b><small>{m.time || m.duration || ''}</small></span>
-                <ChevronRight size={15} className="hd-chev" />
-              </button>
-            ))}
-            <button type="button" className="hd-card hd-add" onClick={() => go('Live Ticker')} title="Record a meeting"><Plus size={16} /></button>
-          </div>
-        </div>
+    <section className="hd-hero" aria-labelledby="hd-next-title">
+      <div className="hd-hero-copy"><span className="hd-eyebrow">{action.eyebrow}</span>
+        <h2 id="hd-next-title">{action.title}</h2><p>{action.detail}</p>
+        <button type="button" className="hd-primary" disabled={workflowState === 'loading' || refreshing} onClick={() => action.route ? go(action.route) : refresh()}>{action.label}<ArrowUpRight size={18} /></button>
       </div>
+      <div className="hd-hero-aside"><span className="hd-eyebrow">WORKFLOW AT A GLANCE</span>
+        <strong>{workflowState === 'ready' ? count(counts.activeForms) : '—'} <small>active forms</small></strong>
+        <strong>{workflowState === 'ready' ? count(counts.scheduledCampaigns) : '—'} <small>scheduled campaigns</small></strong>
+        <span className="hd-hero-foot">Every step opens its connected workspace.</span>
+      </div>
+    </section>
+
+    <section className="hd-section" aria-labelledby="hd-overview-title">
+      <div className="hd-section-head"><div><span className="hd-eyebrow">LIVE SNAPSHOT</span><h2 id="hd-overview-title">Where things stand</h2></div>
+        <span className="hd-section-note">{workflowState === 'ready' ? 'From your saved workspace' : workflowState === 'loading' ? 'Loading workspace…' : 'Connection unavailable'}</span></div>
+      <div className="hd-metrics">{metricCards.map(metric => <button type="button" className={`hd-metric hd-${metric.tone}`} key={metric.label} onClick={() => go(metric.route)}>
+        <span className="hd-metric-top"><metric.icon size={18} /><ArrowUpRight size={16} /></span>
+        <strong>{workflowState === 'ready' ? count(metric.value) : '—'}</strong><span>{metric.label}</span><small>{metric.detail}</small>
+      </button>)}</div>
+    </section>
+
+    <section className="hd-section" aria-labelledby="hd-flow-title">
+      <div className="hd-section-head"><div><span className="hd-eyebrow">CONNECTED WORK</span><h2 id="hd-flow-title">Move through the workflow</h2></div></div>
+      <div className="hd-steps">{steps.map(step => <button type="button" className="hd-step" key={step.number} onClick={() => go(step.route)}>
+        <span className="hd-step-index">{step.number}</span><step.icon size={19} /><strong>{step.title}</strong>
+        <span className="hd-step-count">{workflowState === 'ready' ? count(step.value) : '—'} <small>{step.unit}</small></span><ArrowRight size={17} className="hd-step-arrow" />
+      </button>)}</div>
+    </section>
+
+    <div className="hd-lower">
+      <section className="hd-list-card" aria-labelledby="hd-responses-title"><div className="hd-list-head"><div><span className="hd-eyebrow">LATEST ACTIVITY</span><h2 id="hd-responses-title">Form responses</h2></div><button type="button" onClick={() => go('Sourcing')}>View all <ArrowRight size={15} /></button></div>
+        {workflowState !== 'ready' || sources.forms !== 'ready' ? <p className="hd-list-empty">Responses are unavailable right now.</p>
+          : responses.length === 0 ? <p className="hd-list-empty">No responses yet. <button type="button" onClick={() => go('Drafts')}>Publish a form</button></p>
+            : responses.map(item => <button type="button" className="hd-list-row" key={item.id} onClick={() => go('Sourcing')}><span className="hd-row-icon"><FileText size={16} /></span><span><strong>{item.title || 'Form response'}</strong><small>{dateLabel(item.submittedAt)}</small></span><ArrowRight size={16} /></button>)}
+      </section>
+      <section className="hd-list-card" aria-labelledby="hd-campaigns-title"><div className="hd-list-head"><div><span className="hd-eyebrow">OUTREACH</span><h2 id="hd-campaigns-title">Campaign activity</h2></div><button type="button" onClick={() => go('Email Automation')}>Open email <ArrowRight size={15} /></button></div>
+        {workflowState !== 'ready' || sources.campaigns !== 'ready' ? <p className="hd-list-empty">Campaigns are unavailable right now.</p>
+          : campaigns.length === 0 ? <p className="hd-list-empty">No active campaigns. <button type="button" onClick={() => go('Email Automation')}>Prepare an email</button></p>
+            : campaigns.map(item => <button type="button" className="hd-list-row" key={item.id} onClick={() => go(item.status === 'scheduled' ? 'Schedule' : reviewStatuses.has(item.status) ? 'Sent' : 'Email Automation')}><span className="hd-row-icon"><Mail size={16} /></span><span><strong>{item.name || 'Untitled campaign'}</strong><small>{item.status.replaceAll('_', ' ')}</small></span><ArrowRight size={16} /></button>)}
+      </section>
     </div>
-  );
+
+    <section className="hd-meeting-strip" aria-label="Meeting cost"><div className="hd-meeting-icon"><Wallet size={20} /></div>
+      <div><span className="hd-eyebrow">MEETING COST</span><strong>{totalCost === null ? '—' : `$${totalCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</strong><small>{meetingState === 'ready' ? `${count(meetings.length)} saved meetings · ${count(reviewMeetings)} need attribution review` : 'Meeting data unavailable'}</small></div>
+      <div className="hd-meeting-actions"><button type="button" onClick={() => go('Meet')}>Meeting log <ArrowRight size={15} /></button><button type="button" onClick={() => go('Live Ticker')}><Timer size={15} /> Record meeting</button></div>
+    </section>
+    <footer className="hd-footer"><span>{workflowState === 'ready' && sources.forms === 'ready' && sources.campaigns === 'ready' ? <CheckCircle2 size={15} /> : <Clock3 size={15} />}{workflowState === 'ready' && sources.forms === 'ready' && sources.campaigns === 'ready' ? 'Workflow connected' : 'Connection needs a check'}</span>
+      <button type="button" onClick={() => go('Command Center')}>Open Command Center <ArrowRight size={15} /></button></footer>
+  </div>;
 }

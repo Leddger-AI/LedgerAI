@@ -238,7 +238,6 @@ export default function App() {
     ]
   };
 
-  const [datePreset] = useState('This Month');
 
   // Interactive Modal State
   const [selectedMeeting, setSelectedMeeting] = useState(null);
@@ -613,110 +612,6 @@ export default function App() {
     }
   };
 
-  // --- DYNAMIC DATA PRESETS BASED ON DATE ---
-  const dynamicData = useMemo(() => {
-    // Calculate stats directly from our state meetings.
-    // accuracy is null (rendered as "—") when there are no meetings — never
-    // a fake placeholder. costOverTime buckets real meeting costs by date.
-    const totalCost = Math.round(meetings.reduce((acc, m) => acc + m.cost, 0));
-    const confidenceValues = meetings.map(m => m.confidence).filter(Number.isFinite);
-    const accuracy = confidenceValues.length > 0
-      ? Math.round(confidenceValues.reduce((acc, value) => acc + value, 0) / confidenceValues.length)
-      : null;
-    const anomalies = meetings.filter(m => m.status === 'needs_review' || (m.confidence != null && m.confidence < 60)).length;
-
-    // Parse unattributed hours (unassigned or operations with low confidence)
-    const unattributedMinutes = meetings
-      .filter(m => m.project === 'Unassigned' || m.project === 'Internal Operations')
-      .reduce((acc, m) => {
-        // parse duration like "2h 30m" or "45m"
-        const dur = m.duration || '';
-        const hoursMatch = dur.match(/(\d+)h/);
-        const minsMatch = dur.match(/(\d+)m/);
-        const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
-        const mins = minsMatch ? parseInt(minsMatch[1]) : 0;
-        return acc + (hours * 60 + mins);
-      }, 0);
-    const unattributedHours = Math.round((unattributedMinutes / 60) * 10) / 10;
-
-    // Group costs by project
-    const projectCostMap = {};
-    meetings.forEach(m => {
-      const proj = m.project || 'Unassigned';
-      projectCostMap[proj] = (projectCostMap[proj] || 0) + m.cost;
-    });
-    const expenditureByProject = Object.keys(projectCostMap).map(name => ({
-      name,
-      cost: Math.round(projectCostMap[name])
-    }));
-
-    // Real trend: bucket meeting costs by start_time. Meetings without a
-    // parseable date are skipped; no data at all yields an empty array so
-    // charts render their empty state instead of a fabricated curve.
-    const dated = meetings
-      .map(m => ({ cost: Number(m.cost) || 0, t: m.start_time ? new Date(m.start_time).getTime() : NaN }))
-      .filter(d => !Number.isNaN(d.t));
-    const dayLabel = (t) => new Date(t).toLocaleDateString('en-US', { weekday: 'short' });
-    let costOverTime = [];
-    if (dated.length > 0) {
-      if (datePreset === 'Last 7 Days') {
-        const days = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date();
-          d.setHours(0, 0, 0, 0);
-          d.setDate(d.getDate() - (6 - i));
-          return d.getTime();
-        });
-        costOverTime = days.map(dayStart => ({
-          date: dayLabel(dayStart),
-          cost: Math.round(dated.filter(d => d.t >= dayStart && d.t < dayStart + 86400000).reduce((a, d) => a + d.cost, 0)),
-        }));
-      } else if (datePreset === 'Last 30 Days') {
-        const now = Date.now();
-        costOverTime = [0, 1, 2, 3].map(w => {
-          const from = now - (4 - w) * 7 * 86400000;
-          const to = from + 7 * 86400000;
-          return {
-            date: `Wk ${w + 1}`,
-            cost: Math.round(dated.filter(d => d.t >= from && d.t < to).reduce((a, d) => a + d.cost, 0)),
-          };
-        });
-      } else {
-        const nowD = new Date();
-        const monthStart = new Date(nowD.getFullYear(), nowD.getMonth(), 1).getTime();
-        const monthEnd = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 0, 23, 59, 59).getTime();
-        const inMonth = dated.filter(d => d.t >= monthStart && d.t <= monthEnd);
-        costOverTime = [0, 1, 2, 3, 4].map(w => {
-          const from = monthStart + w * 7 * 86400000;
-          const to = Math.min(from + 7 * 86400000 - 1, monthEnd);
-          if (from > monthEnd) return null;
-          return {
-            date: `Wk ${w + 1}`,
-            cost: Math.round(inMonth.filter(d => d.t >= from && d.t <= to).reduce((a, d) => a + d.cost, 0)),
-          };
-        }).filter(Boolean);
-      }
-    }
-
-    return {
-      totalCost,
-      accuracy,
-      anomalies,
-      unattributedHours,
-      costOverTime,
-      expenditureByProject
-    };
-  }, [meetings, datePreset]);
-
-  // Total project spend percentages for top project spends side list
-  const projectSpendsSum = useMemo(() => {
-    const total = dynamicData.expenditureByProject.reduce((acc, curr) => acc + curr.cost, 0);
-    return dynamicData.expenditureByProject.map((item, idx) => ({
-      ...item,
-      percentage: Math.round((item.cost / (total || 1)) * 100),
-      colorClass: idx % 2 === 0 ? 'cyan' : 'purple'
-    })).sort((a, b) => b.cost - a.cost);
-  }, [dynamicData]);
-
   // --- ACTIONS (persisted to the backend, then mirrored locally) ---
   const persistAttribution = async (meetingId, project, reason) => {
     try {
@@ -931,10 +826,6 @@ export default function App() {
           {activeTab === 'Home' ? (
             <DashboardHome
               user={user}
-              meetings={meetings}
-              dynamicData={dynamicData}
-              projectSpendsSum={projectSpendsSum}
-              alertsCount={activeAlertsCount}
               onNavigate={handleNavClick}
             />
           ) : activeTab === 'Command Center' ? (

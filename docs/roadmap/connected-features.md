@@ -1,6 +1,6 @@
 # Connected feature roadmap
 
-Updated: 13 November 2026. This is a living implementation roadmap, not a claim that every listed feature is live. See [application and candidate changes](../changes/application-candidate-workflow.md) and [Command Center changes](../changes/command-center-workflow.md) for verification evidence.
+Updated: 14 November 2026. This is a living implementation roadmap, not a claim that every listed feature is live. See [application and candidate changes](../changes/application-candidate-workflow.md), [Command Center changes](../changes/command-center-workflow.md), and [Home redesign](../changes/home-dashboard-redesign.md) for verification evidence.
 
 ## Product spine
 
@@ -19,6 +19,7 @@ Authentication and owner-scoped records support every link. Supabase owns drafts
 | 1 | Public forms and candidate identity | Released; production migration, live API, and desktop/mobile preview submissions passed | Draft config, Supabase transaction | Production form smoke with a real owner account |
 | 2 | Candidate workspace | Released; live API search/detail/status refresh passed; Sourcing browser check pending | Candidate API and migration | Open history and update status in Sourcing UI through social login |
 | 2a | Connected Command Center | Implemented and refactored locally; isolated browser checks at phone, tablet, and desktop widths; production deployment pending | Candidate and campaign records | Signed-in production snapshot, source health, and navigation check |
+| 2b | Connected Home dashboard | Redesigned locally with real API reads, explicit unavailable states, and linked actions; desktop, tablet, and phone checks passed in isolated preview | Command Center snapshot and meeting API | Signed-in owner count and recent-row comparison after deployment |
 | 3 | Candidate communication | Planned | Reliable campaign worker and candidate identity | Choose candidates as an audience and display recipient outcomes in history |
 | 4 | Interviews and calendar | General Meeting log now reads saved meetings locally; candidate interview scheduling and Calendar remain demo screens | Candidate identity, meeting persistence | Candidate-linked interview with real time and link; no fixed June 2026 grid |
 | 5 | Projects, teams, budgets | Projects and Teams use local sample state | Saved project/team entities, meetings | Persistent ownership, attribution, and cost rollups |
