@@ -2,63 +2,73 @@ import React, { useState } from 'react';
 import { Calendar as CalendarIcon, Clock, DollarSign, Brain, Plus, X, ChevronLeft, ChevronRight, User, Users, Check } from 'lucide-react';
 
 export default function CalendarView({ meetings, onAddMeeting }) {
-  // We mock a month grid: June 2026
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 5, 13)); // June 13, 2026
+  const today = new Date();
+  const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
+
+  const viewYear = viewDate.getFullYear();
+  const viewMonth = viewDate.getMonth();
+  const monthLabel = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   // New Meeting Form
   const [newTitle, setNewTitle] = useState('');
   const [newProject, setNewProject] = useState('Project Phoenix');
   const [newDuration, setNewDuration] = useState('1h 00m');
   const [newAttendees, setNewAttendees] = useState('4');
-  const [newDay, setNewDay] = useState(13); // Default June 13
+  const [newDay, setNewDay] = useState(today.getDate());
 
-  // Map meetings to days of June 2026 (1 to 30)
-  // Let's associate original list to mock days:
-  // Meeting 1: June 11
-  // Meeting 2: June 12 (Yesterday)
-  // Meeting 3: June 12 (Yesterday)
-  // Meeting 4: June 11 (2 days ago)
-  // Meeting 5: June 10 (3 days ago)
-  // Meeting 6: June 9 (4 days ago)
   const getMeetingDay = (m) => {
-    if (m.day) return m.day;
-    if (m.id === 1) return 11;
-    if (m.id === 2) return 12;
-    if (m.id === 3) return 12;
-    if (m.id === 4) return 11;
-    if (m.id === 5) return 10;
-    if (m.id === 6) return 9;
-    return 13; // default to today
+    if (m.start_time) {
+      const d = new Date(m.start_time);
+      if (!Number.isNaN(d.getTime())) {
+        if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
+          return d.getDate();
+        }
+        return null;
+      }
+    }
+    if (m.day) {
+      if (m.year !== undefined && m.month !== undefined) {
+        return m.year === viewYear && m.month === viewMonth ? m.day : null;
+      }
+      return m.day;
+    }
+    return null;
   };
 
   const meetingsByDay = {};
-  meetings.forEach(m => {
+  meetings.forEach((m) => {
     const day = getMeetingDay(m);
+    if (!day) return;
     if (!meetingsByDay[day]) meetingsByDay[day] = [];
     meetingsByDay[day].push(m);
   });
 
-  // June 2026 starts on a Monday (1)
-  // Total days in June = 30
-  const daysInMonth = 30;
-  const startDayOffset = 1; // Monday offset (0 for Sunday, 1 for Monday etc.)
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayJs = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun, 1=Mon
+  const startDayOffset = (firstDayJs + 6) % 7; // Monday-first offset
   const calendarCells = [];
 
-  // Empty cells at the start
   for (let i = 0; i < startDayOffset; i++) {
     calendarCells.push({ empty: true });
   }
 
-  // Days
   for (let day = 1; day <= daysInMonth; day++) {
     calendarCells.push({
       day,
-      date: new Date(2026, 5, day),
-      meetings: meetingsByDay[day] || []
+      date: new Date(viewYear, viewMonth, day),
+      meetings: meetingsByDay[day] || [],
+      isToday:
+        today.getFullYear() === viewYear &&
+        today.getMonth() === viewMonth &&
+        today.getDate() === day,
     });
   }
+
+  const goPrevMonth = () => setViewDate(new Date(viewYear, viewMonth - 1, 1));
+  const goNextMonth = () => setViewDate(new Date(viewYear, viewMonth + 1, 1));
+  const goToday = () => setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
 
   const handleCellClick = (cell) => {
     if (cell.empty || cell.meetings.length === 0) return;
@@ -88,7 +98,10 @@ export default function CalendarView({ meetings, onAddMeeting }) {
       confidence: 90,
       status: 'approved',
       time: '02:00 PM',
-      day: newDay // store the day index
+      day: newDay,
+      year: viewYear,
+      month: viewMonth,
+      start_time: new Date(viewYear, viewMonth, newDay, 14, 0, 0).toISOString(),
     };
 
     onAddMeeting(createdMeeting);
@@ -111,10 +124,36 @@ export default function CalendarView({ meetings, onAddMeeting }) {
               <CalendarIcon size={18} style={{ color: 'var(--color-cyan)', marginRight: '6px' }} />
               Active Calendar Ledger
             </h2>
-            <p className="section-subtitle">June 2026</p>
+            <p className="section-subtitle">{monthLabel}</p>
           </div>
           
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="table-action-btn"
+              onClick={goPrevMonth}
+              aria-label="Previous month"
+              style={{ padding: '6px 8px', display: 'flex', alignItems: 'center' }}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              type="button"
+              className="table-action-btn"
+              onClick={goToday}
+              style={{ padding: '6px 10px', fontSize: '12px' }}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              className="table-action-btn"
+              onClick={goNextMonth}
+              aria-label="Next month"
+              style={{ padding: '6px 8px', display: 'flex', alignItems: 'center' }}
+            >
+              <ChevronRight size={14} />
+            </button>
             <button 
               className="table-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}

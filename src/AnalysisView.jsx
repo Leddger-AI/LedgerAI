@@ -1,8 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, Target, Clock } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar, Cell } from 'recharts';
+import { getAuthToken } from './supabaseAuth';
 
-const funnelData = [
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const DEFAULT_FUNNEL = [
   { stage: 'Sourced', count: 180 },
   { stage: 'Applied', count: 132 },
   { stage: 'Screened', count: 74 },
@@ -30,7 +33,39 @@ const timeToHireTrend = [
 const COLORS = ['#16A34A', '#141414', '#F97316', '#4A4A4A'];
 
 export default function AnalysisView({ meetings }) {
-  const conversionRate = Math.round((funnelData[funnelData.length - 1].count / funnelData[0].count) * 100);
+  const [funnelData, setFunnelData] = useState(DEFAULT_FUNNEL);
+  const [isLive, setIsLive] = useState(false);
+  const [liveStats, setLiveStats] = useState({ conversionRate: 4, avgTimeToHireDays: 22 });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        const res = await fetch(`${API_BASE_URL}/api/analysis/recruiting`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setIsLive(true);
+        setLiveStats({
+          conversionRate: data.conversionRate ?? 0,
+          avgTimeToHireDays: data.avgTimeToHireDays ?? 0,
+        });
+        const s = data.stages || {};
+        setFunnelData([
+          { stage: 'Total', count: data.totalCandidates || 0 },
+          { stage: 'New', count: s.new || 0 },
+          { stage: 'Screening', count: s.screening || 0 },
+          { stage: 'Interview', count: s.interview || 0 },
+          { stage: 'Offer', count: s.offer || 0 },
+          { stage: 'Hired', count: s.hired || 0 },
+        ]);
+      } catch { /* keep sample preview */ }
+    })();
+  }, []);
+
+  const conversionRate = liveStats.conversionRate;
 
   return (
     <div className="analysis-container">
@@ -41,8 +76,8 @@ export default function AnalysisView({ meetings }) {
             Recruiting Analysis
           </h2>
           <p className="section-subtitle">Pipeline conversion, source quality, and time-to-hire trends across your recruiting funnel</p>
-          <span className="confidence-badge low" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }}>
-            Sample preview
+          <span className={`confidence-badge ${isLive ? 'high' : 'low'}`} style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }}>
+            {isLive ? 'Live database metrics' : 'Sample preview'}
           </span>
         </div>
       </div>
@@ -64,7 +99,7 @@ export default function AnalysisView({ meetings }) {
             <div className="kpi-icon-wrapper purple"><Clock size={16} /></div>
           </div>
           <div className="kpi-body">
-            <span className="kpi-value">22 Days</span>
+            <span className="kpi-value">{liveStats.avgTimeToHireDays} Days</span>
             <span className="kpi-trend positive">-12 days YoY</span>
           </div>
         </div>
