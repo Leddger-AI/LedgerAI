@@ -56,6 +56,23 @@ export default function DraftsView() {
     return () => clearTimeout(t);
   }, []);
 
+  const handleDuplicateDraft = async (draft) => {
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_BASE_URL}/api/drafts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: `${draft.title} (Copy)`,
+          templateType: draft.templateType || 'student',
+          config: draft.config || {},
+        }),
+      });
+      if (res.ok) fetchDrafts();
+    } catch { /* ignore */ }
+  };
+
   const handleDeleteDraft = async () => {
     if (!draftToDelete || !deleteVerify) return;
     setIsDeleting(true);
@@ -314,6 +331,16 @@ export default function DraftsView() {
                         <Pencil size={16} />
                       </button>
                     )}
+                    <button
+                      className="draft-delete-icon"
+                      title="Duplicate draft"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDuplicateDraft(draft);
+                      }}
+                    >
+                      <Copy size={16} />
+                    </button>
                     <button 
                       className="draft-delete-icon" 
                       onClick={(e) => {

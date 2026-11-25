@@ -13,6 +13,7 @@ function normConf(m) {
 
 export default function AttributionQueue() {
   const [meetings, setMeetings] = useState([]);
+  const [projectOptions, setProjectOptions] = useState(PROJECTS);
   const [splits, setSplits] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,9 +30,10 @@ export default function AttributionQueue() {
     try {
       const token = await getAuthToken();
       if (!token) { setError('Not authenticated.'); return; }
-      const [mRes, sRes] = await Promise.all([
+      const [mRes, sRes, pRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/meetings`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_BASE_URL}/api/meetings/splits`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/api/projects`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
       ]);
       if (mRes.ok) {
         const d = await mRes.json();
@@ -42,6 +44,11 @@ export default function AttributionQueue() {
         const map = {};
         (d.splits || []).forEach((s) => { map[s.meetingId] = s; });
         setSplits(map);
+      }
+      if (pRes && pRes.ok) {
+        const d = await pRes.json();
+        const custom = (d.projects || []).map((p) => p.name).filter(Boolean);
+        setProjectOptions([...new Set([...PROJECTS, ...custom])]);
       }
     } catch {
       setError('Failed to load queue.');
@@ -129,7 +136,7 @@ export default function AttributionQueue() {
             {editId === m.id && (
               <div className="home-row">
                 <select className="home-select" value={editProject} onChange={(e) => setEditProject(e.target.value)}>
-                  {PROJECTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  {projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
                 <div className="home-actions">
                   <button className="home-btn teal" disabled={acting === m.id} onClick={() => applyAttribution(m, editProject, 'manual re-tag')}>Apply</button>
@@ -139,11 +146,11 @@ export default function AttributionQueue() {
             {splitId === m.id && (
               <div className="home-row">
                 <select className="home-select" value={splitA.project} onChange={(e) => setSplitA({ ...splitA, project: e.target.value })}>
-                  {PROJECTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  {projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
                 <input className="home-input" type="number" min="1" max="99" value={splitA.pct} onChange={(e) => setSplitA({ ...splitA, pct: Number(e.target.value) })} style={{ width: '80px' }} />
                 <select className="home-select" value={splitB.project} onChange={(e) => setSplitB({ ...splitB, project: e.target.value })}>
-                  {PROJECTS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  {projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
                 <input className="home-input" type="number" min="1" max="99" value={splitB.pct} onChange={(e) => setSplitB({ ...splitB, pct: Number(e.target.value) })} style={{ width: '80px' }} />
                 <div className="home-actions">

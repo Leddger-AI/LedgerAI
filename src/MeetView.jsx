@@ -142,6 +142,24 @@ export default function MeetView() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const handleUpdateStatus = async (m, nextStatus) => {
+    setUpcomingMeets((prev) => prev.filter((item) => item.id !== m.id));
+    setPastMeets((prev) => [
+      { id: m.id, candidate: m.candidate, role: m.role, time: m.time, outcome: nextStatus === 'completed' ? 'Completed' : 'Cancelled' },
+      ...prev,
+    ]);
+    try {
+      const token = await getAuthToken();
+      if (token && /^[a-f0-9]{24}$/i.test(String(m.id))) {
+        await fetch(`${API_BASE_URL}/api/interviews/${m.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ status: nextStatus }),
+        });
+      }
+    } catch { /* ignore */ }
+  };
+
   const handleDownloadIcs = async (m) => {
     const token = await getAuthToken();
     if (!token || !/^[a-f0-9]{24}$/i.test(String(m.id))) return;
@@ -269,6 +287,14 @@ export default function MeetView() {
                 >
                   <Video size={13} />
                   Join
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateStatus(m, 'completed')}
+                  title="Mark interview completed"
+                  style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 9px', cursor: 'pointer', fontSize: '11px', color: 'var(--text-secondary)' }}
+                >
+                  Complete
                 </button>
               </div>
             </div>

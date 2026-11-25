@@ -1,4 +1,5 @@
 const KnowledgeDocument = require('../models/KnowledgeDocument');
+const { generateGeminiText } = require('./geminiClient');
 
 /**
  * Ranks chunks against a natural-language query using keyword/TF overlap.
@@ -70,39 +71,22 @@ async function askKnowledgeBase({
 
   const key = (apiKey || '').trim();
   if (key) {
-    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `Answer the user's question concisely using ONLY the Knowledge Base context below. Cite source file names when relevant.\n\nContext:\n${contextBlock}\n\nQuestion: ${question}`,
-            }],
-          }],
-          generationConfig: { temperature: 0.2 },
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return {
-            answer: text.trim(),
-            citations: topChunks.map((c) => ({
-              document_id: c.document_id,
-              file_name: c.file_name,
-              chunk_id: c.chunk_id,
-              excerpt: c.content.slice(0, 180),
-            })),
-            source: 'gemini',
-          };
-        }
-      }
-    } catch (_) {
-      // Fall back to extractive summary below
+    const res = await generateGeminiText({
+      prompt: `Answer the user's question concisely using ONLY the Knowledge Base context below. Cite source file names when relevant.\n\nContext:\n${contextBlock}\n\nQuestion: ${question}`,
+      temperature: 0.2,
+      apiKey: key,
+    });
+    if (res?.text) {
+      return {
+        answer: res.text.trim(),
+        citations: topChunks.map((c) => ({
+          document_id: c.document_id,
+          file_name: c.file_name,
+          chunk_id: c.chunk_id,
+          excerpt: c.content.slice(0, 180),
+        })),
+        source: 'gemini',
+      };
     }
   }
 

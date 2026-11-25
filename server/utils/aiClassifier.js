@@ -1,3 +1,5 @@
+const { generateGeminiText } = require('./geminiClient');
+
 const AVAILABLE_PROJECTS = [
   'Project Phoenix',
   'Client ABC Onboarding',
@@ -91,38 +93,19 @@ async function classifyMeeting({
     `Attendees Count: ${attendeesCount}`,
   ].join('\n');
 
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        systemInstruction: {
-          parts: [{
-            text: 'Respond strictly in JSON matching schema: {"project_name": string, "confidence_score": integer, "reasoning": string}.',
-          }],
-        },
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      }),
+    const result = await generateGeminiText({
+      prompt,
+      systemInstruction: 'Respond strictly in JSON matching schema: {"project_name": string, "confidence_score": integer, "reasoning": string}.',
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+      apiKey: key,
     });
-
-    if (!response.ok) {
+    if (!result?.text) {
       return fallbackClassifyMeeting(title, description);
     }
 
-    const data = await response.json();
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) {
-      return fallbackClassifyMeeting(title, description);
-    }
-
-    const parsed = JSON.parse(rawText);
+    const parsed = JSON.parse(result.text);
     const projectName = projects.includes(parsed.project_name)
       ? parsed.project_name
       : 'Internal Operations';

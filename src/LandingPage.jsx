@@ -321,6 +321,16 @@ export default function LandingPage({ onStartDashboard, loading, apiError, onCle
       {/* PHASE 5: THE OPEN-SOURCE COLLABORATOR NETWORK */}
       <CollaboratorNetwork />
 
+      <footer style={{ padding: '32px 24px', borderTop: '1px solid rgba(20,20,20,0.08)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', maxWidth: '1200px', margin: '0 auto', fontSize: '13px', color: '#64748b' }}>
+        <span>© {new Date().getFullYear()} Leddger AI. All rights reserved.</span>
+        <div style={{ display: 'flex', gap: '20px' }}>
+          <a href="/privacy" style={{ color: '#475569', textDecoration: 'none' }}>Privacy Policy</a>
+          <a href="/terms" style={{ color: '#475569', textDecoration: 'none' }}>Terms of Service</a>
+          <a href="/security" style={{ color: '#475569', textDecoration: 'none' }}>Security</a>
+          <a href="/login" style={{ color: '#0d9488', textDecoration: 'none', fontWeight: 600 }}>Sign In</a>
+        </div>
+      </footer>
+
     </div>
   );
 }
