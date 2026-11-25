@@ -37,7 +37,17 @@ import {
   Wallet
 } from 'lucide-react';
 import './App.css';
-import { loginWithGoogleAndCalendar, loginWithGitHub, onAuthChange, signOut as supabaseSignOut, getCurrentSession, getAuthToken } from './supabaseAuth';
+import {
+  loginWithGoogleAndCalendar,
+  loginWithGitHub,
+  loginWithEmail,
+  signUpWithEmail,
+  refreshAuthToken,
+  onAuthChange,
+  signOut as supabaseSignOut,
+  getCurrentSession,
+  getAuthToken,
+} from './supabaseAuth';
 import Navbar from './Navbar.jsx';
 import ProjectsView from './ProjectsView.jsx';
 import TeamsView from './TeamsView.jsx';
@@ -384,14 +394,16 @@ export default function App() {
       if (event === 'SIGNED_IN' && session?.user) {
         const uid = session.user.id || session.user.email;
         const isOAuthRedirect = typeof window !== 'undefined' &&
-          (window.location.hash.includes('access_token') || window.location.hash.includes('code='));
+          (window.location.hash.includes('access_token') ||
+           window.location.hash.includes('code=') ||
+           window.location.search.includes('code='));
         const isFresh = expectFreshLoginRef.current || isOAuthRedirect ||
           lastSignedInUidRef.current === null || lastSignedInUidRef.current !== uid;
         expectFreshLoginRef.current = false;
         lastSignedInUidRef.current = uid;
-        // Clean OAuth hash so a later tab switch can't look like a fresh redirect
+        // Clean OAuth hash/code so a later tab switch can't look like a fresh redirect
         if (isOAuthRedirect && typeof window !== 'undefined' && window.history?.replaceState) {
-          window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+          window.history.replaceState({}, document.title, window.location.pathname);
         }
         setUser((previous) => keepCurrentAvatar(previous, session.user));
         setTokens({
@@ -446,8 +458,29 @@ export default function App() {
   }, []);
 
   // --- AUTHENTICATION & SYNC HANDLERS ---
-  // NOTE: email/password login lives in supabaseAuth.loginWithEmail but has
-  // no UI wired (LoginDashboard is Google/GitHub only), so no handler here.
+  const handleEmailLogin = async (email, password) => {
+    expectFreshLoginRef.current = true;
+    setApiError(null);
+    setAuthErrorModal(null);
+    const result = await loginWithEmail(email, password);
+    if (result?.accessToken) {
+      navigate('/dashboard');
+    }
+    return result;
+  };
+
+  const handleEmailSignUp = async (email, password) => {
+    expectFreshLoginRef.current = true;
+    setApiError(null);
+    setAuthErrorModal(null);
+    const result = await signUpWithEmail(email, password);
+    if (result?.accessToken) {
+      navigate('/dashboard');
+      return { needsConfirmation: false };
+    }
+    return { needsConfirmation: true };
+  };
+
   const handleLogin = async () => {
     expectFreshLoginRef.current = true;
     startLoading(true);
@@ -552,12 +585,26 @@ export default function App() {
 
   const isDemoToken = (t) => t === 'demo-access-token';
 
+  const fetchWithTokenRefresh = async (url, accessToken) => {
+    let response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (response.status === 401) {
+      const freshToken = await refreshAuthToken();
+      if (freshToken && freshToken !== accessToken) {
+        setTokens({ accessToken: freshToken });
+        response = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${freshToken}` },
+        });
+      }
+    }
+    return response;
+  };
+
   const fetchMeetings = async (accessToken) => {
     if (isDemoToken(accessToken)) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/meetings`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      });
+      const response = await fetchWithTokenRefresh(`${API_BASE_URL}/api/meetings`, accessToken);
       // Dead session (expired/revoked token): don't linger logged-in on
       // empty data — sign out so the login screen explains itself.
       if (response.status === 401) {
@@ -590,9 +637,7 @@ export default function App() {
   const fetchAlerts = async (accessToken) => {
     if (isDemoToken(accessToken)) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/alerts`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` },
-      });
+      const response = await fetchWithTokenRefresh(`${API_BASE_URL}/api/alerts`, accessToken);
       if (response.status === 401) {
         handleLogout();
         return;
@@ -1200,21 +1245,19 @@ export default function App() {
               user && authReady ? <Navigate to="/dashboard" replace /> :
               <LoginDashboard 
                 onGoogleLogin={async () => {
-                  const success = await handleLogin();
-                  if (success) {
-                    navigate('/dashboard');
-                  }
-                }} 
+                  await handleLogin();
+                }}
+                onEmailLogin={handleEmailLogin}
+                onEmailSignUp={handleEmailSignUp}
+                onDemoMode={enterDemoMode}
+                error={apiError || authErrorModal?.message}
                 loading={loading} 
               />
             } />
             <Route path="/auth/github" element={
               <GitHubAuthRedirect 
                 onCompleteLogin={async () => {
-                  const success = await handleGitHubLogin();
-                  if (success) {
-                    navigate('/dashboard');
-                  }
+                  await handleGitHubLogin();
                 }} 
                 loading={loading} 
               />
