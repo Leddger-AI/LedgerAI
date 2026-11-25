@@ -122,7 +122,22 @@ async function initAgenda() {
     await report.save();
   }, { priority: 'normal', concurrency: 1 });
 
+  // Define the Supabase keep-alive hook so free-tier projects never pause
+  // due to 7-day inactivity.
+  agenda.define('supabase keep-alive', async () => {
+    const { pingSupabase } = require('./utils/supabaseKeepAlive');
+    const result = await pingSupabase();
+    if (result.ok) {
+      console.log(`[KeepAlive] Supabase active (${result.latencyMs}ms)`);
+    } else if (result.status !== 'unconfigured') {
+      console.warn(`[KeepAlive] Supabase ping warning: ${result.error}`);
+    }
+  }, { priority: 'low', concurrency: 1 });
+
   await agenda.start();
+  if (typeof agenda.every === 'function') {
+    await agenda.every(process.env.SUPABASE_KEEPALIVE_INTERVAL || '12 hours', 'supabase keep-alive');
+  }
   initialized = true;
   console.log('✅ Agenda scheduler started');
 
@@ -193,7 +208,7 @@ async function stopAgenda() {
 
 function isAgendaReady() {
   return !!(initialized && agenda &&
-    ['send email campaign', 'activate form draft', 'send analytics report']
+    ['send email campaign', 'activate form draft', 'send analytics report', 'supabase keep-alive']
       .every(name => typeof agenda.definitions?.[name]?.fn === 'function'));
 }
 
