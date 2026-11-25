@@ -1,29 +1,99 @@
 import React, { useState } from 'react';
-import { Download, FileSpreadsheet, FileText, FileJson, File, Clock, Check } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, File, Clock, Check } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { getAuthToken } from './supabaseAuth';
 
-const exportHistory = [
-  { id: 1, name: 'HR_Cost_Attribution_Report_This_Month.csv', format: 'CSV', size: '48 KB', date: 'Today, 9:12 AM' },
-  { id: 2, name: 'Talent_Pool_Export_Q3.xlsx', format: 'XLSX', size: '112 KB', date: 'Yesterday' },
-  { id: 3, name: 'Candidate_OnePager_Ava_Thompson.pdf', format: 'PDF', size: '220 KB', date: '3 days ago' }
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const INITIAL_HISTORY = [
+  { id: 1, name: 'HR_Cost_Attribution_Report_This_Month.csv', format: 'CSV', size: '48 KB', date: 'Sample' },
 ];
 
 const formats = [
   { id: 'csv', label: 'CSV', desc: 'Raw tabular data, compatible with Excel & Sheets', icon: FileSpreadsheet, color: 'var(--color-success)' },
   { id: 'xlsx', label: 'XLSX', desc: 'Formatted Excel workbook with multiple sheets', icon: FileSpreadsheet, color: 'var(--color-cyan)' },
   { id: 'pdf', label: 'PDF', desc: 'Print-ready summary report or candidate one-pager', icon: FileText, color: 'var(--color-danger)' },
-  { id: 'docx', label: 'DOCX', desc: 'Editable Word document for offer letters & summaries', icon: File, color: 'var(--color-purple)' }
+  { id: 'json', label: 'JSON', desc: 'Structured JSON payload for integrations & pipelines', icon: File, color: 'var(--color-purple)' }
 ];
 
-const scopes = ['Meetings & Cost Ledger', 'Projects & Budgets', 'Talent Pool / Sourcing', 'Team Roster'];
+const SCOPE_MAP = {
+  'Meetings & Cost Ledger': 'meetings',
+  'Projects & Budgets': 'projects',
+  'Talent Pool / Sourcing': 'candidates',
+  'Team Roster': 'team',
+};
+
+const scopes = Object.keys(SCOPE_MAP);
 
 export default function ExportView() {
   const [selectedFormat, setSelectedFormat] = useState('csv');
   const [selectedScope, setSelectedScope] = useState(scopes[0]);
   const [exported, setExported] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [history, setHistory] = useState(INITIAL_HISTORY);
 
-  const handleExport = () => {
-    setExported(true);
-    setTimeout(() => setExported(false), 1800);
+  const handleExport = async () => {
+    setDownloading(true);
+    const scopeKey = SCOPE_MAP[selectedScope] || 'meetings';
+    const fileBase = `ledgerai-${scopeKey}-${new Date().toISOString().slice(0, 10)}`;
+
+    try {
+      const token = await getAuthToken();
+      let blob;
+      let filename = `${fileBase}.${selectedFormat}`;
+
+      if (token) {
+        if (selectedFormat === 'xlsx') {
+          const res = await fetch(`${API_BASE_URL}/api/export?scope=${scopeKey}&format=json`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          const ws = XLSX.utils.json_to_sheet(data.rows?.length ? data.rows : [{ Info: 'No records available' }]);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, scopeKey);
+          XLSX.writeFile(wb, filename);
+        } else {
+          const res = await fetch(`${API_BASE_URL}/api/export?scope=${scopeKey}&format=${selectedFormat}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          blob = await res.blob();
+        }
+      } else {
+        // Demo mode local file download
+        const sampleRows = [{ Scope: selectedScope, Mode: 'Demo Preview', ExportedAt: new Date().toISOString() }];
+        if (selectedFormat === 'xlsx') {
+          const ws = XLSX.utils.json_to_sheet(sampleRows);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, scopeKey);
+          XLSX.writeFile(wb, filename);
+        } else {
+          const text = selectedFormat === 'json'
+            ? JSON.stringify(sampleRows, null, 2)
+            : 'Scope,Mode,ExportedAt\n"' + selectedScope + '","Demo Preview","' + new Date().toISOString() + '"';
+          blob = new Blob([text], { type: selectedFormat === 'json' ? 'application/json' : 'text/csv' });
+        }
+      }
+
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      setHistory((prev) => [
+        { id: Date.now(), name: filename, format: selectedFormat.toUpperCase(), size: blob ? `${Math.max(1, Math.round(blob.size / 1024))} KB` : 'Workbook', date: 'Just now' },
+        ...prev,
+      ]);
+      setExported(true);
+      setTimeout(() => setExported(false), 1800);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -94,6 +164,7 @@ export default function ExportView() {
         <button
           className="table-action-btn"
           onClick={handleExport}
+          disabled={downloading}
           style={{
             display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '13px',
             backgroundColor: exported ? 'var(--color-success-glow)' : 'var(--color-cyan-glow)',
@@ -102,7 +173,7 @@ export default function ExportView() {
           }}
         >
           {exported ? <Check size={15} /> : <Download size={15} />}
-          {exported ? 'Export Ready' : `Export ${selectedScope} as ${selectedFormat.toUpperCase()}`}
+          {downloading ? 'Generating...' : exported ? 'Export Ready' : `Export ${selectedScope} as ${selectedFormat.toUpperCase()}`}
         </button>
       </div>
 
@@ -113,7 +184,7 @@ export default function ExportView() {
           Recent Exports
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {exportHistory.map(item => (
+          {history.map(item => (
             <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <FileSpreadsheet size={16} style={{ color: 'var(--text-muted)' }} />

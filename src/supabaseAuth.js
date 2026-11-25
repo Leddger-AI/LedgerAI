@@ -127,7 +127,37 @@ export const getCurrentSession = async () => {
 export const getAuthToken = async () => {
   if (localEmailTest) return localTestToken;
   const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token || null;
+  if (!session) return null;
+
+  // Proactive refresh if the access token expires within 90 seconds
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (session.expires_at && session.expires_at - nowSec < 90) {
+    try {
+      const { data: refreshed, error } = await supabase.auth.refreshSession();
+      if (!error && refreshed?.session?.access_token) {
+        return refreshed.session.access_token;
+      }
+    } catch (_) {
+      // Fall back to existing token if refresh call fails transiently
+    }
+  }
+
+  return session.access_token || null;
+};
+
+/**
+ * Force-refresh the current Supabase session and return the new access token.
+ * @returns {Promise<string|null>}
+ */
+export const refreshAuthToken = async () => {
+  if (localEmailTest) return localTestToken;
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error || !data?.session?.access_token) return null;
+    return data.session.access_token;
+  } catch {
+    return null;
+  }
 };
 
 /**

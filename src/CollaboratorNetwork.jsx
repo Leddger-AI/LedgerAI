@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './CollaboratorNetwork.css';
 import { GitBranch, ArrowRight } from 'lucide-react';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function CollaboratorNetwork() {
   const [username, setUsername] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   
   // Initial avatars for the cluster
   const [avatars, setAvatars] = useState([
@@ -15,24 +18,58 @@ export default function CollaboratorNetwork() {
 
   const [successProfile, setSuccessProfile] = useState(null);
 
-  const handleJoin = () => {
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/collaborators`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.collaborators?.length > 0) {
+          setAvatars((prev) => {
+            const seen = new Set(prev.map((a) => a.url));
+            const extra = data.collaborators
+              .filter((c) => c.avatarUrl && !seen.has(c.avatarUrl))
+              .map((c) => ({ id: c._id || c.username, url: c.avatarUrl, username: c.username }));
+            return [...prev, ...extra].slice(0, 12);
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleJoin = async () => {
     if (!username.trim()) return;
     setIsAdding(true);
+    setErrorMsg('');
 
-    setTimeout(() => {
-      // Show the fetched profile as a success message, DO NOT modify the core avatars
-      setSuccessProfile({
-        username: username.trim(),
-        url: `https://github.com/${username.trim()}.png`
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/collaborators`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim() }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Could not find GitHub user');
+      }
+      const collab = data.collaborator;
+      setSuccessProfile({
+        username: collab.username,
+        url: collab.avatarUrl,
+        repos: collab.publicRepos,
+        languages: collab.topLanguages || [],
+      });
+      setAvatars((prev) =>
+        prev.some((a) => a.url === collab.avatarUrl)
+          ? prev
+          : [...prev, { id: collab._id || collab.username, url: collab.avatarUrl }]
+      );
       setUsername('');
+      setTimeout(() => setSuccessProfile(null), 5000);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to verify GitHub username');
+      setTimeout(() => setErrorMsg(''), 4000);
+    } finally {
       setIsAdding(false);
-      
-      // Clear success message after 5 seconds
-      setTimeout(() => {
-        setSuccessProfile(null);
-      }, 5000);
-    }, 800);
+    }
   };
 
   return (

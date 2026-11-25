@@ -122,10 +122,29 @@ let emailWorkerReconciled = false;
 // API ENDPOINTS
 // ==========================================
 
+const { pingSupabase } = require('./utils/supabaseKeepAlive');
+
 app.get('/api/email/worker-health', (req, res) => {
   const ready = mongoose.connection.readyState === 1 && isAgendaReady() && emailWorkerReconciled;
   res.status(ready ? 200 : 503).json({ ready });
 });
+
+// Keep-alive hook endpoint: pings Supabase with a minimal query so free-tier
+// projects never pause due to inactivity, and lets external uptime monitors
+// verify both API and Supabase liveness.
+app.get('/api/keep-alive', async (req, res) => {
+  const result = await pingSupabase();
+  res.status(result.ok ? 200 : 503).json(result);
+});
+
+// In-process keep-alive timer (every 12h by default) as a belt-and-suspenders
+// alongside the Agenda 'supabase keep-alive' job. Unref'd so tests/shutdown exit cleanly.
+if (process.env.NODE_ENV !== 'test') {
+  const keepAliveMs = Number(process.env.SUPABASE_KEEPALIVE_MS) || 12 * 60 * 60 * 1000;
+  setInterval(() => {
+    pingSupabase().catch(() => {});
+  }, keepAliveMs).unref?.();
+}
 
 // Helper: Ensure user profile exists in Supabase
 const getOrCreateUser = async (userId, email) => {
@@ -1316,9 +1335,32 @@ app.get('/api/meetings', verifyToken, async (req, res) => {
   }
 });
 
+const { classifyMeeting } = require('./utils/aiClassifier');
+const { checkBudgetAlerts } = require('./utils/budgetAlerts');
+
 app.post('/api/meetings', verifyToken, async (req, res) => {
   try {
-    const { title, startTime, endTime, durationMinutes, attendees, aiProject, aiConfidence, requiresHumanReview } = req.body;
+    const { title, description, startTime, endTime, durationMinutes, attendees, aiProject, aiConfidence, requiresHumanReview, confidenceThreshold } = req.body;
+    let resolvedProject = aiProject;
+    let resolvedConfidence = aiConfidence;
+    let resolvedReview = requiresHumanReview;
+    const threshold = Number(confidenceThreshold) || 70;
+
+    if (!resolvedProject || resolvedProject === 'Unattributed') {
+      const classified = await classifyMeeting({
+        title,
+        description,
+        durationMinutes: Number(durationMinutes) || 60,
+        attendeesCount: Array.isArray(attendees) ? attendees.length : 1,
+        apiKey: req.headers['x-gemini-api-key'],
+      });
+      resolvedProject = classified.project_name;
+      resolvedConfidence = classified.confidence_score;
+      if (resolvedReview === undefined) {
+        resolvedReview = classified.confidence_score < threshold;
+      }
+    }
+
     const { data, error } = await supabase
       .from('meetings')
       .insert({
@@ -1328,17 +1370,53 @@ app.post('/api/meetings', verifyToken, async (req, res) => {
         end_time: endTime,
         duration_minutes: durationMinutes,
         attendees: attendees || [],
-        ai_project: aiProject,
-        ai_confidence: aiConfidence,
-        requires_human_review: requiresHumanReview || false,
+        ai_project: resolvedProject,
+        ai_confidence: resolvedConfidence,
+        requires_human_review: resolvedReview || false,
       })
       .select('*')
       .single();
     if (error) throw error;
+    checkBudgetAlerts(req.user.uid, resolvedProject, req.user.email).catch(() => {});
     res.json({ meeting: data });
   } catch (error) {
     console.error('Error saving meeting:', error);
     res.status(500).json({ error: 'Failed to save meeting' });
+  }
+});
+
+app.post('/api/meetings/classify', verifyToken, async (req, res) => {
+  try {
+    const { meetingId, title, description, durationMinutes, attendeesCount, confidenceThreshold } = req.body;
+    if (!title && !meetingId) {
+      return res.status(400).json({ error: 'title or meetingId is required' });
+    }
+    const threshold = Number(confidenceThreshold) || 70;
+    const result = await classifyMeeting({
+      title: title || '',
+      description: description || '',
+      durationMinutes: Number(durationMinutes) || 60,
+      attendeesCount: Number(attendeesCount) || 1,
+      apiKey: req.headers['x-gemini-api-key'],
+    });
+    const requiresHumanReview = result.confidence_score < threshold;
+
+    if (meetingId) {
+      await supabase
+        .from('meetings')
+        .update({
+          ai_project: result.project_name,
+          ai_confidence: result.confidence_score,
+          requires_human_review: requiresHumanReview,
+        })
+        .eq('id', meetingId)
+        .eq('user_id', req.user.uid);
+    }
+
+    res.json({ ...result, requires_human_review: requiresHumanReview });
+  } catch (error) {
+    console.error('Error classifying meeting:', error);
+    res.status(500).json({ error: 'Failed to classify meeting' });
   }
 });
 
@@ -3363,6 +3441,687 @@ app.delete('/api/analytics/reports/:id', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error deleting analytics report:', error);
     res.status(500).json({ error: 'Failed to delete scheduled report' });
+  }
+});
+
+const KnowledgeDocument = require('./models/KnowledgeDocument');
+const {
+  estimateTokens,
+  extractTags,
+  splitTextRecursively,
+  formatSlackMessages,
+} = require('./utils/knowledgeSplitter');
+
+let _kbUpload = null;
+function getKbUpload() {
+  if (!_kbUpload) {
+    const multer = require('multer');
+    _kbUpload = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    });
+  }
+  return _kbUpload;
+}
+
+// ==========================================
+// KNOWLEDGE BASE INGESTION ENDPOINTS (MongoDB)
+// ==========================================
+
+app.get('/api/kb/documents', verifyToken, async (req, res) => {
+  try {
+    const docs = await KnowledgeDocument.find({ ownerUid: req.user.uid })
+      .select('-chunks')
+      .sort({ created_at: -1 })
+      .lean();
+    res.json(docs);
+  } catch (error) {
+    console.error('Error listing KB documents:', error);
+    res.status(500).json({ detail: 'Failed to fetch document registry' });
+  }
+});
+
+app.get('/api/kb/documents/:id', verifyToken, async (req, res) => {
+  try {
+    const doc = await KnowledgeDocument.findOne({
+      ownerUid: req.user.uid,
+      document_id: req.params.id,
+    }).lean();
+    if (!doc) return res.status(404).json({ detail: 'Document not found' });
+    res.json(doc);
+  } catch (error) {
+    console.error('Error fetching KB document:', error);
+    res.status(500).json({ detail: 'Failed to retrieve document details' });
+  }
+});
+
+app.post('/api/kb/ingest/file', verifyToken, (req, res, next) => {
+  getKbUpload().single('file')(req, res, next);
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ detail: 'No file uploaded' });
+    }
+
+    const scope = req.body.scope || 'team';
+    const ownerId = req.body.owner_id || req.user.uid;
+    const teamId = req.body.team_id || '';
+    const chunkSizeTokens = Number(req.body.chunk_size_tokens) || 750;
+    const chunkOverlapTokens = Number(req.body.chunk_overlap_tokens) || 75;
+    const fileName = req.file.originalname || 'document.txt';
+
+    const rawText = req.file.buffer.toString('utf8').replace(/\0/g, '').trim();
+    if (!rawText) {
+      return res.status(400).json({ detail: 'Uploaded file contains no readable text' });
+    }
+
+    const documentId = `kb_${uuidv4().slice(0, 12)}`;
+    const createdAt = new Date().toISOString();
+    const tags = extractTags(rawText);
+    const parts = splitTextRecursively(rawText, chunkSizeTokens, chunkOverlapTokens);
+    const chunks = parts.map((content, idx) => ({
+      chunk_id: `${documentId}_chunk_${idx}`,
+      content,
+      tokens_count: estimateTokens(content),
+      metadata: {
+        document_id: documentId,
+        scope,
+        owner_id: ownerId,
+        team_id: teamId,
+        tags,
+        source_type: 'file',
+        created_at: createdAt,
+      },
+    }));
+
+    const doc = await KnowledgeDocument.create({
+      ownerUid: req.user.uid,
+      document_id: documentId,
+      source_type: 'file',
+      file_name: fileName,
+      scope,
+      owner_id: ownerId,
+      team_id: teamId,
+      tags,
+      total_chunks: chunks.length,
+      chunks,
+      created_at: createdAt,
+    });
+
+    res.status(201).json(doc.toObject());
+  } catch (error) {
+    console.error('Error ingesting KB file:', error);
+    res.status(500).json({ detail: 'Failed to ingest file' });
+  }
+});
+
+app.post('/api/kb/ingest/slack', verifyToken, async (req, res) => {
+  try {
+    const { thread_ts, messages, scope = 'team', owner_id, team_id = '' } = req.body;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ detail: 'messages must be a non-empty array' });
+    }
+
+    const compiledText = formatSlackMessages(messages);
+    const documentId = `kb_slack_${uuidv4().slice(0, 12)}`;
+    const createdAt = new Date().toISOString();
+    const ownerId = owner_id || req.user.uid;
+    const tags = extractTags(compiledText);
+    const parts = splitTextRecursively(compiledText, 750, 75);
+    const chunks = parts.map((content, idx) => ({
+      chunk_id: `${documentId}_chunk_${idx}`,
+      content,
+      tokens_count: estimateTokens(content),
+      metadata: {
+        document_id: documentId,
+        scope,
+        owner_id: ownerId,
+        team_id,
+        tags,
+        source_type: 'slack',
+        thread_ts: thread_ts || '',
+        created_at: createdAt,
+      },
+    }));
+
+    const doc = await KnowledgeDocument.create({
+      ownerUid: req.user.uid,
+      document_id: documentId,
+      source_type: 'slack',
+      file_name: `slack-thread-${thread_ts || Date.now()}.txt`,
+      scope,
+      owner_id: ownerId,
+      team_id,
+      tags,
+      total_chunks: chunks.length,
+      chunks,
+      created_at: createdAt,
+    });
+
+    res.status(201).json(doc.toObject());
+  } catch (error) {
+    console.error('Error ingesting Slack thread:', error);
+    res.status(500).json({ detail: 'Failed to ingest Slack thread' });
+  }
+});
+
+app.delete('/api/kb/documents/:id', verifyToken, async (req, res) => {
+  try {
+    const result = await KnowledgeDocument.deleteOne({
+      ownerUid: req.user.uid,
+      document_id: req.params.id,
+    });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ detail: 'Document not found' });
+    }
+    res.json({ deleted: true, document_id: req.params.id });
+  } catch (error) {
+    console.error('Error deleting KB document:', error);
+    res.status(500).json({ detail: 'Failed to delete document' });
+  }
+});
+
+const Project = require('./models/Project');
+const TeamMember = require('./models/TeamMember');
+const Interview = require('./models/Interview');
+const Collaborator = require('./models/Collaborator');
+const { askKnowledgeBase } = require('./utils/kbAsk');
+const { generateJitsiRoomUrl, buildInterviewIcs } = require('./utils/icsInvite');
+
+// KB RAG Q&A endpoint (Gemini 3.8 Flash + extractive fallback)
+app.post('/api/kb/ask', verifyToken, async (req, res) => {
+  try {
+    const { question } = req.body;
+    if (!question || !String(question).trim()) {
+      return res.status(400).json({ detail: 'question is required' });
+    }
+    const result = await askKnowledgeBase({
+      ownerUid: req.user.uid,
+      question: String(question).trim(),
+      apiKey: req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error in KB ask:', error);
+    res.status(500).json({ detail: 'Failed to answer question' });
+  }
+});
+
+// ==========================================
+// PROJECTS & TEAM MEMBERS CRUD (MongoDB)
+// ==========================================
+
+app.get('/api/projects', verifyToken, async (req, res) => {
+  try {
+    const projects = await Project.find({ ownerUid: req.user.uid }).sort({ createdAt: -1 }).lean();
+    res.json({ projects });
+  } catch (error) {
+    console.error('Error listing projects:', error);
+    res.status(500).json({ error: 'Failed to list projects' });
+  }
+});
+
+app.post('/api/projects', verifyToken, async (req, res) => {
+  try {
+    const { code, name, lead, budget, status, description } = req.body;
+    if (!code || !name) {
+      return res.status(400).json({ error: 'code and name are required' });
+    }
+    const project = await Project.findOneAndUpdate(
+      { ownerUid: req.user.uid, code: String(code).trim() },
+      {
+        ownerUid: req.user.uid,
+        code: String(code).trim(),
+        name: String(name).trim(),
+        lead: String(lead || '').trim(),
+        budget: Math.max(0, Number(budget) || 0),
+        status: ['Active', 'Paused', 'Archived'].includes(status) ? status : 'Active',
+        description: String(description || ''),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    await ProjectBudget.findOneAndUpdate(
+      { ownerUid: req.user.uid, project: project.name },
+      { ownerUid: req.user.uid, project: project.name, monthlyCap: project.budget },
+      { upsert: true }
+    );
+    res.status(201).json({ project });
+  } catch (error) {
+    console.error('Error saving project:', error);
+    res.status(500).json({ error: 'Failed to save project' });
+  }
+});
+
+app.patch('/api/projects/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid project id' });
+    const updates = {};
+    if (req.body.budget !== undefined) updates.budget = Math.max(0, Number(req.body.budget) || 0);
+    if (req.body.name !== undefined) updates.name = String(req.body.name).trim();
+    if (req.body.lead !== undefined) updates.lead = String(req.body.lead).trim();
+    if (req.body.status !== undefined) updates.status = req.body.status;
+    if (req.body.description !== undefined) updates.description = String(req.body.description);
+
+    const project = await Project.findOneAndUpdate(
+      { _id: req.params.id, ownerUid: req.user.uid },
+      { $set: updates },
+      { new: true }
+    );
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    if (updates.budget !== undefined) {
+      await ProjectBudget.findOneAndUpdate(
+        { ownerUid: req.user.uid, project: project.name },
+        { ownerUid: req.user.uid, project: project.name, monthlyCap: project.budget },
+        { upsert: true }
+      );
+    }
+    res.json({ project });
+  } catch (error) {
+    console.error('Error updating project:', error);
+    res.status(500).json({ error: 'Failed to update project' });
+  }
+});
+
+app.delete('/api/projects/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid project id' });
+    const deleted = await Project.findOneAndDelete({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!deleted) return res.status(404).json({ error: 'Project not found' });
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    res.status(500).json({ error: 'Failed to delete project' });
+  }
+});
+
+app.get('/api/team-members', verifyToken, async (req, res) => {
+  try {
+    const members = await TeamMember.find({ ownerUid: req.user.uid }).sort({ createdAt: -1 }).lean();
+    res.json({ members });
+  } catch (error) {
+    console.error('Error listing team members:', error);
+    res.status(500).json({ error: 'Failed to list team members' });
+  }
+});
+
+app.post('/api/team-members', verifyToken, async (req, res) => {
+  try {
+    const { name, email, role, dept, rate, hours, avatar } = req.body;
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+    const member = await TeamMember.create({
+      ownerUid: req.user.uid,
+      name: String(name).trim(),
+      email: String(email || '').trim(),
+      role: String(role || 'Member').trim(),
+      dept: String(dept || 'Engineering').trim(),
+      rate: Math.max(1, Number(rate) || 75),
+      hours: Math.max(0, Number(hours) || 0),
+      avatar: String(avatar || ''),
+    });
+    res.status(201).json({ member });
+  } catch (error) {
+    console.error('Error creating team member:', error);
+    res.status(500).json({ error: 'Failed to create team member' });
+  }
+});
+
+app.patch('/api/team-members/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid member id' });
+    const updates = {};
+    if (req.body.rate !== undefined) updates.rate = Math.max(1, Number(req.body.rate) || 75);
+    if (req.body.hours !== undefined) updates.hours = Math.max(0, Number(req.body.hours) || 0);
+    if (req.body.role !== undefined) updates.role = String(req.body.role).trim();
+    if (req.body.dept !== undefined) updates.dept = String(req.body.dept).trim();
+    const member = await TeamMember.findOneAndUpdate(
+      { _id: req.params.id, ownerUid: req.user.uid },
+      { $set: updates },
+      { new: true }
+    );
+    if (!member) return res.status(404).json({ error: 'Team member not found' });
+    res.json({ member });
+  } catch (error) {
+    console.error('Error updating team member:', error);
+    res.status(500).json({ error: 'Failed to update team member' });
+  }
+});
+
+app.delete('/api/team-members/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid member id' });
+    const deleted = await TeamMember.findOneAndDelete({ _id: req.params.id, ownerUid: req.user.uid });
+    if (!deleted) return res.status(404).json({ error: 'Team member not found' });
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting team member:', error);
+    res.status(500).json({ error: 'Failed to delete team member' });
+  }
+});
+
+// ==========================================
+// CANDIDATE MEET (Jitsi Meet + .ics Invites)
+// ==========================================
+
+app.get('/api/interviews', verifyToken, async (req, res) => {
+  try {
+    const interviews = await Interview.find({ ownerUid: req.user.uid }).sort({ scheduledAt: 1 }).lean();
+    res.json({ interviews });
+  } catch (error) {
+    console.error('Error listing interviews:', error);
+    res.status(500).json({ error: 'Failed to list interviews' });
+  }
+});
+
+app.post('/api/interviews', verifyToken, async (req, res) => {
+  try {
+    const { candidateId, candidateName, candidateEmail, role, interviewer, scheduledAt, durationMinutes, sendInvite } = req.body;
+    if (!candidateName || !scheduledAt) {
+      return res.status(400).json({ error: 'candidateName and scheduledAt are required' });
+    }
+    const parsedDate = new Date(scheduledAt);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid scheduledAt date' });
+    }
+
+    const meetingUrl = generateJitsiRoomUrl(candidateName, Date.now());
+    let inviteSent = false;
+
+    const interview = await Interview.create({
+      ownerUid: req.user.uid,
+      candidateId: candidateId || null,
+      candidateName: String(candidateName).trim(),
+      candidateEmail: String(candidateEmail || '').trim(),
+      role: String(role || 'Candidate Interview').trim(),
+      interviewer: String(interviewer || req.user.email || 'Hiring Manager').trim(),
+      scheduledAt: parsedDate,
+      durationMinutes: Number(durationMinutes) || 45,
+      meetingUrl,
+      provider: 'jitsi',
+      status: 'scheduled',
+      inviteSent: false,
+    });
+
+    if (sendInvite && candidateEmail && isValidEmail(candidateEmail)) {
+      try {
+        const icsContent = buildInterviewIcs({
+          title: `Interview: ${interview.candidateName} (${interview.role})`,
+          description: `Video Room: ${meetingUrl}\nInterviewer: ${interview.interviewer}`,
+          location: meetingUrl,
+          startDate: parsedDate,
+          durationMinutes: interview.durationMinutes,
+          organizerEmail: req.user.email,
+          attendeeEmail: candidateEmail,
+          attendeeName: interview.candidateName,
+        });
+        const account = await resolveEmailAccount(EmailAccount, req.user.uid, null);
+        if (account) {
+          const transporter = await buildTransporterFromAccount(account);
+          await transporter.sendMail({
+            from: account.email,
+            to: candidateEmail,
+            subject: `Interview Invitation: ${interview.role}`,
+            html: `<p>Hi ${interview.candidateName},</p><p>Your interview for <strong>${interview.role}</strong> is scheduled for <strong>${parsedDate.toUTCString()}</strong>.</p><p>Join video room: <a href="${meetingUrl}">${meetingUrl}</a></p>`,
+            attachments: [{ filename: 'invite.ics', content: icsContent, contentType: 'text/calendar' }],
+          });
+          inviteSent = true;
+          interview.inviteSent = true;
+          await interview.save();
+        }
+      } catch (err) {
+        console.warn('Interview invite email skipped:', err.message);
+      }
+    }
+
+    res.status(201).json({ interview, inviteSent });
+  } catch (error) {
+    console.error('Error scheduling interview:', error);
+    res.status(500).json({ error: 'Failed to schedule interview' });
+  }
+});
+
+app.patch('/api/interviews/:id', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid interview id' });
+    const updates = {};
+    if (req.body.status !== undefined) updates.status = req.body.status;
+    if (req.body.rating !== undefined) updates.rating = req.body.rating;
+    if (req.body.notes !== undefined) updates.notes = req.body.notes;
+    const interview = await Interview.findOneAndUpdate(
+      { _id: req.params.id, ownerUid: req.user.uid },
+      { $set: updates },
+      { new: true }
+    );
+    if (!interview) return res.status(404).json({ error: 'Interview not found' });
+    res.json({ interview });
+  } catch (error) {
+    console.error('Error updating interview:', error);
+    res.status(500).json({ error: 'Failed to update interview' });
+  }
+});
+
+app.get('/api/interviews/:id/ics', verifyToken, async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid interview id' });
+    const interview = await Interview.findOne({ _id: req.params.id, ownerUid: req.user.uid }).lean();
+    if (!interview) return res.status(404).json({ error: 'Interview not found' });
+    const icsContent = buildInterviewIcs({
+      title: `Interview: ${interview.candidateName} (${interview.role})`,
+      description: `Video Room: ${interview.meetingUrl}`,
+      location: interview.meetingUrl,
+      startDate: interview.scheduledAt,
+      durationMinutes: interview.durationMinutes,
+      organizerEmail: req.user.email,
+      attendeeEmail: interview.candidateEmail,
+      attendeeName: interview.candidateName,
+    });
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="interview-${interview._id}.ics"`);
+    res.send(icsContent);
+  } catch (error) {
+    console.error('Error generating .ics:', error);
+    res.status(500).json({ error: 'Failed to generate .ics file' });
+  }
+});
+
+// ==========================================
+// OPEN-SOURCE COLLABORATOR NETWORK (@octokit/rest)
+// ==========================================
+
+app.get('/api/collaborators', async (req, res) => {
+  try {
+    const collaborators = await Collaborator.find({}).sort({ joinedAt: -1 }).limit(30).lean();
+    res.json({ collaborators });
+  } catch (error) {
+    console.error('Error fetching collaborators:', error);
+    res.status(500).json({ error: 'Failed to fetch collaborators' });
+  }
+});
+
+app.post('/api/collaborators', publicRateLimit({ windowMs: 60 * 1000, max: 15 }), async (req, res) => {
+  try {
+    const raw = String(req.body.username || '').trim().replace(/^@/, '');
+    if (!raw || !/^[a-zA-Z0-9-]{1,39}$/.test(raw)) {
+      return res.status(400).json({ error: 'Valid GitHub username is required' });
+    }
+
+    const { Octokit } = await import('@octokit/rest');
+    const octokit = new Octokit(process.env.GITHUB_TOKEN ? { auth: process.env.GITHUB_TOKEN } : {});
+    const { data: ghUser } = await octokit.rest.users.getByUsername({ username: raw });
+    const { data: repos } = await octokit.rest.repos.listForUser({
+      username: raw,
+      sort: 'updated',
+      per_page: 10,
+    });
+
+    const topLanguages = [...new Set(repos.map((r) => r.language).filter(Boolean))].slice(0, 5);
+    const collaborator = await Collaborator.findOneAndUpdate(
+      { username: ghUser.login.toLowerCase() },
+      {
+        username: ghUser.login.toLowerCase(),
+        name: ghUser.name || ghUser.login,
+        avatarUrl: ghUser.avatar_url,
+        profileUrl: ghUser.html_url,
+        bio: ghUser.bio || '',
+        publicRepos: ghUser.public_repos || 0,
+        followers: ghUser.followers || 0,
+        topLanguages,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    res.status(201).json({ collaborator });
+  } catch (error) {
+    if (error.status === 404) {
+      return res.status(404).json({ error: 'GitHub user not found' });
+    }
+    console.error('Error adding collaborator:', error);
+    res.status(500).json({ error: 'Failed to fetch GitHub profile' });
+  }
+});
+
+// ==========================================
+// RECRUITING ANALYSIS & UNIFIED EXPORT CENTER
+// ==========================================
+
+app.get('/api/analysis/recruiting', verifyToken, async (req, res) => {
+  try {
+    const [{ data: candidates, error: cErr }, interviews] = await Promise.all([
+      supabase.from('candidates').select('id,name,email,status,created_at,updated_at').eq('user_id', req.user.uid),
+      Interview.find({ ownerUid: req.user.uid }).lean(),
+    ]);
+    if (cErr) throw cErr;
+
+    const list = candidates || [];
+    const stages = {
+      new: 0,
+      needs_contact_review: 0,
+      screening: 0,
+      interview: 0,
+      offer: 0,
+      hired: 0,
+      rejected: 0,
+      withdrawn: 0,
+    };
+    let totalDays = 0;
+    let hiredCount = 0;
+
+    for (const c of list) {
+      const st = c.status || 'new';
+      if (Object.hasOwn(stages, st)) stages[st] += 1;
+      if (st === 'hired') {
+        hiredCount += 1;
+        const ms = Math.max(0, new Date(c.updated_at || c.created_at).getTime() - new Date(c.created_at).getTime());
+        totalDays += ms / 86400000;
+      }
+    }
+
+    const totalCandidates = list.length;
+    const conversionRate = totalCandidates > 0 ? Math.round((hiredCount / totalCandidates) * 100) : 0;
+    const avgTimeToHireDays = hiredCount > 0 ? Math.round((totalDays / hiredCount) * 10) / 10 : 0;
+
+    res.json({
+      totalCandidates,
+      hiredCount,
+      conversionRate,
+      avgTimeToHireDays,
+      scheduledInterviews: interviews.filter((i) => i.status === 'scheduled').length,
+      stages,
+    });
+  } catch (error) {
+    console.error('Error computing recruiting analysis:', error);
+    res.status(500).json({ error: 'Failed to compute recruiting analysis' });
+  }
+});
+
+app.get('/api/export', verifyToken, async (req, res) => {
+  try {
+    const scope = String(req.query.scope || 'meetings').toLowerCase();
+    const format = String(req.query.format || 'csv').toLowerCase();
+
+    let rows = [];
+    let filename = `ledgerai-${scope}-${new Date().toISOString().slice(0, 10)}`;
+
+    if (scope === 'meetings') {
+      const { data } = await supabase.from('meetings').select('title,ai_project,ai_confidence,duration_minutes,start_time').eq('user_id', req.user.uid);
+      rows = (data || []).map((m) => ({
+        Title: m.title,
+        Project: m.ai_project || 'Unattributed',
+        Confidence: m.ai_confidence ?? '',
+        DurationMinutes: m.duration_minutes ?? 0,
+        StartTime: m.start_time || '',
+      }));
+    } else if (scope === 'projects') {
+      const projects = await Project.find({ ownerUid: req.user.uid }).lean();
+      rows = projects.map((p) => ({
+        Code: p.code,
+        Name: p.name,
+        Lead: p.lead,
+        Budget: p.budget,
+        Status: p.status,
+      }));
+    } else if (scope === 'candidates') {
+      const { data } = await supabase.from('candidates').select('name,email,github,status,created_at').eq('user_id', req.user.uid);
+      rows = (data || []).map((c) => ({
+        Name: c.name || '',
+        Email: c.email || '',
+        GitHub: c.github || '',
+        Status: c.status || 'new',
+        CreatedAt: c.created_at || '',
+      }));
+    } else if (scope === 'team') {
+      const members = await TeamMember.find({ ownerUid: req.user.uid }).lean();
+      rows = members.map((m) => ({
+        Name: m.name,
+        Role: m.role,
+        Department: m.dept,
+        HourlyRate: m.rate,
+        Hours: m.hours,
+      }));
+    } else {
+      return res.status(400).json({ error: 'Invalid export scope' });
+    }
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
+      return res.send(JSON.stringify({ scope, count: rows.length, rows }, null, 2));
+    }
+
+    if (format === 'pdf') {
+      const PDFDocument = require('pdfkit');
+      const doc = new PDFDocument({ margin: 40 });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+      doc.pipe(res);
+      doc.fontSize(18).text(`Leddger AI Export — ${scope.toUpperCase()}`);
+      doc.moveDown(0.5);
+      doc.fontSize(10).text(`Generated: ${new Date().toISOString()} | Records: ${rows.length}`);
+      doc.moveDown();
+      rows.slice(0, 100).forEach((r, i) => {
+        doc.fontSize(9).text(`${i + 1}. ${Object.entries(r).map(([k, v]) => `${k}: ${v}`).join(' | ')}`);
+      });
+      doc.end();
+      return;
+    }
+
+    // Default CSV
+    const headers = rows.length > 0 ? Object.keys(rows[0]) : ['Info'];
+    const csvLines = [headers.join(',')];
+    if (rows.length === 0) {
+      csvLines.push('"No records available"');
+    } else {
+      for (const r of rows) {
+        csvLines.push(headers.map((h) => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(','));
+      }
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+    res.send(csvLines.join('\n'));
+  } catch (error) {
+    console.error('Error generating export:', error);
+    res.status(500).json({ error: 'Failed to generate export' });
   }
 });
 

@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Briefcase, DollarSign, Clock, Users, Plus, Edit2, Check, X, AlertTriangle, ArrowUpRight, TrendingUp } from 'lucide-react';
+import { getAuthToken } from './supabaseAuth';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
   // Pre-configured projects with initial budgets
@@ -53,6 +56,23 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
   const [newProjBudget, setNewProjBudget] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        const res = await fetch(`${API_BASE_URL}/api/projects`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.projects) && data.projects.length > 0) {
+          setProjects(data.projects.map((p) => ({ ...p, id: p._id || p.code })));
+        }
+      } catch { /* keep initial fallback in demo/offline mode */ }
+    })();
+  }, []);
+
   // Calculate stats dynamically from meetings
   const projectStats = useMemo(() => {
     const stats = {};
@@ -96,20 +116,29 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
     setEditBudgetVal(proj.budget.toString());
   };
 
-  const handleSaveBudget = (id) => {
+  const handleSaveBudget = async (id) => {
     const parsed = parseFloat(editBudgetVal);
     if (!isNaN(parsed) && parsed >= 0) {
       setProjects(projects.map(p => p.id === id ? { ...p, budget: parsed } : p));
+      try {
+        const token = await getAuthToken();
+        if (token && /^[a-f0-9]{24}$/i.test(String(id))) {
+          await fetch(`${API_BASE_URL}/api/projects/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ budget: parsed }),
+          });
+        }
+      } catch { /* ignore */ }
     }
     setEditingId(null);
   };
 
-  const handleAddProject = (e) => {
+  const handleAddProject = async (e) => {
     e.preventDefault();
     if (!newProjName || !newProjCode) return;
 
-    const newProj = {
-      id: newProjCode,
+    const payload = {
       name: newProjName,
       code: newProjCode,
       lead: newProjLead || 'TBD',
@@ -118,7 +147,23 @@ export default function ProjectsView({ meetings, onUpdateMeetingProject }) {
       description: newProjDesc || 'No description provided.'
     };
 
-    setProjects([...projects, newProj]);
+    let savedProj = { id: newProjCode, ...payload };
+    try {
+      const token = await getAuthToken();
+      if (token) {
+        const res = await fetch(`${API_BASE_URL}/api/projects`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.project) savedProj = { ...data.project, id: data.project._id || data.project.code };
+        }
+      }
+    } catch { /* local fallback */ }
+
+    setProjects([...projects.filter(p => p.code !== savedProj.code), savedProj]);
     setShowAddProject(false);
     
     // Clear form

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sparkles, Upload, FileText, Send, Trash2, Layers, CheckCircle2, Eye } from 'lucide-react';
 import { getAuthToken } from './supabaseAuth';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // Attach the Supabase access token so the KB service can authenticate
 // the caller instead of serving unauthenticated requests.
@@ -55,6 +55,38 @@ export default function KnowledgeBase() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [askQuery, setAskQuery] = useState('');
+  const [askLoading, setAskLoading] = useState(false);
+  const [askResult, setAskResult] = useState(null);
+
+  const handleAskKb = async (e) => {
+    e.preventDefault();
+    if (!askQuery.trim()) return;
+    setAskLoading(true);
+    setAskResult(null);
+    try {
+      const headers = await authHeaders({ 'Content-Type': 'application/json' });
+      if (!headers.Authorization) {
+        setAskResult({
+          answer: 'Sign in with a workspace account to query your stored Knowledge Base with Gemini.',
+          citations: [],
+          source: 'demo',
+        });
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/api/kb/ask`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ question: askQuery.trim() }),
+      });
+      const data = await res.json();
+      setAskResult(data);
+    } catch {
+      setAskResult({ answer: 'Failed to query Knowledge Base.', citations: [], source: 'error' });
+    } finally {
+      setAskLoading(false);
+    }
+  };
 
   // Fetch document registry on mount
   useEffect(() => {
@@ -62,29 +94,33 @@ export default function KnowledgeBase() {
   }, []);
 
   const fetchDocuments = async () => {
+    const sampleFallback = [
+      {
+        document_id: "example-doc-123",
+        source_type: "file",
+        file_name: "Project_Phoenix_Architecture.txt",
+        scope: "team",
+        owner_id: "U12345",
+        team_id: "T67890",
+        created_at: new Date().toISOString(),
+        tags: ["database", "phoenix", "postgres", "ssl"],
+        total_chunks: 1
+      }
+    ];
     try {
-      const response = await fetch(`${API_BASE_URL}/api/kb/documents`, {
-        headers: await authHeaders(),
-      });
+      const headers = await authHeaders();
+      if (!headers.Authorization) {
+        setDocuments(sampleFallback);
+        return;
+      }
+      const response = await fetch(`${API_BASE_URL}/api/kb/documents`, { headers });
       if (!response.ok) throw new Error('Failed to fetch document registry.');
       const data = await response.json();
       setDocuments(data);
     } catch (err) {
       console.error(err);
       // Fallback local mock data for static frontend stability
-      setDocuments([
-        {
-          document_id: "example-doc-123",
-          source_type: "file",
-          file_name: "Project_Phoenix_Architecture.txt",
-          scope: "team",
-          owner_id: "U12345",
-          team_id: "T67890",
-          created_at: new Date().toISOString(),
-          tags: ["database", "phoenix", "postgres", "ssl"],
-          total_chunks: 1
-        }
-      ]);
+      setDocuments(sampleFallback);
     }
   };
 
@@ -530,6 +566,36 @@ export default function KnowledgeBase() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Ask Knowledge Base (RAG Q&A) */}
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Sparkles size={16} style={{ color: 'var(--color-cyan)' }} />
+          Ask Knowledge Base (AI Q&amp;A)
+        </h3>
+        <form onSubmit={handleAskKb} style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="text"
+            value={askQuery}
+            onChange={(e) => setAskQuery(e.target.value)}
+            placeholder="Ask a question across your ingested files & Slack threads..."
+            style={{ flex: 1, padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(20,20,20,0.03)', color: 'var(--text-primary)', fontSize: '13px' }}
+          />
+          <button type="submit" className="table-action-btn" disabled={askLoading} style={{ padding: '10px 16px' }}>
+            {askLoading ? 'Searching...' : 'Ask AI'}
+          </button>
+        </form>
+        {askResult && (
+          <div style={{ marginTop: '14px', padding: '12px', borderRadius: '6px', backgroundColor: 'rgba(0, 240, 255, 0.05)', border: '1px solid rgba(0, 240, 255, 0.2)' }}>
+            <div style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{askResult.answer}</div>
+            {askResult.citations?.length > 0 && (
+              <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                Sources: {askResult.citations.map((c) => c.file_name).join(', ')} ({askResult.source})
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Detail view showing generated chunks, raw contents, tokens and schemas */}

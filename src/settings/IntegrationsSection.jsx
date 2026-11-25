@@ -42,7 +42,18 @@ export default function IntegrationsSection() {
   const checkCloudinaryStatus = async () => {
     setCloudinaryChecking(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/cloudinary/status`);
+      const token = await getAuthToken();
+      if (!token) {
+        setCloudinaryStatus({ configured: false, message: 'Sign in required' });
+        return;
+      }
+      const res = await fetch(`${API_BASE_URL}/api/cloudinary/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        setCloudinaryStatus({ configured: false, message: 'Unable to check status' });
+        return;
+      }
       const data = await res.json();
       setCloudinaryStatus(data);
     } catch (err) {

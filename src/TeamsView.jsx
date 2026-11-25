@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Users, UserPlus, DollarSign, Clock, Shield, Search, Filter, Trash2, Edit2, Check, X } from 'lucide-react';
+import { getAuthToken } from './supabaseAuth';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const INITIAL_MEMBERS = [
   { id: 1, name: 'Marcus Vance', role: 'Principal Architect', dept: 'Engineering', rate: 120, hours: 28, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100&q=80' },
@@ -29,6 +32,27 @@ export default function TeamsView() {
 
   const departments = ['All', 'Engineering', 'Product & Design', 'Growth & Marketing', 'Operations & HR'];
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        const res = await fetch(`${API_BASE_URL}/api/team-members`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.members) && data.members.length > 0) {
+          setMembers(data.members.map((m) => ({
+            ...m,
+            id: m._id || m.id,
+            avatar: m.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80',
+          })));
+        }
+      } catch { /* keep initial fallback */ }
+    })();
+  }, []);
+
   // Calculate stats dynamically
   const stats = useMemo(() => {
     const filtered = members.filter(m => selectedDept === 'All' || m.dept === selectedDept);
@@ -49,26 +73,44 @@ export default function TeamsView() {
     setEditRate(m.rate.toString());
   };
 
-  const handleSaveRate = (id) => {
+  const handleSaveRate = async (id) => {
     const val = parseInt(editRate);
     if (!isNaN(val) && val > 0) {
       setMembers(members.map(m => m.id === id ? { ...m, rate: val } : m));
+      try {
+        const token = await getAuthToken();
+        if (token && /^[a-f0-9]{24}$/i.test(String(id))) {
+          await fetch(`${API_BASE_URL}/api/team-members/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ rate: val }),
+          });
+        }
+      } catch { /* ignore */ }
     }
     setEditingId(null);
   };
 
-  const handleDeleteMember = (id) => {
+  const handleDeleteMember = async (id) => {
     if (confirm("Are you sure you want to remove this team member?")) {
       setMembers(members.filter(m => m.id !== id));
+      try {
+        const token = await getAuthToken();
+        if (token && /^[a-f0-9]{24}$/i.test(String(id))) {
+          await fetch(`${API_BASE_URL}/api/team-members/${id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+      } catch { /* ignore */ }
     }
   };
 
-  const handleAddMember = (e) => {
+  const handleAddMember = async (e) => {
     e.preventDefault();
     if (!newName || !newRole) return;
 
-    const newM = {
-      id: Date.now(),
+    const payload = {
       name: newName,
       role: newRole,
       dept: newDept,
@@ -76,6 +118,22 @@ export default function TeamsView() {
       hours: parseInt(newHours) || 10,
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80'
     };
+
+    let newM = { id: Date.now(), ...payload };
+    try {
+      const token = await getAuthToken();
+      if (token) {
+        const res = await fetch(`${API_BASE_URL}/api/team-members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.member) newM = { ...data.member, id: data.member._id || Date.now() };
+        }
+      }
+    } catch { /* local fallback */ }
 
     setMembers([...members, newM]);
     setShowAddForm(false);
