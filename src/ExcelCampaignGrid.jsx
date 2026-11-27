@@ -1,8 +1,10 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community';
 import { Upload, Plus, Rocket, CheckCircle2, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import commandCenter from './services/CommandCenter';
+import { getAuthToken } from './supabaseAuth';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -78,6 +80,25 @@ export default function ExcelCampaignGrid() {
     createEmptyRow(),
     createEmptyRow()
   ]);
+  const [drafts, setDrafts] = useState([]);
+  const [selectedDraftId, setSelectedDraftId] = useState('');
+  const [launching, setLaunching] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        const res = await commandCenter.email.get('/api/email/drafts');
+        if (res.ok) {
+          const data = await res.json();
+          const list = data.drafts || [];
+          setDrafts(list);
+          if (list.length > 0) setSelectedDraftId(list[0]._id);
+        }
+      } catch { /* demo mode */ }
+    })();
+  }, []);
   const [importStatus, setImportStatus] = useState(null);
   const [launchToast, setLaunchToast] = useState(null);
 
@@ -157,7 +178,7 @@ export default function ExcelCampaignGrid() {
     e.target.value = '';
   }, []);
 
-  const handleLaunchCampaign = useCallback(() => {
+  const handleLaunchCampaign = useCallback(async () => {
     // Extract the latest edited state directly from the grid's rendered nodes
     // so any in-progress manual cell edits are captured.
     const currentRows = [];
@@ -183,11 +204,44 @@ export default function ExcelCampaignGrid() {
       return;
     }
 
-    setLaunchToast({
-      type: 'success',
-      message: `${nonBlankRows.length} valid candidate${nonBlankRows.length !== 1 ? 's' : ''} ready for processing.`
-    });
-  }, [rowData]);
+    const token = await getAuthToken();
+    if (!token) {
+      setLaunchToast({
+        type: 'success',
+        message: `${nonBlankRows.length} valid candidate${nonBlankRows.length !== 1 ? 's' : ''} validated (Demo Mode — sign in with an email draft to dispatch).`
+      });
+      return;
+    }
+
+    if (!selectedDraftId) {
+      setLaunchToast({ type: 'error', message: 'Create and select an email draft first in Email Body Editor.' });
+      return;
+    }
+
+    setLaunching(true);
+    try {
+      const recipients = nonBlankRows.map((r) => ({
+        email: r.email.trim(),
+        name: (r.name || '').trim(),
+        variables: { name: (r.name || '').trim(), github: (r.github || '').trim(), email: r.email.trim() },
+      }));
+      const res = await commandCenter.email.post('/api/email/send', {
+        draftId: selectedDraftId,
+        recipients,
+        variableMapping: { name: 'name', github: 'github', email: 'email' },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to launch campaign');
+      setLaunchToast({
+        type: 'success',
+        message: `Campaign queued for ${recipients.length} recipient${recipients.length !== 1 ? 's' : ''}!`
+      });
+    } catch (err) {
+      setLaunchToast({ type: 'error', message: err.message || 'Failed to launch campaign.' });
+    } finally {
+      setLaunching(false);
+    }
+  }, [rowData, selectedDraftId]);
 
   // Auto-dismiss the launch toast after a few seconds
   React.useEffect(() => {
@@ -232,6 +286,19 @@ export default function ExcelCampaignGrid() {
           <Plus size={15} />
           Add Row
         </button>
+
+        {drafts.length > 0 && (
+          <select
+            value={selectedDraftId}
+            onChange={(e) => setSelectedDraftId(e.target.value)}
+            disabled={launching}
+            style={{ padding: '9px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid #D9D9D9', backgroundColor: '#FFFFFF', color: '#1A1A1A' }}
+          >
+            {drafts.map((d) => (
+              <option key={d._id} value={d._id}>{d.subject || 'Untitled Draft'}</option>
+            ))}
+          </select>
+        )}
 
         <span style={{ fontSize: '12px', color: '#6B6B6B', marginLeft: '4px' }}>
           {rowData.length} row{rowData.length !== 1 ? 's' : ''}
