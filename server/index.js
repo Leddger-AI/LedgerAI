@@ -88,10 +88,34 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Gemini-Api-Key'],
+  exposedHeaders: ['X-Command-Center', 'X-Task-Id'],
 }));
 app.use(express.json({ limit: '100kb' }));
+
+// ==========================================
+// MAIN COMMAND CENTER -> SUB-COMMAND CENTERS
+// ==========================================
+const MainCommandCenter = require('./core/MainCommandCenter');
+const AuthGovernanceCommand = require('./commands/AuthGovernanceCommand');
+const CostIntelligenceCommand = require('./commands/CostIntelligenceCommand');
+const FormsSourcingCommand = require('./commands/FormsSourcingCommand');
+const EmailCampaignsCommand = require('./commands/EmailCampaignsCommand');
+const AnalyticsExportCommand = require('./commands/AnalyticsExportCommand');
+const KnowledgeResearchCommand = require('./commands/KnowledgeResearchCommand');
+
+const mainCommandCenter = new MainCommandCenter()
+  .register(new AuthGovernanceCommand())
+  .register(new CostIntelligenceCommand())
+  .register(new FormsSourcingCommand())
+  .register(new EmailCampaignsCommand())
+  .register(new AnalyticsExportCommand())
+  .register(new KnowledgeResearchCommand());
+
+app.commandCenter = mainCommandCenter;
+app.use(mainCommandCenter.dispatchMiddleware());
+mainCommandCenter.mountAll(app, verifyToken);
 
 // Minimal in-memory rate limiter (no extra dependency) for unauthenticated
 // public endpoints. Not distributed-safe, but stops single-source floods.

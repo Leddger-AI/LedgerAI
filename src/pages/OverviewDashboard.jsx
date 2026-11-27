@@ -6,6 +6,7 @@ import {
   Search, Mic, CalendarDays, ArrowRight, Lock, Mail, ShieldCheck,
 } from 'lucide-react';
 import { getAuthToken } from '../supabaseAuth';
+import CommandCenterTreePanel from '../components/CommandCenterTreePanel';
 import './OverviewDashboard.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -388,6 +389,8 @@ export default function OverviewDashboard({ dynamicData, projectSpendsSum, meeti
           </div>
         </div>
       </div>
+
+      <CommandCenterTreePanel />
     </div>
   );
 }
